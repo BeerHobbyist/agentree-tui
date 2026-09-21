@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { theme } from "../theme";
+import { useTheme } from "../theme";
 import type { WindowInfo } from "../services/tmux";
 
 interface TabBarProps {
@@ -24,6 +24,7 @@ export function TabBar({
   onClosePane,
   onExit,
 }: TabBarProps) {
+  const theme = useTheme();
   return (
     <box
       flexDirection="row"

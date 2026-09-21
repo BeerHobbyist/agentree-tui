@@ -1,7 +1,7 @@
 import { createCliRenderer, TextAttributes } from "@opentui/core";
 import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
-import { theme } from "./theme";
+import { useTheme, cycleTheme } from "./theme";
 import type { Project, Worktree } from "./data/model";
 import { status as gitStatus } from "./services/git";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
@@ -12,8 +12,10 @@ import {
 } from "./components/AddWorktreeModal";
 import { loadState, reconcile, type State } from "./store";
 import { TerminalPane } from "./components/TerminalPane";
+import { HelpOverlay } from "./components/HelpOverlay";
 
 function MainPane({ row }: { row: Row | undefined }) {
+  const theme = useTheme();
   const label = !row
     ? "agentree"
     : row.kind === "worktree"
@@ -74,11 +76,13 @@ function App({
   initialProjects: Project[];
   state: State;
 }) {
+  const theme = useTheme();
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [activeIndex, setActiveIndex] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [preselect, setPreselect] = useState<PreselectRepo | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   // The worktree whose terminal is mounted in the content pane, and where keys go.
   const [open, setOpen] = useState<{ repoId: string; worktreeId: string } | null>(
     null,
@@ -96,6 +100,8 @@ function App({
   focusModeRef.current = focusMode;
   const modalOpenRef = useRef(modalOpen);
   modalOpenRef.current = modalOpen;
+  const helpOpenRef = useRef(helpOpen);
+  helpOpenRef.current = helpOpen;
 
   // Background pass: fill real git status for on-disk worktrees, non-blocking.
   // Keyed on the set of paths so status updates don't retrigger the effect.
@@ -211,6 +217,14 @@ function App({
   };
 
   useKeyboard((key) => {
+    // Help overlay is top-most: esc / ? / q close it, everything else is inert.
+    if (helpOpenRef.current) {
+      if (key.name === "escape" || key.name === "?" || key.name === "q") {
+        setHelpOpen(false);
+      }
+      return;
+    }
+
     // The modal owns the keyboard while open; App nav stays inert.
     if (modalOpenRef.current) return;
 
@@ -236,6 +250,14 @@ function App({
     if (key.name === "a") {
       // Add a worktree to the currently-focused project (preselected).
       if (row) openAddForProject(row.project.id);
+      return;
+    }
+    if (key.name === "t") {
+      cycleTheme();
+      return;
+    }
+    if (key.name === "?") {
+      setHelpOpen(true);
       return;
     }
 
@@ -288,6 +310,8 @@ function App({
         onAddWorktree={openAddForProject}
         onOpenWorktree={openWorktreeTerminal}
         onSelectProject={selectProject}
+        onCycleTheme={() => cycleTheme()}
+        onHelp={() => setHelpOpen(true)}
       />
       {open && openProject && openWorktree ? (
         <TerminalPane
@@ -310,6 +334,9 @@ function App({
           }}
           onApplied={handleApplied}
         />
+      )}
+      {helpOpen && (
+        <HelpOverlay themeName={theme.name} onClose={() => setHelpOpen(false)} />
       )}
     </box>
   );

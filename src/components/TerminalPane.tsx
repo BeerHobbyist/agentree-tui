@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
-import { theme } from "../theme";
+import { useTheme } from "../theme";
 import type { Worktree } from "../data/model";
 import {
+  applyTheme,
   attachCommand,
   isAvailable,
   killPane,
@@ -35,6 +36,7 @@ interface TerminalPaneProps {
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
+  const theme = useTheme();
   return (
     <box
       flexGrow={1}
@@ -49,6 +51,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 }
 
 export function TerminalPane(props: TerminalPaneProps) {
+  const theme = useTheme();
   const [tmuxOk, setTmuxOk] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
@@ -88,10 +91,13 @@ function TerminalView({
   onRequestFocus,
   onExit,
 }: TerminalPaneProps) {
+  const theme = useTheme();
   const session = useMemo(
     () => sessionName(repoId, worktree.id),
     [repoId, worktree.id],
   );
+  // Initial attach applies the theme once; theme changes are re-applied live
+  // via applyTheme below (not by rebuilding the command, which would re-spawn).
   const command = useMemo(
     () =>
       attachCommand(session, worktree.path, {
@@ -100,6 +106,7 @@ function TerminalView({
         border: theme.border,
         borderActive: theme.accent,
       }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [session, worktree.path],
   );
   const { ref, onData, onTerminalResize, status, error } =
@@ -111,6 +118,17 @@ function TerminalView({
     if (focused) ref.current?.focus();
     else ref.current?.blur();
   }, [focused, status, ref]);
+
+  // Live re-theme: re-apply tmux styling (global) when the theme changes.
+  useEffect(() => {
+    if (status !== "running") return;
+    applyTheme({
+      bg: theme.bg,
+      fg: theme.fg,
+      border: theme.border,
+      borderActive: theme.accent,
+    }).catch(() => {});
+  }, [theme, status]);
 
   // Poll the session's windows (tabs) so the bar reflects tmux state — our own
   // actions plus native Ctrl+b changes and programs exiting.

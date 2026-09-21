@@ -60,24 +60,40 @@ only for **persistence** + compositing windows/panes inside that one terminal.
   (status off + global theme), window/pane helpers (list/new/select/next/prev/
   split/killPane), `sessionName`.
 - `src/components/` — `Sidebar`, `WorktreeItem`, `AddWorktreeModal`,
-  `EmbeddedTerminal` (registration), `TerminalPane`, `TabBar`.
+  `EmbeddedTerminal` (registration), `TerminalPane`, `TabBar`, `HelpOverlay`.
 - `src/hooks/useTerminalSession.ts` — Bun PTY lifecycle wired to the emulator.
 
 ## Keybindings
 
 - **Sidebar**: `↑↓`/`j k` move · `g`/`G` first/last · `space` or `h`/`l` fold ·
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
-  `n` add project · `q` or `Ctrl+C` quit.
+  `n` add project · `t` cycle theme · `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`)
   move between **split panes** · `⌥,`/`⌥.` prev/next **tab** · `⌥1`–`9` jump tab ·
   `⌥t` new tab · `⌥w` close pane · `⌥\` split horizontal · `⌥-` split vertical ·
   `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
-- **Mouse**: click sidebar rows · `＋` add worktree · tab bar (click tab, `＋`,
-  `⬌`/`⬍` split, `✕` close pane, `‹` back) · **click a split pane to focus it**
-  (deterministic: the click is mapped to emulator-local cells and matched against
-  `list-panes` geometry, then `select-pane`; tmux mouse stays off so native text
-  selection still works).
+- **Mouse** (everything is clickable): sidebar rows (worktree → open, header →
+  select+fold), `＋` add worktree, footer theme + `?` help; the add-worktree modal
+  repo/action rows; tab bar (tab, `＋`, `⬌`/`⬍` split, `✕` close, `‹` back); and
+  **click a split pane to focus it** (deterministic: the click maps to
+  emulator-local cells matched against `list-panes` geometry → `select-pane`; tmux
+  mouse stays off so native text selection still works); click anywhere to close help.
+
+## Theming
+
+`src/theme.ts` is a small registry + observable store: `themes` (`midnight`,
+`onedark`), `getTheme`/`setTheme`/`cycleTheme`, and a `useTheme()` hook
+(`useSyncExternalStore`) so the whole UI re-renders on change. Every component
+reads `const theme = useTheme()`. `t` (or the footer swatch) cycles themes.
+Terminals re-theme live: `TerminalView` re-applies tmux `window-style` /
+`pane-border-style` globally (`applyTheme`) on theme change. Pane borders carry
+the pane `bg` so the divider blends (no seam) — this was the "scuffed borders" fix.
+
+## Help
+
+`?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all
+sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click closes.
 
 ## Persistence
 

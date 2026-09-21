@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { theme } from "../theme";
+import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { WorktreeItem } from "./WorktreeItem";
 
@@ -15,6 +15,10 @@ interface SidebarProps {
   onOpenWorktree: (repoId: string, worktreeId: string) => void;
   /** Click a project header → select it + toggle fold. */
   onSelectProject: (projectId: string) => void;
+  /** Cycle to the next theme. */
+  onCycleTheme: () => void;
+  /** Open the help overlay. */
+  onHelp: () => void;
   width?: number;
 }
 
@@ -41,6 +45,7 @@ function ProjectGroup({
   onOpenWorktree: (repoId: string, worktreeId: string) => void;
   onSelectProject: (projectId: string) => void;
 }) {
+  const theme = useTheme();
   const headerActive = activeKey === projectKey(project.id);
   const dirtyCount = project.worktrees.filter((w) => w.dirty).length;
 
@@ -139,8 +144,11 @@ export function Sidebar({
   onAddWorktree,
   onOpenWorktree,
   onSelectProject,
+  onCycleTheme,
+  onHelp,
   width = 38,
 }: SidebarProps) {
+  const theme = useTheme();
   const dirtyCount = projects.reduce(
     (n, p) => n + p.worktrees.filter((w) => w.dirty).length,
     0,
@@ -188,10 +196,19 @@ export function Sidebar({
       >
         <box flexDirection="row" alignItems="center">
           <text fg={theme.dirty}>{"●"}</text>
-          <text fg={theme.fgMuted}>{" " + dirtyCount + " dirty"}</text>
+          <text fg={theme.fgMuted} flexGrow={1}>
+            {" " + dirtyCount + " dirty"}
+          </text>
+          {/* Clickable footer controls (also keys t / ?). */}
+          <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onCycleTheme}>
+            {" ◑ " + theme.name + " "}
+          </text>
+          <text fg={theme.accent} flexShrink={0} onMouseDown={onHelp}>
+            {" ? "}
+          </text>
         </box>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-          {"↑↓ move  ⏎ terminal  a +wt  n project  q quit"}
+          {"↑↓ move  ⏎ terminal  a +wt  n new  t theme  ? help  q quit"}
         </text>
       </box>
     </box>

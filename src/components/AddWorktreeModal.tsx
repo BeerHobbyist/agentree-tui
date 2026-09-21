@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { TextAttributes } from "@opentui/core";
 import { useEffect, useRef, useState } from "react";
 import { useKeyboard } from "@opentui/react";
-import { theme } from "../theme";
+import { useTheme } from "../theme";
 import type { Project, RepoSummary } from "../data/model";
 import {
   branchLeaf,
@@ -81,6 +81,7 @@ export function AddWorktreeModal({
   onClose,
   onApplied,
 }: AddWorktreeModalProps) {
+  const theme = useTheme();
   const [phase, setPhase] = useState<Phase>(
     preselect ? "actions" : "repoLoading",
   );
@@ -436,6 +437,20 @@ export function AddWorktreeModal({
           branch,
           errorMsg,
           loadingMore,
+          onPick: (i: number) => {
+            if (phase === "repoList") {
+              const r = filteredRepos()[i];
+              if (r) chooseRepo(r);
+            } else if (phase === "actions") {
+              if (i === 0) {
+                setBranch("");
+                setPhase("branchInput");
+              } else {
+                const wt = existing[i - 1];
+                if (wt) void loadExisting(wt);
+              }
+            }
+          },
         })}
       </box>
     </box>
@@ -455,6 +470,8 @@ interface BodyProps {
   branch: string;
   errorMsg: string;
   loadingMore: boolean;
+  /** Activate row `i` (click) — same as pressing Enter on it. */
+  onPick?: (i: number) => void;
 }
 
 function renderBody(p: BodyProps) {
@@ -498,6 +515,7 @@ function renderBody(p: BodyProps) {
 }
 
 function StatusLine({ text }: { text: string }) {
+  const theme = useTheme();
   return (
     <box paddingTop={1} paddingBottom={1}>
       <text fg={theme.fgMuted}>{text}</text>
@@ -506,6 +524,7 @@ function StatusLine({ text }: { text: string }) {
 }
 
 function ErrorBlock({ message, hint }: { message: string; hint: string }) {
+  const theme = useTheme();
   return (
     <box flexDirection="column">
       <text fg={theme.removed} wrapMode="word">
@@ -527,6 +546,7 @@ function windowed<T>(items: T[], selected: number, max: number) {
 }
 
 function RepoList(p: BodyProps) {
+  const theme = useTheme();
   const { start, slice } = windowed(p.filtered, p.index, MAX_LIST_ROWS);
   return (
     <box flexDirection="column">
@@ -543,7 +563,12 @@ function RepoList(p: BodyProps) {
       {slice.map((r, i) => {
         const active = start + i === p.index;
         return (
-          <box key={r.nameWithOwner} flexDirection="row" alignItems="center">
+          <box
+            key={r.nameWithOwner}
+            flexDirection="row"
+            alignItems="center"
+            onMouseDown={() => p.onPick?.(start + i)}
+          >
             <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
               {active ? "▶ " : "  "}
             </text>
@@ -577,6 +602,7 @@ function RepoList(p: BodyProps) {
 }
 
 function Actions(p: BodyProps) {
+  const theme = useTheme();
   const rows = [
     { label: "＋ Create new worktree", hint: "" },
     ...p.existing.map((w) => ({
@@ -592,7 +618,12 @@ function Actions(p: BodyProps) {
       {rows.map((row, i) => {
         const active = i === p.index;
         return (
-          <box key={String(i)} flexDirection="row" alignItems="center">
+          <box
+            key={String(i)}
+            flexDirection="row"
+            alignItems="center"
+            onMouseDown={() => p.onPick?.(i)}
+          >
             <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
               {active ? "▶ " : "  "}
             </text>
@@ -627,6 +658,7 @@ function Actions(p: BodyProps) {
 }
 
 function BranchInput(p: BodyProps) {
+  const theme = useTheme();
   return (
     <box flexDirection="column">
       <text fg={theme.fgMuted} marginBottom={1}>

@@ -54,6 +54,52 @@ export interface TermStyle {
 }
 
 /**
+ * Global (`-g`) option assignments that theme the terminal: no status bar,
+ * pane background/foreground, and pane borders. Border cells get the same `bg`
+ * as the panes so the divider blends instead of leaving an off-colored seam.
+ * Returns argv fragments joined by `;` separators for `tmux … ; set … ; set …`.
+ */
+export function themeOptions(style: TermStyle): string[] {
+  const paneStyle = `bg=${style.bg},fg=${style.fg}`;
+  const out: string[] = [
+    "set-option",
+    "-g",
+    "status",
+    "off",
+    ";",
+    "set-option",
+    "-g",
+    "window-style",
+    paneStyle,
+    ";",
+    "set-option",
+    "-g",
+    "window-active-style",
+    paneStyle,
+  ];
+  if (style.border) {
+    out.push(
+      ";",
+      "set-option",
+      "-g",
+      "pane-border-style",
+      `fg=${style.border},bg=${style.bg}`,
+      ";",
+      "set-option",
+      "-g",
+      "pane-active-border-style",
+      `fg=${style.borderActive ?? style.border},bg=${style.bg}`,
+    );
+  }
+  return out;
+}
+
+/** Re-apply the theme to the running server (live re-theme on theme switch). */
+export async function applyTheme(style: TermStyle): Promise<void> {
+  await run(tx(...themeOptions(style)));
+}
+
+/**
  * Command to run in a PTY: attach the session if it exists, else create it.
  * Theme options are set globally (`-g`) on our dedicated server so they apply
  * to every window/tab (not just the first) — no tmux status bar, and pane +
@@ -65,36 +111,8 @@ export function attachCommand(
   style?: TermStyle,
 ): string[] {
   const cmd = tx("new-session", "-A", "-s", session, "-c", cwd);
-  cmd.push(";", "set-option", "-g", "status", "off");
-  if (style) {
-    const s = `bg=${style.bg},fg=${style.fg}`;
-    cmd.push(
-      ";",
-      "set-option",
-      "-g",
-      "window-style",
-      s,
-      ";",
-      "set-option",
-      "-g",
-      "window-active-style",
-      s,
-    );
-    if (style.border) {
-      cmd.push(
-        ";",
-        "set-option",
-        "-g",
-        "pane-border-style",
-        `fg=${style.border}`,
-        ";",
-        "set-option",
-        "-g",
-        "pane-active-border-style",
-        `fg=${style.borderActive ?? style.border}`,
-      );
-    }
-  }
+  if (style) cmd.push(";", ...themeOptions(style));
+  else cmd.push(";", "set-option", "-g", "status", "off");
   return cmd;
 }
 

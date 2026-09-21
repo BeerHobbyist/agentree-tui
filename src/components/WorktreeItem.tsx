@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { theme } from "../theme";
+import { useTheme, type Theme } from "../theme";
 import type { Worktree } from "../data/model";
 
 interface WorktreeItemProps {
@@ -8,7 +8,7 @@ interface WorktreeItemProps {
   onClick?: () => void;
 }
 
-function agentBadge(agent: Worktree["agent"]) {
+function agentBadge(agent: Worktree["agent"], theme: Theme) {
   switch (agent) {
     case "working":
       return { label: "working", color: theme.agentWorking, glyph: "◐" };
@@ -20,7 +20,8 @@ function agentBadge(agent: Worktree["agent"]) {
 }
 
 export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
-  const badge = agentBadge(worktree.agent);
+  const theme = useTheme();
+  const badge = agentBadge(worktree.agent, theme);
   const dotColor = worktree.dirty ? theme.dirty : theme.clean;
   const hasStats = worktree.added > 0 || worktree.removed > 0;
   const hasSync = worktree.ahead > 0 || worktree.behind > 0;
