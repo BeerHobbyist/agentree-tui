@@ -8,6 +8,7 @@ import {
   attachCommand,
   isAvailable,
   killPane,
+  killWindow,
   listPaneGeometry,
   listWindows,
   newWindow,
@@ -214,9 +215,12 @@ function TerminalView({
     } else if (n === "t") {
       eat();
       act(() => newWindow(session, worktree.path));
-    } else if (n === "w") {
+    } else if (n === "w" && !key.shift) {
       eat();
       act(() => killPane(session));
+    } else if (n === "W" || (n === "w" && key.shift)) {
+      eat();
+      act(() => killWindow(session)); // current tab
     } else if (n === "\\") {
       eat();
       act(() => splitWindow(session, "h", worktree.path));
@@ -247,6 +251,7 @@ function TerminalView({
         windows={windows}
         onSelect={(i) => act(() => selectWindow(session, i))}
         onNewTab={() => act(() => newWindow(session, worktree.path))}
+        onCloseTab={(i) => act(() => killWindow(session, i))}
         onSplit={(dir) => act(() => splitWindow(session, dir, worktree.path))}
         onClosePane={() => act(() => killPane(session))}
         onExit={onExit}

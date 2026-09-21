@@ -6,6 +6,7 @@ interface TabBarProps {
   windows: WindowInfo[];
   onSelect: (index: number) => void;
   onNewTab: () => void;
+  onCloseTab: (index: number) => void;
   onSplit: (dir: "h" | "v") => void;
   onClosePane: () => void;
   onExit: () => void;
@@ -20,6 +21,7 @@ export function TabBar({
   windows,
   onSelect,
   onNewTab,
+  onCloseTab,
   onSplit,
   onClosePane,
   onExit,
@@ -41,19 +43,30 @@ export function TabBar({
       {/* Tabs (each its own click target) */}
       <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
         {windows.map((w) => (
-          <text
+          <box
             key={String(w.index)}
+            flexDirection="row"
             flexShrink={0}
-            fg={w.active ? theme.fg : theme.fgMuted}
-            bg={w.active ? theme.activeBg : theme.panel}
-            attributes={w.active ? TextAttributes.BOLD : undefined}
-            onMouseDown={() => onSelect(w.index)}
+            backgroundColor={w.active ? theme.activeBg : theme.panel}
           >
-            {` ${w.active ? "●" : "○"} ${w.name}${w.panes > 1 ? ` ⑂${w.panes}` : ""} `}
-          </text>
+            <text
+              fg={w.active ? theme.fg : theme.fgMuted}
+              attributes={w.active ? TextAttributes.BOLD : undefined}
+              onMouseDown={() => onSelect(w.index)}
+            >
+              {` ${w.active ? "●" : "○"} ${w.name}${w.panes > 1 ? ` ⑂${w.panes}` : ""} `}
+            </text>
+            {/* Per-tab close button (delete this window). */}
+            <text
+              fg={w.active ? theme.removed : theme.fgFaint}
+              onMouseDown={() => onCloseTab(w.index)}
+            >
+              {"× "}
+            </text>
+          </box>
         ))}
         <text fg={theme.accent} flexShrink={0} onMouseDown={onNewTab}>
-          {"  ＋"}
+          {" ＋"}
         </text>
       </box>
 
@@ -75,7 +88,7 @@ export function TabBar({
         wrapMode="none"
         truncate
       >
-        {"   ⌥t tab · ⌥,/. switch · ⌥hjkl pane · ^g sidebar"}
+        {"  ⌥t tab · ⌥w pane · ⌥W tab✕ · ⌥hjkl pane · ^g sidebar"}
       </text>
     </box>
   );

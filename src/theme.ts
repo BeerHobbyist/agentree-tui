@@ -76,10 +76,10 @@ const onedark: Theme = {
   behind: "#e06c75",
 };
 
-export const themes: Record<string, Theme> = { midnight, onedark };
+export const themes: Record<string, Theme> = { onedark, midnight };
 
 // --- observable active-theme store ---
-let current: Theme = midnight;
+let current: Theme = onedark;
 const listeners = new Set<() => void>();
 
 export function getTheme(): Theme {

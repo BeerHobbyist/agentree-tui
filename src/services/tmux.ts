@@ -245,3 +245,12 @@ export async function splitWindow(
 export async function killPane(session: string): Promise<void> {
   await run(tx("kill-pane", "-t", session));
 }
+
+/** Kill a whole window (tab). Omit `index` to kill the session's current window. */
+export async function killWindow(
+  session: string,
+  index?: number,
+): Promise<void> {
+  const target = index === undefined ? session : `${session}:${index}`;
+  await run(tx("kill-window", "-t", target));
+}
