@@ -82,6 +82,29 @@ export async function addWorktree(
   await runOrThrow(args, { cwd: root });
 }
 
+/**
+ * Best-effort base branch ref for "diff vs base": the remote's default branch
+ * (origin/HEAD) if known, else origin/main, else main/master.
+ */
+export async function baseRef(path: string): Promise<string> {
+  const head = await run(
+    ["git", "rev-parse", "--abbrev-ref", "origin/HEAD"],
+    { cwd: path },
+  );
+  if (head.code === 0) {
+    const ref = head.stdout.trim();
+    if (ref && ref !== "origin/HEAD") return ref;
+  }
+  for (const cand of ["origin/main", "origin/master", "main", "master"]) {
+    const { code } = await run(
+      ["git", "rev-parse", "--verify", "--quiet", cand],
+      { cwd: path },
+    );
+    if (code === 0) return cand;
+  }
+  return "main";
+}
+
 /** True if a local branch with this exact name exists. */
 export async function localBranchExists(
   root: string,

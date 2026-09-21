@@ -166,6 +166,19 @@ export async function newWindow(session: string, cwd: string): Promise<void> {
   await run(tx("new-window", "-t", session, "-c", cwd));
 }
 
+/**
+ * New window (tab) running a specific command; the window closes when it exits.
+ * Used to launch the hunk diff viewer in its own tab.
+ */
+export async function newWindowCmd(
+  session: string,
+  cwd: string,
+  command: string,
+  name = "cmd",
+): Promise<void> {
+  await run(tx("new-window", "-t", session, "-c", cwd, "-n", name, command));
+}
+
 export async function selectWindow(
   session: string,
   index: number,

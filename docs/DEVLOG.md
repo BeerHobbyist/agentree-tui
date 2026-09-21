@@ -52,6 +52,8 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 - `src/store.ts` — sync `loadState`, atomic `saveState`, `reconcile()` vs
   `git worktree list` (adopt orphans, mark missing, surface main copy).
 - `src/services/proc.ts` — `run()`/`runOrThrow()` over `Bun.spawn`.
+- `src/services/hunk.ts` — `isAvailable`, `diffCommand(target, base?)` for the
+  hunk diff viewer.
 - `src/services/gh.ts` — `fetchRepoPage` (paginated `gh api user/repos`), cache,
   `clone`, `isAuthenticated`.
 - `src/services/git.ts` — worktree add/list/status, `localBranchExists`,
@@ -60,7 +62,8 @@ only for **persistence** + compositing windows/panes inside that one terminal.
   (status off + global theme), window/pane helpers (list/new/select/next/prev/
   split/killPane), `sessionName`.
 - `src/components/` — `Sidebar`, `WorktreeItem`, `AddWorktreeModal`,
-  `EmbeddedTerminal` (registration), `TerminalPane`, `TabBar`, `HelpOverlay`.
+  `EmbeddedTerminal` (registration), `TerminalPane`, `TabBar`, `HelpOverlay`,
+  `MenuOverlay` (＋ menu / diff picker).
 - `src/hooks/useTerminalSession.ts` — Bun PTY lifecycle wired to the emulator.
 
 ## Keybindings
@@ -71,11 +74,13 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`)
   move between **split panes** · `⌥,`/`⌥.` prev/next **tab** · `⌥1`–`9` jump tab ·
-  `⌥t` new tab · `⌥w` close pane · `⌥\` split horizontal · `⌥-` split vertical ·
-  `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
+  `⌥t` new tab · `⌥d` open diff (hunk) · `⌥w` close pane · `⌥W` close tab ·
+  `⌥\` split horizontal · `⌥-` split vertical · `Ctrl+C` → shell ·
+  tmux-native `Ctrl+b …` works.
 - **Mouse** (everything is clickable): sidebar rows (worktree → open, header →
   select+fold), `＋` add worktree, footer theme + `?` help; the add-worktree modal
-  repo/action rows; tab bar (tab, `＋`, `⬌`/`⬍` split, `✕` close, `‹` back); and
+  repo/action rows; tab bar (tab, `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕`
+  close pane, `‹` back); and
   **click a split pane to focus it** (deterministic: the click maps to
   emulator-local cells matched against `list-panes` geometry → `select-pane`; tmux
   mouse stays off so native text selection still works); click anywhere to close help.
@@ -89,6 +94,19 @@ reads `const theme = useTheme()`. `t` (or the footer swatch) cycles themes.
 Terminals re-theme live: `TerminalView` re-applies tmux `window-style` /
 `pane-border-style` globally (`applyTheme`) on theme change. Pane borders carry
 the pane `bg` so the divider blends (no seam) — this was the "scuffed borders" fix.
+
+## Diff viewer (hunk)
+
+The tab-bar `＋` opens a small menu (`MenuOverlay`): **New shell** / **New diff
+(hunk)**; `⌥d` opens the diff picker directly. The picker offers **Working
+changes** / **Staged** / **vs base branch**, and launches `hunk` in a new tmux
+window (tab) at the worktree cwd via `newWindowCmd` — `hunk diff` /
+`hunk diff --staged` / `hunk diff <base>...HEAD` (`git.baseRef` detects the base,
+e.g. `origin/main`). Quitting hunk (`q`) exits the command so the tab closes.
+`src/services/hunk.ts` gates on `isAvailable()`; if hunk is absent the picker
+shows "hunk not found — npm i -g hunkdiff" (install: `npm i -g hunkdiff` needs
+Node 22+, or `curl -fsSL https://hunk.dev/install.sh | sh`). hunk is a separate
+process rendering in its tmux pane — no special integration beyond a TTY.
 
 ## Help
 
@@ -149,6 +167,9 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
 
 ## Commit history (this session)
 
+- hunk diff viewer integration (＋ menu · ⌥d · diff picker → hunk in a tab)
+- `bf4497e` Add tab (window) deletion; default to One Dark theme
+- `51ec2cb` docs: update DEVLOG commit history
 - `352a9d8` Theming system, help page, fuller mouse support; fix pane border seam
 - `6270273` Click a split pane to select it (deterministic coord→pane mapping)
 - `446f176` Add split-pane navigation; remap tab/pane keys

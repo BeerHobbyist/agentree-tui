@@ -12,6 +12,7 @@ import {
   listPaneGeometry,
   listWindows,
   newWindow,
+  newWindowCmd,
   nextWindow,
   prevWindow,
   selectPane,
@@ -21,9 +22,27 @@ import {
   splitWindow,
   type WindowInfo,
 } from "../services/tmux";
+import { baseRef } from "../services/git";
+import {
+  isAvailable as hunkAvailable,
+  diffCommand,
+  type DiffTarget,
+} from "../services/hunk";
 import { useTerminalSession } from "../hooks/useTerminalSession";
 import { TabBar } from "./TabBar";
+import { MenuOverlay, type MenuItem } from "./MenuOverlay";
 import "./EmbeddedTerminal"; // registers <embedded-terminal>
+
+const MENU_ITEMS: MenuItem[] = [
+  { label: "＋ New shell", hint: "" },
+  { label: "◨ New diff (hunk)", hint: "⌥d" },
+];
+const DIFF_ITEMS: MenuItem[] = [
+  { label: "Working changes", hint: "uncommitted" },
+  { label: "Staged", hint: "index" },
+  { label: "vs base branch", hint: "<base>...HEAD" },
+];
+const DIFF_TARGETS: DiffTarget[] = ["working", "staged", "base"];
 
 interface TerminalPaneProps {
   repoId: string;
@@ -155,6 +174,59 @@ function TerminalView({
       });
   };
 
+  // ＋ menu / diff picker overlay.
+  const [overlay, setOverlay] = useState<"none" | "menu" | "diff">("none");
+  const [menuIndex, setMenuIndex] = useState(0);
+  const [hunkOk, setHunkOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    hunkAvailable().then((ok) => alive && setHunkOk(ok));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const openMenu = () => {
+    setOverlay("menu");
+    setMenuIndex(0);
+  };
+  const openDiffPicker = () => {
+    setOverlay("diff");
+    setMenuIndex(0);
+  };
+  const closeOverlay = () => {
+    setOverlay("none");
+    onRequestFocus();
+  };
+  const openDiff = (target: DiffTarget) => {
+    act(async () => {
+      const base = target === "base" ? await baseRef(worktree.path) : undefined;
+      await newWindowCmd(
+        session,
+        worktree.path,
+        diffCommand(target, base),
+        "diff",
+      );
+    });
+  };
+  const pickOverlay = (i: number) => {
+    if (overlay === "menu") {
+      if (i === 0) {
+        act(() => newWindow(session, worktree.path));
+        closeOverlay();
+      } else {
+        openDiffPicker();
+      }
+    } else if (overlay === "diff") {
+      if (hunkOk === false) return; // install hint shown; no-op
+      const t = DIFF_TARGETS[i];
+      if (t) {
+        openDiff(t);
+        closeOverlay();
+      }
+    }
+  };
+
   // Click inside the terminal → focus + select the tmux pane under the cursor.
   // Deterministic: map the click to emulator-local cells (which equal the tmux
   // client grid) and select the pane whose geometry contains it.
@@ -187,12 +259,37 @@ function TerminalView({
       key.preventDefault();
       key.stopPropagation();
     };
+
+    // An overlay (＋ menu / diff picker) owns the keyboard while open.
+    if (overlay !== "none") {
+      const len = overlay === "menu" ? MENU_ITEMS.length : DIFF_ITEMS.length;
+      if (n === "escape") {
+        eat();
+        closeOverlay();
+      } else if (n === "down" || n === "j") {
+        eat();
+        setMenuIndex((i) => Math.min(i + 1, len - 1));
+      } else if (n === "up" || n === "k") {
+        eat();
+        setMenuIndex((i) => Math.max(i - 1, 0));
+      } else if (n === "return") {
+        eat();
+        pickOverlay(menuIndex);
+      }
+      return;
+    }
+
     if (key.ctrl && n === "g") {
       eat();
       onExit();
       return;
     }
     if (!(key.option || key.meta)) return;
+    if (n === "d") {
+      eat();
+      openDiffPicker();
+      return;
+    }
     // Directional keys move between split panes (vim hjkl + arrows).
     if (n === "h" || n === "left") {
       eat();
@@ -250,7 +347,7 @@ function TerminalView({
       <TabBar
         windows={windows}
         onSelect={(i) => act(() => selectWindow(session, i))}
-        onNewTab={() => act(() => newWindow(session, worktree.path))}
+        onNewTab={openMenu}
         onCloseTab={(i) => act(() => killWindow(session, i))}
         onSplit={(dir) => act(() => splitWindow(session, dir, worktree.path))}
         onClosePane={() => act(() => killPane(session))}
@@ -268,6 +365,29 @@ function TerminalView({
         width="100%"
         minWidth={0}
       />
+      {overlay === "menu" && (
+        <MenuOverlay
+          title="New tab"
+          items={MENU_ITEMS}
+          index={menuIndex}
+          onPick={pickOverlay}
+          onClose={closeOverlay}
+        />
+      )}
+      {overlay === "diff" && (
+        <MenuOverlay
+          title="Open diff (hunk)"
+          items={DIFF_ITEMS}
+          index={menuIndex}
+          onPick={pickOverlay}
+          onClose={closeOverlay}
+          note={
+            hunkOk === false
+              ? "hunk not found — npm i -g hunkdiff"
+              : undefined
+          }
+        />
+      )}
     </box>
   );
 }
