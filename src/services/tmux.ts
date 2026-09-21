@@ -5,6 +5,18 @@
 import { createHash } from "node:crypto";
 import { run } from "./proc";
 
+/**
+ * Dedicated tmux server socket for the app. Isolates our sessions from the
+ * user's own tmux (so listing/killing never touches theirs) and lets us set
+ * theme options globally (`-g`) so every window/tab inherits them.
+ */
+export const SOCKET = "agentree";
+
+/** Build a `tmux -L <socket> …` argv. */
+function tx(...args: string[]): string[] {
+  return ["tmux", "-L", SOCKET, ...args];
+}
+
 /** True if the tmux binary is present and runnable. */
 export async function isAvailable(): Promise<boolean> {
   try {
@@ -43,37 +55,28 @@ export interface TermStyle {
 
 /**
  * Command to run in a PTY: attach the session if it exists, else create it.
- * Turns the status bar off (session-scoped, not `-g`) so the embedded terminal
- * shows only the shell — no tmux footer chrome — and applies the app's theme
- * colors to the pane so the terminal blends with the UI.
+ * Theme options are set globally (`-g`) on our dedicated server so they apply
+ * to every window/tab (not just the first) — no tmux status bar, and pane +
+ * background colors match the app.
  */
 export function attachCommand(
   session: string,
   cwd: string,
   style?: TermStyle,
 ): string[] {
-  const cmd = [
-    "tmux",
-    "new-session",
-    "-A",
-    "-s",
-    session,
-    "-c",
-    cwd,
-    ";",
-    "set-option",
-    "status",
-    "off",
-  ];
+  const cmd = tx("new-session", "-A", "-s", session, "-c", cwd);
+  cmd.push(";", "set-option", "-g", "status", "off");
   if (style) {
     const s = `bg=${style.bg},fg=${style.fg}`;
     cmd.push(
       ";",
       "set-option",
+      "-g",
       "window-style",
       s,
       ";",
       "set-option",
+      "-g",
       "window-active-style",
       s,
     );
@@ -81,10 +84,12 @@ export function attachCommand(
       cmd.push(
         ";",
         "set-option",
+        "-g",
         "pane-border-style",
         `fg=${style.border}`,
         ";",
         "set-option",
+        "-g",
         "pane-active-border-style",
         `fg=${style.borderActive ?? style.border}`,
       );
@@ -96,7 +101,7 @@ export function attachCommand(
 /** Whether a session already exists (used for a "live" indicator). */
 export async function hasSession(session: string): Promise<boolean> {
   try {
-    const { code } = await run(["tmux", "has-session", "-t", session]);
+    const { code } = await run(tx("has-session", "-t", session));
     return code === 0;
   } catch {
     return false;
@@ -114,14 +119,15 @@ export interface WindowInfo {
 
 /** List a session's windows (tabs). Empty if the session is gone. */
 export async function listWindows(session: string): Promise<WindowInfo[]> {
-  const { code, stdout } = await run([
-    "tmux",
-    "list-windows",
-    "-t",
-    session,
-    "-F",
-    "#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}",
-  ]);
+  const { code, stdout } = await run(
+    tx(
+      "list-windows",
+      "-t",
+      session,
+      "-F",
+      "#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}",
+    ),
+  );
   if (code !== 0) return [];
   return stdout
     .trim()
@@ -139,14 +145,24 @@ export async function listWindows(session: string): Promise<WindowInfo[]> {
 }
 
 export async function newWindow(session: string, cwd: string): Promise<void> {
-  await run(["tmux", "new-window", "-t", session, "-c", cwd]);
+  await run(tx("new-window", "-t", session, "-c", cwd));
 }
 
 export async function selectWindow(
   session: string,
   index: number,
 ): Promise<void> {
-  await run(["tmux", "select-window", "-t", `${session}:${index}`]);
+  await run(tx("select-window", "-t", `${session}:${index}`));
+}
+
+/** Switch to the next window (wraps). Relative, so no stale-index math. */
+export async function nextWindow(session: string): Promise<void> {
+  await run(tx("next-window", "-t", session));
+}
+
+/** Switch to the previous window (wraps). */
+export async function prevWindow(session: string): Promise<void> {
+  await run(tx("previous-window", "-t", session));
 }
 
 /** Split the session's active pane. `h` = left/right, `v` = top/bottom. */
@@ -155,10 +171,10 @@ export async function splitWindow(
   dir: "h" | "v",
   cwd: string,
 ): Promise<void> {
-  await run(["tmux", "split-window", `-${dir}`, "-t", session, "-c", cwd]);
+  await run(tx("split-window", `-${dir}`, "-t", session, "-c", cwd));
 }
 
 /** Kill the active pane; killing the last pane closes its window (tab). */
 export async function killPane(session: string): Promise<void> {
-  await run(["tmux", "kill-pane", "-t", session]);
+  await run(tx("kill-pane", "-t", session));
 }

@@ -64,7 +64,17 @@ export function TabBar({
         {" ⬍"}
       </text>
       <text fg={theme.removed} flexShrink={0} onMouseDown={onClosePane}>
-        {"  ✕ "}
+        {"  ✕"}
+      </text>
+      <text
+        fg={theme.fgFaint}
+        attributes={TextAttributes.DIM}
+        flexShrink={1}
+        minWidth={0}
+        wrapMode="none"
+        truncate
+      >
+        {"   ⌥t new · ⌥h/l switch · ^g sidebar"}
       </text>
     </box>
   );

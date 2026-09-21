@@ -214,12 +214,9 @@ function App({
     // The modal owns the keyboard while open; App nav stays inert.
     if (modalOpenRef.current) return;
 
-    // While a terminal is focused, keys go to it — the app only listens for the
-    // return chord (Ctrl+g) to hand focus back to the sidebar.
-    if (focusModeRef.current === "terminal") {
-      if (key.ctrl && key.name === "g") setFocusMode("sidebar");
-      return;
-    }
+    // While a terminal is focused, TerminalView owns the keyboard (input +
+    // Ctrl+g to return + Alt tab chords). App nav stays inert.
+    if (focusModeRef.current === "terminal") return;
 
     // Sidebar focus: Ctrl+C (or q) quits the app. In terminal focus these go to
     // the shell instead (handled by the early return above).

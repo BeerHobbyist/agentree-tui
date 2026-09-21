@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
+import { useKeyboard } from "@opentui/react";
 import { theme } from "../theme";
 import type { Worktree } from "../data/model";
 import {
@@ -8,6 +9,8 @@ import {
   killPane,
   listWindows,
   newWindow,
+  nextWindow,
+  prevWindow,
   selectWindow,
   sessionName,
   splitWindow,
@@ -129,6 +132,49 @@ function TerminalView({
         onRequestFocus();
       });
   };
+
+
+  // Terminal-focused keyboard: return to sidebar + tab management. We
+  // preventDefault/stopPropagation so these chords don't also reach the shell
+  // (verified: useKeyboard runs before the focused renderable). Everything else
+  // falls through to the terminal. tmux-native Ctrl+b keys keep working.
+  useKeyboard((key) => {
+    if (!focused) return;
+    const n = key.name;
+    const eat = () => {
+      key.preventDefault();
+      key.stopPropagation();
+    };
+    if (key.ctrl && n === "g") {
+      eat();
+      onExit();
+      return;
+    }
+    if (!(key.option || key.meta)) return;
+    if (n === "t") {
+      eat();
+      act(() => newWindow(session, worktree.path));
+    } else if (n === "l" || n === "right") {
+      eat();
+      act(() => nextWindow(session));
+    } else if (n === "h" || n === "left") {
+      eat();
+      act(() => prevWindow(session));
+    } else if (n === "w") {
+      eat();
+      act(() => killPane(session));
+    } else if (n === "\\") {
+      eat();
+      act(() => splitWindow(session, "h", worktree.path));
+    } else if (n === "-") {
+      eat();
+      act(() => splitWindow(session, "v", worktree.path));
+    } else if (key.number && /^[1-9]$/.test(n)) {
+      eat();
+      const w = windows[parseInt(n, 10) - 1];
+      if (w) act(() => selectWindow(session, w.index));
+    }
+  });
 
   if (status === "error") {
     return (
