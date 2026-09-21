@@ -66,8 +66,6 @@ export function attachCommand(
 ): string[] {
   const cmd = tx("new-session", "-A", "-s", session, "-c", cwd);
   cmd.push(";", "set-option", "-g", "status", "off");
-  // Mouse on so clicking a split pane selects it (and scroll/resize work).
-  cmd.push(";", "set-option", "-g", "mouse", "on");
   if (style) {
     const s = `bg=${style.bg},fg=${style.fg}`;
     cmd.push(
@@ -173,6 +171,47 @@ export async function selectPane(
   dir: "L" | "R" | "U" | "D",
 ): Promise<void> {
   await run(tx("select-pane", "-t", session, `-${dir}`));
+}
+
+export interface PaneGeom {
+  id: string; // tmux pane id, e.g. "%3"
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/** Geometry of the active window's panes (cells, 0-based, matching the emulator grid). */
+export async function listPaneGeometry(session: string): Promise<PaneGeom[]> {
+  const { code, stdout } = await run(
+    tx(
+      "list-panes",
+      "-t",
+      session,
+      "-F",
+      "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_right}\t#{pane_bottom}",
+    ),
+  );
+  if (code !== 0) return [];
+  return stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((l) => {
+      const [id, left, top, right, bottom] = l.split("\t");
+      return {
+        id: id || "",
+        left: parseInt(left || "0", 10) || 0,
+        top: parseInt(top || "0", 10) || 0,
+        right: parseInt(right || "0", 10) || 0,
+        bottom: parseInt(bottom || "0", 10) || 0,
+      };
+    });
+}
+
+/** Focus a specific pane by its tmux id (e.g. "%3"). */
+export async function selectPaneById(id: string): Promise<void> {
+  await run(tx("select-pane", "-t", id));
 }
 
 /** Split the session's active pane. `h` = left/right, `v` = top/bottom. */

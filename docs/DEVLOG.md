@@ -75,7 +75,9 @@ only for **persistence** + compositing windows/panes inside that one terminal.
   `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
 - **Mouse**: click sidebar rows · `＋` add worktree · tab bar (click tab, `＋`,
   `⬌`/`⬍` split, `✕` close pane, `‹` back) · **click a split pane to focus it**
-  (tmux `mouse on`; scroll enters copy-mode; native text selection needs Shift).
+  (deterministic: the click is mapped to emulator-local cells and matched against
+  `list-panes` geometry, then `select-pane`; tmux mouse stays off so native text
+  selection still works).
 
 ## Persistence
 

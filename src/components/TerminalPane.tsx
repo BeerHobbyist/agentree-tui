@@ -7,11 +7,13 @@ import {
   attachCommand,
   isAvailable,
   killPane,
+  listPaneGeometry,
   listWindows,
   newWindow,
   nextWindow,
   prevWindow,
   selectPane,
+  selectPaneById,
   selectWindow,
   sessionName,
   splitWindow,
@@ -134,6 +136,26 @@ function TerminalView({
       });
   };
 
+  // Click inside the terminal → focus + select the tmux pane under the cursor.
+  // Deterministic: map the click to emulator-local cells (which equal the tmux
+  // client grid) and select the pane whose geometry contains it.
+  const handleMouseDown = (event: { x: number; y: number }) => {
+    onRequestFocus();
+    const el = ref.current;
+    if (!el) return;
+    const lx = event.x - el.screenX;
+    const ly = event.y - el.screenY;
+    listPaneGeometry(session)
+      .then((panes) => {
+        if (panes.length <= 1) return;
+        const hit = panes.find(
+          (p) => lx >= p.left && lx <= p.right && ly >= p.top && ly <= p.bottom,
+        );
+        if (hit) selectPaneById(hit.id);
+      })
+      .catch(() => {});
+  };
+
 
   // Terminal-focused keyboard: return to sidebar + tab management. We
   // preventDefault/stopPropagation so these chords don't also reach the shell
@@ -218,7 +240,7 @@ function TerminalView({
         maxScrollback={5000}
         onData={onData}
         onTerminalResize={onTerminalResize}
-        onMouseDown={onRequestFocus}
+        onMouseDown={handleMouseDown}
         flexGrow={1}
         width="100%"
         minWidth={0}
