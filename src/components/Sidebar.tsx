@@ -9,6 +9,8 @@ interface SidebarProps {
   collapsed: Set<string>;
   /** Key of the selected row: `projectId` for a header, `projectId:worktreeId` for a worktree. */
   activeKey: string;
+  /** Open the add-worktree flow with this project preselected. */
+  onAddWorktree: (projectId: string) => void;
   width?: number;
 }
 
@@ -24,10 +26,12 @@ function ProjectGroup({
   project,
   collapsed,
   activeKey,
+  onAddWorktree,
 }: {
   project: Project;
   collapsed: boolean;
   activeKey: string;
+  onAddWorktree: (projectId: string) => void;
 }) {
   const headerActive = activeKey === projectKey(project.id);
   const dirtyCount = project.worktrees.filter((w) => w.dirty).length;
@@ -69,6 +73,14 @@ function ProjectGroup({
           )}
           <text fg={theme.fgFaint} flexShrink={0}>
             {String(project.worktrees.length)}
+          </text>
+          {/* Clickable "add worktree" button (also bound to the `a` key). */}
+          <text
+            fg={theme.accent}
+            flexShrink={0}
+            onMouseDown={() => onAddWorktree(project.id)}
+          >
+            {"  ＋"}
           </text>
         </box>
       </box>
@@ -114,6 +126,7 @@ export function Sidebar({
   projects,
   collapsed,
   activeKey,
+  onAddWorktree,
   width = 38,
 }: SidebarProps) {
   const dirtyCount = projects.reduce(
@@ -145,6 +158,7 @@ export function Sidebar({
               project={project}
               collapsed={collapsed.has(project.id)}
               activeKey={activeKey}
+              onAddWorktree={onAddWorktree}
             />
           ))
         )}
@@ -163,7 +177,7 @@ export function Sidebar({
           <text fg={theme.fgMuted}>{" " + dirtyCount + " dirty"}</text>
         </box>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-          {"↑↓ move   ␣ fold   ⏎ open"}
+          {"↑↓ move  ␣ fold  a +worktree  n project"}
         </text>
       </box>
     </box>

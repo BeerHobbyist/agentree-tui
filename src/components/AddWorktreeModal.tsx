@@ -12,7 +12,12 @@ import {
   worktreePath,
 } from "../config";
 import { clone, listRepos } from "../services/gh";
-import { addWorktree, listWorktrees, localBranchExists } from "../services/git";
+import {
+  addWorktree,
+  ignoreWorktreesDir,
+  listWorktrees,
+  localBranchExists,
+} from "../services/git";
 import {
   addManagedWorktree,
   findRepo,
@@ -48,8 +53,17 @@ export interface Selection {
   worktreeId: string;
 }
 
+/** A repo already known to the app, to skip the repo-picker step. */
+export interface PreselectRepo {
+  nameWithOwner: string;
+  name: string;
+  root: string;
+}
+
 interface AddWorktreeModalProps {
   state: State;
+  /** When set, jump straight to the worktree actions for this repo. */
+  preselect?: PreselectRepo | null;
   onClose: () => void;
   onApplied: (projects: Project[], selection: Selection) => void;
 }
@@ -58,10 +72,13 @@ const MAX_LIST_ROWS = 10;
 
 export function AddWorktreeModal({
   state,
+  preselect,
   onClose,
   onApplied,
 }: AddWorktreeModalProps) {
-  const [phase, setPhase] = useState<Phase>("repoLoading");
+  const [phase, setPhase] = useState<Phase>(
+    preselect ? "actions" : "repoLoading",
+  );
   const [repos, setRepos] = useState<RepoSummary[]>([]);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -110,7 +127,23 @@ export function AddWorktreeModal({
     );
   };
 
-  useEffect(loadRepos, []);
+  useEffect(() => {
+    if (preselect) {
+      setRepo({
+        name: preselect.name,
+        nameWithOwner: preselect.nameWithOwner,
+        description: "",
+        isPrivate: false,
+        updatedAt: "",
+        url: "",
+      });
+      setRoot(preselect.root);
+      openActions(preselect.root);
+    } else {
+      loadRepos();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filteredRepos = (): RepoSummary[] => {
     const q = query.trim().toLowerCase();
@@ -158,6 +191,7 @@ export function AddWorktreeModal({
   };
 
   const openActions = (repoRoot: string) => {
+    ignoreWorktreesDir(repoRoot);
     buildExisting(repoRoot).then(
       (list) => {
         if (!mounted.current) return;
@@ -250,11 +284,14 @@ export function AddWorktreeModal({
     const s = ref.current;
     const name = key.name ?? "";
 
-    // Escape is a universal back/cancel.
+    // Escape is a universal back/cancel. With a preselected repo there's no
+    // repo-picker to return to, so actions/cloneError close outright.
     if (name === "escape") {
-      if (s.phase === "actions") return void setPhase("repoList");
+      if (s.phase === "actions")
+        return preselect ? onClose() : void setPhase("repoList");
       if (s.phase === "branchInput") return void setPhase("actions");
-      if (s.phase === "cloneError") return void setPhase("repoList");
+      if (s.phase === "cloneError")
+        return preselect ? onClose() : void setPhase("repoList");
       if (s.phase === "createError") return void setPhase("branchInput");
       return onClose();
     }

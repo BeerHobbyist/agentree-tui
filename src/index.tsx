@@ -7,6 +7,7 @@ import { status as gitStatus } from "./services/git";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
 import {
   AddWorktreeModal,
+  type PreselectRepo,
   type Selection,
 } from "./components/AddWorktreeModal";
 import { loadState, reconcile, type State } from "./store";
@@ -76,6 +77,7 @@ function App({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [activeIndex, setActiveIndex] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
+  const [preselect, setPreselect] = useState<PreselectRepo | null>(null);
 
   // Refs mirror state so the keyboard handler always reads current values.
   const projectsRef = useRef(projects);
@@ -155,6 +157,19 @@ function App({
     );
     if (idx >= 0) setActiveIndex(idx);
     setModalOpen(false);
+    setPreselect(null);
+  };
+
+  const openAdd = (pre: PreselectRepo | null) => {
+    setPreselect(pre);
+    setModalOpen(true);
+  };
+
+  /** Open the add-worktree modal with the given project's repo preselected. */
+  const openAddForProject = (projectId: string) => {
+    const proj = projectsRef.current.find((p) => p.id === projectId);
+    if (!proj) return;
+    openAdd({ nameWithOwner: proj.id, name: proj.name, root: proj.root });
   };
 
   useKeyboard((key) => {
@@ -166,7 +181,12 @@ function App({
     const row = rows[i];
 
     if (key.name === "n") {
-      setModalOpen(true);
+      openAdd(null);
+      return;
+    }
+    if (key.name === "a") {
+      // Add a worktree to the currently-focused project (preselected).
+      if (row) openAddForProject(row.project.id);
       return;
     }
 
@@ -202,12 +222,21 @@ function App({
 
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.bg}>
-      <Sidebar projects={projects} collapsed={collapsed} activeKey={activeKey} />
+      <Sidebar
+        projects={projects}
+        collapsed={collapsed}
+        activeKey={activeKey}
+        onAddWorktree={openAddForProject}
+      />
       <MainPane row={active} />
       {modalOpen && (
         <AddWorktreeModal
           state={state}
-          onClose={() => setModalOpen(false)}
+          preselect={preselect}
+          onClose={() => {
+            setModalOpen(false);
+            setPreselect(null);
+          }}
           onApplied={handleApplied}
         />
       )}
@@ -217,7 +246,7 @@ function App({
 
 const state = loadState();
 const initialProjects = await reconcile(state);
-const renderer = await createCliRenderer();
+const renderer = await createCliRenderer({ useMouse: true });
 createRoot(renderer).render(
   <App initialProjects={initialProjects} state={state} />,
 );

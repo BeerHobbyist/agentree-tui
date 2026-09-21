@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { stateFilePath, workspaceRoot, branchLeaf } from "./config";
-import { listWorktrees } from "./services/git";
+import { ignoreWorktreesDir, listWorktrees } from "./services/git";
 import type { Project, Worktree } from "./data/model";
 
 export interface StoredWorktree {
@@ -143,6 +143,7 @@ export async function reconcile(state: State): Promise<Project[]> {
       continue;
     }
 
+    ignoreWorktreesDir(repo.root);
     let onDisk: Awaited<ReturnType<typeof listWorktrees>> = [];
     try {
       onDisk = await listWorktrees(repo.root);

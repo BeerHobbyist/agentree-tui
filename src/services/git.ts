@@ -1,7 +1,28 @@
 /**
  * Thin async wrappers over `git`.
  */
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { run, runOrThrow } from "./proc";
+
+/**
+ * Make git ignore our `.worktrees/` directory locally, so the main working copy
+ * isn't reported dirty just because worktrees live inside the repo. Uses
+ * `.git/info/exclude` (local, uncommitted) rather than the tracked `.gitignore`.
+ */
+export function ignoreWorktreesDir(root: string): void {
+  try {
+    const excludePath = join(root, ".git", "info", "exclude");
+    const current = existsSync(excludePath)
+      ? readFileSync(excludePath, "utf8")
+      : "";
+    if (current.split("\n").some((l) => l.trim() === ".worktrees/")) return;
+    const prefix = current === "" || current.endsWith("\n") ? "" : "\n";
+    appendFileSync(excludePath, prefix + ".worktrees/\n");
+  } catch {
+    // Best-effort; a non-standard .git layout just means main may show dirty.
+  }
+}
 
 export interface GitWorktree {
   path: string;
