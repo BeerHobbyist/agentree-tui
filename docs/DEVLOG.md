@@ -149,6 +149,9 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
 
 ## Commit history (this session)
 
+- `352a9d8` Theming system, help page, fuller mouse support; fix pane border seam
+- `6270273` Click a split pane to select it (deterministic coord→pane mapping)
+- `446f176` Add split-pane navigation; remap tab/pane keys
 - `f042dec` Fix tab theming + add keyboard tab switching
 - `a36490e` Ctrl+C reaches the shell; add app quit (Ctrl+C / q in sidebar)
 - `a6c0cc1` Add terminal tabs and pane splitting (tmux windows/panes)
