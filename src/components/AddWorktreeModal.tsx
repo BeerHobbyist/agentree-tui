@@ -11,7 +11,12 @@ import {
   sanitizeBranchForPath,
   worktreePath,
 } from "../config";
-import { clone, listRepos } from "../services/gh";
+import {
+  clone,
+  fetchRepoPage,
+  getCachedRepos,
+  setRepoCache,
+} from "../services/gh";
 import {
   addWorktree,
   ignoreWorktreesDir,
@@ -87,6 +92,7 @@ export function AddWorktreeModal({
   const [existing, setExisting] = useState<ExistingWorktree[]>([]);
   const [branch, setBranch] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -110,21 +116,51 @@ export function AddWorktreeModal({
   ref.current = { phase, repos, query, index, repo, root, existing, branch };
 
   const loadRepos = (force = false) => {
+    // Instant when we already have the full list cached.
+    const cached = getCachedRepos();
+    if (cached && !force) {
+      setRepos(cached);
+      setIndex(0);
+      setQuery("");
+      setPhase("repoList");
+      setLoadingMore(false);
+      return;
+    }
+
+    // Otherwise stream pages: show page 1 fast, append the rest in background.
     setPhase("repoLoading");
-    listRepos(force).then(
-      (list) => {
+    setLoadingMore(true);
+    (async () => {
+      let acc: RepoSummary[] = [];
+      let page = 1;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        let res;
+        try {
+          res = await fetchRepoPage(page);
+        } catch (err) {
+          if (!mounted.current) return;
+          if (page === 1) {
+            setErrorMsg(errText(err));
+            setPhase("repoError");
+          }
+          break;
+        }
         if (!mounted.current) return;
-        setRepos(list);
-        setIndex(0);
-        setQuery("");
-        setPhase("repoList");
-      },
-      (err) => {
-        if (!mounted.current) return;
-        setErrorMsg(errText(err));
-        setPhase("repoError");
-      },
-    );
+        acc = acc.concat(res.repos);
+        setRepos(acc);
+        if (page === 1) {
+          setIndex(0);
+          setQuery("");
+          setPhase("repoList");
+        }
+        if (!res.hasMore) break;
+        page++;
+      }
+      if (!mounted.current) return;
+      setLoadingMore(false);
+      setRepoCache(acc);
+    })();
   };
 
   useEffect(() => {
@@ -147,8 +183,14 @@ export function AddWorktreeModal({
 
   const filteredRepos = (): RepoSummary[] => {
     const q = query.trim().toLowerCase();
+    // No query → keep API order (most-recently-pushed first).
     if (!q) return repos;
-    return repos.filter((r) => r.nameWithOwner.toLowerCase().includes(q));
+    // Rank by match quality; ties keep pushed order (stable sort).
+    return repos
+      .map((r) => ({ r, s: relevance(q, r) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .map((x) => x.r);
   };
 
   const buildExisting = async (repoRoot: string): Promise<ExistingWorktree[]> => {
@@ -393,6 +435,7 @@ export function AddWorktreeModal({
           existing,
           branch,
           errorMsg,
+          loadingMore,
         })}
       </box>
     </box>
@@ -411,6 +454,7 @@ interface BodyProps {
   existing: ExistingWorktree[];
   branch: string;
   errorMsg: string;
+  loadingMore: boolean;
 }
 
 function renderBody(p: BodyProps) {
@@ -526,7 +570,7 @@ function RepoList(p: BodyProps) {
       })}
 
       <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-        {`${p.filtered.length} repos · ↑↓ move · ⏎ select · esc cancel`}
+        {`${p.filtered.length} repos${p.loadingMore ? " · loading more…" : ""} · ↑↓ move · ⏎ select · esc cancel`}
       </text>
     </box>
   );
@@ -598,6 +642,17 @@ function BranchInput(p: BodyProps) {
       </text>
     </box>
   );
+}
+
+/** Score a repo against a lowercased query; higher is more relevant, 0 = no match. */
+function relevance(q: string, r: RepoSummary): number {
+  const name = r.name.toLowerCase();
+  const full = r.nameWithOwner.toLowerCase();
+  if (name === q) return 100;
+  if (name.startsWith(q)) return 80;
+  if (name.includes(q)) return 60;
+  if (full.includes(q)) return 40;
+  return 0;
 }
 
 function isPrintable(name: string): boolean {
