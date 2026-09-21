@@ -35,6 +35,10 @@ export interface TermStyle {
   bg: string;
   /** Hex foreground, e.g. "#e6e9ef". */
   fg: string;
+  /** Hex pane border color. */
+  border?: string;
+  /** Hex active-pane border color. */
+  borderActive?: string;
 }
 
 /**
@@ -73,6 +77,18 @@ export function attachCommand(
       "window-active-style",
       s,
     );
+    if (style.border) {
+      cmd.push(
+        ";",
+        "set-option",
+        "pane-border-style",
+        `fg=${style.border}`,
+        ";",
+        "set-option",
+        "pane-active-border-style",
+        `fg=${style.borderActive ?? style.border}`,
+      );
+    }
   }
   return cmd;
 }
@@ -87,22 +103,43 @@ export async function hasSession(session: string): Promise<boolean> {
   }
 }
 
-// --- window helpers (for multiple terminals per worktree, a later step) ---
+// --- window (tab) + pane (split) helpers ---
 
-export async function newWindow(session: string, cwd: string): Promise<void> {
-  await run(["tmux", "new-window", "-t", session, "-c", cwd]);
+export interface WindowInfo {
+  index: number;
+  name: string;
+  active: boolean;
+  panes: number;
 }
 
-export async function listWindows(session: string): Promise<string[]> {
-  const { stdout } = await run([
+/** List a session's windows (tabs). Empty if the session is gone. */
+export async function listWindows(session: string): Promise<WindowInfo[]> {
+  const { code, stdout } = await run([
     "tmux",
     "list-windows",
     "-t",
     session,
     "-F",
-    "#{window_index}:#{window_name}",
+    "#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}",
   ]);
-  return stdout.trim().split("\n").filter(Boolean);
+  if (code !== 0) return [];
+  return stdout
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [index, name, active, panes] = line.split("\t");
+      return {
+        index: parseInt(index || "0", 10) || 0,
+        name: name || "",
+        active: active === "1",
+        panes: parseInt(panes || "1", 10) || 1,
+      };
+    });
+}
+
+export async function newWindow(session: string, cwd: string): Promise<void> {
+  await run(["tmux", "new-window", "-t", session, "-c", cwd]);
 }
 
 export async function selectWindow(
@@ -110,4 +147,18 @@ export async function selectWindow(
   index: number,
 ): Promise<void> {
   await run(["tmux", "select-window", "-t", `${session}:${index}`]);
+}
+
+/** Split the session's active pane. `h` = left/right, `v` = top/bottom. */
+export async function splitWindow(
+  session: string,
+  dir: "h" | "v",
+  cwd: string,
+): Promise<void> {
+  await run(["tmux", "split-window", `-${dir}`, "-t", session, "-c", cwd]);
+}
+
+/** Kill the active pane; killing the last pane closes its window (tab). */
+export async function killPane(session: string): Promise<void> {
+  await run(["tmux", "kill-pane", "-t", session]);
 }

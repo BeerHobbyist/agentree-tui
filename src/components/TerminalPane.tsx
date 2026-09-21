@@ -2,8 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { theme } from "../theme";
 import type { Worktree } from "../data/model";
-import { attachCommand, isAvailable, sessionName } from "../services/tmux";
+import {
+  attachCommand,
+  isAvailable,
+  killPane,
+  listWindows,
+  newWindow,
+  selectWindow,
+  sessionName,
+  splitWindow,
+  type WindowInfo,
+} from "../services/tmux";
 import { useTerminalSession } from "../hooks/useTerminalSession";
+import { TabBar } from "./TabBar";
 import "./EmbeddedTerminal"; // registers <embedded-terminal>
 
 interface TerminalPaneProps {
@@ -71,13 +82,19 @@ function TerminalView({
   onRequestFocus,
   onExit,
 }: TerminalPaneProps) {
+  const session = useMemo(
+    () => sessionName(repoId, worktree.id),
+    [repoId, worktree.id],
+  );
   const command = useMemo(
     () =>
-      attachCommand(sessionName(repoId, worktree.id), worktree.path, {
+      attachCommand(session, worktree.path, {
         bg: theme.bg,
         fg: theme.fg,
+        border: theme.border,
+        borderActive: theme.accent,
       }),
-    [repoId, worktree.id, worktree.path],
+    [session, worktree.path],
   );
   const { ref, onData, onTerminalResize, status, error } =
     useTerminalSession(command);
@@ -88,6 +105,30 @@ function TerminalView({
     if (focused) ref.current?.focus();
     else ref.current?.blur();
   }, [focused, status, ref]);
+
+  // Poll the session's windows (tabs) so the bar reflects tmux state — our own
+  // actions plus native Ctrl+b changes and programs exiting.
+  const [windows, setWindows] = useState<WindowInfo[]>([]);
+  const refreshWindows = () => {
+    listWindows(session).then((w) => setWindows(w)).catch(() => {});
+  };
+  useEffect(() => {
+    if (status !== "running") return;
+    refreshWindows();
+    const id = setInterval(refreshWindows, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, status]);
+
+  // Run a tmux action, then refresh the bar and keep keys on the terminal.
+  const act = (fn: () => Promise<void>) => {
+    fn()
+      .catch(() => {})
+      .finally(() => {
+        setTimeout(refreshWindows, 60);
+        onRequestFocus();
+      });
+  };
 
   if (status === "error") {
     return (
@@ -102,29 +143,16 @@ function TerminalView({
 
   return (
     <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
-      <box
-        flexDirection="row"
-        paddingLeft={1}
-        paddingRight={1}
-        backgroundColor={focused ? theme.activeBg : theme.panel}
-      >
-        <text fg={focused ? theme.accent : theme.fgFaint} flexShrink={0}>
-          {focused ? "● " : "○ "}
-        </text>
-        <text fg={theme.fg} flexGrow={1} wrapMode="none" truncate>
-          {worktree.branch}
-        </text>
-        {/* Clickable back-to-sidebar button (also bound to Ctrl+g). */}
-        <text
-          fg={theme.accent}
-          flexShrink={0}
-          onMouseDown={onExit}
-        >
-          {status === "exited" ? " session ended " : " ‹ sidebar (^g) "}
-        </text>
-      </box>
+      <TabBar
+        windows={windows}
+        onSelect={(i) => act(() => selectWindow(session, i))}
+        onNewTab={() => act(() => newWindow(session, worktree.path))}
+        onSplit={(dir) => act(() => splitWindow(session, dir, worktree.path))}
+        onClosePane={() => act(() => killPane(session))}
+        onExit={onExit}
+      />
       {/* No fixed cols/rows: the constructor would pin the layout width to
-          `cols`. Let it fill the pane; onScreenChange/onResize drive sizing. */}
+          `cols`. Let it fill the pane; onResize drives sizing. */}
       <embedded-terminal
         ref={ref}
         maxScrollback={5000}
