@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme, cycleTheme } from "./theme";
 import type { Project, Worktree } from "./data/model";
 import { status as gitStatus } from "./services/git";
+import { prForBranch } from "./services/gh";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
 import {
   AddWorktreeModal,
@@ -143,6 +144,50 @@ function App({
       cancelled = true;
     };
   }, [pathSig]);
+
+  // Background pass: look up open PRs for each worktree's branch (cached in gh.ts).
+  const prSig = projects
+    .flatMap((p) =>
+      p.worktrees
+        .filter((w) => !w.missing && w.branch && w.branch !== "(detached)")
+        .map((w) => `${p.id}:${w.id}:${w.branch}`),
+    )
+    .join("|");
+  useEffect(() => {
+    let cancelled = false;
+    const targets = projectsRef.current.flatMap((p) =>
+      p.worktrees
+        .filter((w) => !w.missing && w.branch && w.branch !== "(detached)")
+        .map((w) => ({ repoId: p.id, id: w.id, branch: w.branch })),
+    );
+    (async () => {
+      const limit = 4;
+      for (let i = 0; i < targets.length; i += limit) {
+        const batch = targets.slice(i, i + limit);
+        const results = await Promise.all(
+          batch.map(async (t) => ({
+            t,
+            pr: await prForBranch(t.repoId, t.branch).catch(() => null),
+          })),
+        );
+        if (cancelled) return;
+        setProjects((prev) =>
+          prev.map((p) => ({
+            ...p,
+            worktrees: p.worktrees.map((w) => {
+              const hit = results.find(
+                (r) => r.t.repoId === p.id && r.t.id === w.id,
+              );
+              return hit ? { ...w, pr: hit.pr ?? undefined } : w;
+            }),
+          })),
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [prSig]);
 
   const setCollapsedFor = (projectId: string, wantCollapsed: boolean) => {
     const next = new Set(collapsedRef.current);

@@ -12,7 +12,8 @@ by tmux, with tabs and pane splitting.
 Working, at MVP+ level:
 
 - **Sidebar** — projects as foldable groups, worktrees indented under a guide rule
-  with status (dirty dot, agent badge, +/− and ahead/behind), keyboard + mouse nav.
+  with status (dirty dot, agent badge, +/− and ahead/behind, and an open-PR badge
+  `⇡#N` via `gh`), keyboard + mouse nav.
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
   persisted; `＋` on a header or `a` preselects the project.
@@ -55,7 +56,7 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 - `src/services/hunk.ts` — `isAvailable`, `diffCommand(target, base?)` for the
   hunk diff viewer.
 - `src/services/gh.ts` — `fetchRepoPage` (paginated `gh api user/repos`), cache,
-  `clone`, `isAuthenticated`.
+  `clone`, `isAuthenticated`, `prForBranch` (open PR for a branch, cached).
 - `src/services/git.ts` — worktree add/list/status, `localBranchExists`,
   `ignoreWorktreesDir` (adds `.worktrees/` to `.git/info/exclude`).
 - `src/services/tmux.ts` — dedicated **`-L agentree`** socket; `attachCommand`
@@ -167,7 +168,9 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
 
 ## Commit history (this session)
 
-- hunk diff viewer integration (＋ menu · ⌥d · diff picker → hunk in a tab)
+- GitHub PR badge on worktrees (`gh pr list --head <branch>`, background + cached)
+- `93cd46e` Add "specific ref / commit" diff option to the hunk picker
+- `bdd5b29` hunk diff viewer integration (＋ menu · ⌥d · diff picker → hunk in a tab)
 - `bf4497e` Add tab (window) deletion; default to One Dark theme
 - `51ec2cb` docs: update DEVLOG commit history
 - `352a9d8` Theming system, help page, fuller mouse support; fix pane border seam

@@ -1,7 +1,7 @@
 /**
  * Thin async wrappers over the `gh` CLI.
  */
-import type { RepoSummary } from "../data/model";
+import type { PrInfo, RepoSummary } from "../data/model";
 import { run, runOrThrow } from "./proc";
 
 /** Shape of the GitHub REST `/user/repos` items we care about. */
@@ -73,4 +73,55 @@ export async function clone(nameWithOwner: string, dest: string): Promise<void> 
 export async function isAuthenticated(): Promise<boolean> {
   const { code } = await run(["gh", "auth", "status"]);
   return code === 0;
+}
+
+// Cache PR lookups per repo+branch for the session (network calls are slow).
+const prCache = new Map<string, PrInfo | null>();
+
+/** The open PR whose head is `branch`, or null. Cached; `force` refetches. */
+export async function prForBranch(
+  nameWithOwner: string,
+  branch: string,
+  force = false,
+): Promise<PrInfo | null> {
+  const key = `${nameWithOwner}#${branch}`;
+  if (!force && prCache.has(key)) return prCache.get(key)!;
+  let result: PrInfo | null = null;
+  try {
+    const { code, stdout } = await run([
+      "gh",
+      "pr",
+      "list",
+      "-R",
+      nameWithOwner,
+      "--head",
+      branch,
+      "--state",
+      "open",
+      "--limit",
+      "1",
+      "--json",
+      "number,title,url,isDraft",
+    ]);
+    if (code === 0) {
+      const arr = JSON.parse(stdout) as {
+        number: number;
+        title: string;
+        url: string;
+        isDraft: boolean;
+      }[];
+      const pr = arr[0];
+      if (pr)
+        result = {
+          number: pr.number,
+          title: pr.title ?? "",
+          url: pr.url ?? "",
+          draft: !!pr.isDraft,
+        };
+    }
+  } catch {
+    result = null;
+  }
+  prCache.set(key, result);
+  return result;
 }

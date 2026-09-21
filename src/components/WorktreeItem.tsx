@@ -54,6 +54,15 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
             </text>
           </box>
 
+          {worktree.pr && (
+            <text
+              fg={worktree.pr.draft ? theme.fgMuted : theme.added}
+              flexShrink={0}
+            >
+              {` ⇡#${worktree.pr.number}${worktree.pr.draft ? "◌" : ""}`}
+            </text>
+          )}
+
           {badge && (
             <text fg={badge.color} flexShrink={0}>
               {" " + badge.glyph + " " + badge.label}

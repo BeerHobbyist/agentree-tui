@@ -8,6 +8,14 @@
 
 export type AgentStatus = "none" | "working" | "waiting";
 
+/** Open pull request associated with a worktree's branch. */
+export interface PrInfo {
+  number: number;
+  title: string;
+  url: string;
+  draft: boolean;
+}
+
 export interface Worktree {
   id: string;
   /** Short label shown in the list, usually the branch's leaf name. */
@@ -28,6 +36,8 @@ export interface Worktree {
   agent: AgentStatus;
   /** Registered in state but its directory is gone on disk. */
   missing?: boolean;
+  /** Open PR for this branch, if any (filled by a background lookup). */
+  pr?: PrInfo;
 }
 
 export interface Project {
