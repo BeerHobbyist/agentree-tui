@@ -1,5 +1,5 @@
 import { createCliRenderer, TextAttributes } from "@opentui/core";
-import { createRoot, useKeyboard } from "@opentui/react";
+import { createRoot, useKeyboard, useRenderer } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
 import { theme } from "./theme";
 import type { Project, Worktree } from "./data/model";
@@ -173,6 +173,16 @@ function App({
     setModalOpen(true);
   };
 
+  const renderer = useRenderer();
+  const quit = () => {
+    try {
+      renderer.destroy();
+    } catch {
+      // fall through to hard exit
+    }
+    process.exit(0);
+  };
+
   /** Open the add-worktree modal with the given project's repo preselected. */
   const openAddForProject = (projectId: string) => {
     const proj = projectsRef.current.find((p) => p.id === projectId);
@@ -208,6 +218,13 @@ function App({
     // return chord (Ctrl+g) to hand focus back to the sidebar.
     if (focusModeRef.current === "terminal") {
       if (key.ctrl && key.name === "g") setFocusMode("sidebar");
+      return;
+    }
+
+    // Sidebar focus: Ctrl+C (or q) quits the app. In terminal focus these go to
+    // the shell instead (handled by the early return above).
+    if ((key.ctrl && key.name === "c") || key.name === "q") {
+      quit();
       return;
     }
 
@@ -303,7 +320,9 @@ function App({
 
 const state = loadState();
 const initialProjects = await reconcile(state);
-const renderer = await createCliRenderer({ useMouse: true });
+// exitOnCtrlC is disabled so Ctrl+C reaches the focused terminal (the shell);
+// the app provides its own quit (Ctrl+C / q while the sidebar is focused).
+const renderer = await createCliRenderer({ useMouse: true, exitOnCtrlC: false });
 createRoot(renderer).render(
   <App initialProjects={initialProjects} state={state} />,
 );
