@@ -69,9 +69,10 @@ only for **persistence** + compositing windows/panes inside that one terminal.
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
   `n` add project · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
-- **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥t` new tab · `⌥h`/`⌥l`
-  (or `⌥←`/`⌥→`) prev/next tab · `⌥1`–`9` jump · `⌥w` close pane · `⌥\` split
-  horizontal · `⌥-` split vertical · `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
+- **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`)
+  move between **split panes** · `⌥,`/`⌥.` prev/next **tab** · `⌥1`–`9` jump tab ·
+  `⌥t` new tab · `⌥w` close pane · `⌥\` split horizontal · `⌥-` split vertical ·
+  `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
 - **Mouse**: click sidebar rows · `＋` add worktree · tab bar (click tab, `＋`,
   `⬌`/`⬍` split, `✕` close pane, `‹` back).
 

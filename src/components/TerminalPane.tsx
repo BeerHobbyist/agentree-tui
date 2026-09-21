@@ -11,6 +11,7 @@ import {
   newWindow,
   nextWindow,
   prevWindow,
+  selectPane,
   selectWindow,
   sessionName,
   splitWindow,
@@ -151,15 +152,28 @@ function TerminalView({
       return;
     }
     if (!(key.option || key.meta)) return;
-    if (n === "t") {
+    // Directional keys move between split panes (vim hjkl + arrows).
+    if (n === "h" || n === "left") {
       eat();
-      act(() => newWindow(session, worktree.path));
+      act(() => selectPane(session, "L"));
     } else if (n === "l" || n === "right") {
       eat();
-      act(() => nextWindow(session));
-    } else if (n === "h" || n === "left") {
+      act(() => selectPane(session, "R"));
+    } else if (n === "k" || n === "up") {
+      eat();
+      act(() => selectPane(session, "U"));
+    } else if (n === "j" || n === "down") {
+      eat();
+      act(() => selectPane(session, "D"));
+    } else if (n === ",") {
       eat();
       act(() => prevWindow(session));
+    } else if (n === ".") {
+      eat();
+      act(() => nextWindow(session));
+    } else if (n === "t") {
+      eat();
+      act(() => newWindow(session, worktree.path));
     } else if (n === "w") {
       eat();
       act(() => killPane(session));

@@ -74,7 +74,7 @@ export function TabBar({
         wrapMode="none"
         truncate
       >
-        {"   ⌥t new · ⌥h/l switch · ^g sidebar"}
+        {"   ⌥t tab · ⌥,/. switch · ⌥hjkl pane · ^g sidebar"}
       </text>
     </box>
   );

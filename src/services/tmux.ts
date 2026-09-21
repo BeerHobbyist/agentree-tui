@@ -165,6 +165,14 @@ export async function prevWindow(session: string): Promise<void> {
   await run(tx("previous-window", "-t", session));
 }
 
+/** Move focus to the pane in the given direction within the active window. */
+export async function selectPane(
+  session: string,
+  dir: "L" | "R" | "U" | "D",
+): Promise<void> {
+  await run(tx("select-pane", "-t", session, `-${dir}`));
+}
+
 /** Split the session's active pane. `h` = left/right, `v` = top/bottom. */
 export async function splitWindow(
   session: string,
