@@ -11,6 +11,7 @@ import {
   type Selection,
 } from "./components/AddWorktreeModal";
 import { loadState, reconcile, type State } from "./store";
+import { TerminalPane } from "./components/TerminalPane";
 
 function MainPane({ row }: { row: Row | undefined }) {
   const label = !row
@@ -78,6 +79,11 @@ function App({
   const [activeIndex, setActiveIndex] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [preselect, setPreselect] = useState<PreselectRepo | null>(null);
+  // The worktree whose terminal is mounted in the content pane, and where keys go.
+  const [open, setOpen] = useState<{ repoId: string; worktreeId: string } | null>(
+    null,
+  );
+  const [focusMode, setFocusMode] = useState<"sidebar" | "terminal">("sidebar");
 
   // Refs mirror state so the keyboard handler always reads current values.
   const projectsRef = useRef(projects);
@@ -86,6 +92,8 @@ function App({
   collapsedRef.current = collapsed;
   const activeIndexRef = useRef(activeIndex);
   activeIndexRef.current = activeIndex;
+  const focusModeRef = useRef(focusMode);
+  focusModeRef.current = focusMode;
   const modalOpenRef = useRef(modalOpen);
   modalOpenRef.current = modalOpen;
 
@@ -176,6 +184,13 @@ function App({
     // The modal owns the keyboard while open; App nav stays inert.
     if (modalOpenRef.current) return;
 
+    // While a terminal is focused, keys go to it — the app only listens for the
+    // return chord (Ctrl+g) to hand focus back to the sidebar.
+    if (focusModeRef.current === "terminal") {
+      if (key.ctrl && key.name === "g") setFocusMode("sidebar");
+      return;
+    }
+
     const rows = buildRows(projectsRef.current, collapsedRef.current);
     const i = activeIndexRef.current;
     const row = rows[i];
@@ -208,10 +223,13 @@ function App({
     } else if (key.name === "right" || key.name === "l") {
       if (row) setCollapsedFor(row.project.id, false);
     } else if (key.name === "return") {
-      // Enter on a project header toggles it; on a worktree it would "open".
+      // Enter on a project header folds it; on a worktree it opens its terminal.
       if (row && row.kind === "project") {
         const id = row.project.id;
         setCollapsedFor(id, !collapsedRef.current.has(id));
+      } else if (row && row.kind === "worktree" && !row.worktree.missing) {
+        setOpen({ repoId: row.project.id, worktreeId: row.worktree.id });
+        setFocusMode("terminal");
       }
     }
   });
@@ -219,6 +237,14 @@ function App({
   const rows = buildRows(projects, collapsed);
   const active = rows[Math.min(activeIndex, rows.length - 1)];
   const activeKey = active ? rowKey(active) : "";
+
+  // Resolve the opened worktree (if any) for the content pane.
+  const openProject = open
+    ? projects.find((p) => p.id === open.repoId)
+    : undefined;
+  const openWorktree = openProject?.worktrees.find(
+    (w) => w.id === open?.worktreeId && !w.missing,
+  );
 
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.bg}>
@@ -228,7 +254,16 @@ function App({
         activeKey={activeKey}
         onAddWorktree={openAddForProject}
       />
-      <MainPane row={active} />
+      {open && openProject && openWorktree ? (
+        <TerminalPane
+          repoId={open.repoId}
+          worktree={openWorktree}
+          focused={focusMode === "terminal"}
+          onRequestFocus={() => setFocusMode("terminal")}
+        />
+      ) : (
+        <MainPane row={active} />
+      )}
       {modalOpen && (
         <AddWorktreeModal
           state={state}

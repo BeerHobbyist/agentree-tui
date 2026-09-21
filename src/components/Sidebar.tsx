@@ -177,7 +177,7 @@ export function Sidebar({
           <text fg={theme.fgMuted}>{" " + dirtyCount + " dirty"}</text>
         </box>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-          {"↑↓ move  ␣ fold  a +worktree  n project"}
+          {"↑↓ move  ⏎ terminal  ␣ fold  a +wt  n project"}
         </text>
       </box>
     </box>
