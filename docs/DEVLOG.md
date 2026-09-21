@@ -74,7 +74,8 @@ only for **persistence** + compositing windows/panes inside that one terminal.
   `⌥t` new tab · `⌥w` close pane · `⌥\` split horizontal · `⌥-` split vertical ·
   `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
 - **Mouse**: click sidebar rows · `＋` add worktree · tab bar (click tab, `＋`,
-  `⬌`/`⬍` split, `✕` close pane, `‹` back).
+  `⬌`/`⬍` split, `✕` close pane, `‹` back) · **click a split pane to focus it**
+  (tmux `mouse on`; scroll enters copy-mode; native text selection needs Shift).
 
 ## Persistence
 

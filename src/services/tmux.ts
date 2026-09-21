@@ -66,6 +66,8 @@ export function attachCommand(
 ): string[] {
   const cmd = tx("new-session", "-A", "-s", session, "-c", cwd);
   cmd.push(";", "set-option", "-g", "status", "off");
+  // Mouse on so clicking a split pane selects it (and scroll/resize work).
+  cmd.push(";", "set-option", "-g", "mouse", "on");
   if (style) {
     const s = `bg=${style.bg},fg=${style.fg}`;
     cmd.push(
