@@ -41,8 +41,9 @@ const DIFF_ITEMS: MenuItem[] = [
   { label: "Working changes", hint: "uncommitted" },
   { label: "Staged", hint: "index" },
   { label: "vs base branch", hint: "<base>...HEAD" },
+  { label: "Specific ref / commit…", hint: "type a ref or range" },
 ];
-const DIFF_TARGETS: DiffTarget[] = ["working", "staged", "base"];
+const DIFF_TARGETS: DiffTarget[] = ["working", "staged", "base", "ref"];
 
 interface TerminalPaneProps {
   repoId: string;
@@ -175,8 +176,11 @@ function TerminalView({
   };
 
   // ＋ menu / diff picker overlay.
-  const [overlay, setOverlay] = useState<"none" | "menu" | "diff">("none");
+  const [overlay, setOverlay] = useState<
+    "none" | "menu" | "diff" | "diffInput"
+  >("none");
   const [menuIndex, setMenuIndex] = useState(0);
+  const [refInput, setRefInput] = useState("");
   const [hunkOk, setHunkOk] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
@@ -198,13 +202,14 @@ function TerminalView({
     setOverlay("none");
     onRequestFocus();
   };
-  const openDiff = (target: DiffTarget) => {
+  const openDiff = (target: DiffTarget, arg?: string) => {
     act(async () => {
-      const base = target === "base" ? await baseRef(worktree.path) : undefined;
+      const resolved =
+        arg ?? (target === "base" ? await baseRef(worktree.path) : undefined);
       await newWindowCmd(
         session,
         worktree.path,
-        diffCommand(target, base),
+        diffCommand(target, resolved),
         "diff",
       );
     });
@@ -220,11 +225,20 @@ function TerminalView({
     } else if (overlay === "diff") {
       if (hunkOk === false) return; // install hint shown; no-op
       const t = DIFF_TARGETS[i];
-      if (t) {
+      if (t === "ref") {
+        setRefInput("");
+        setOverlay("diffInput");
+      } else if (t) {
         openDiff(t);
         closeOverlay();
       }
     }
+  };
+  const submitRef = () => {
+    const ref = refInput.trim();
+    if (!ref) return;
+    openDiff("ref", ref);
+    closeOverlay();
   };
 
   // Click inside the terminal → focus + select the tmux pane under the cursor.
@@ -259,6 +273,24 @@ function TerminalView({
       key.preventDefault();
       key.stopPropagation();
     };
+
+    // The ref/commit text input owns the keyboard while open.
+    if (overlay === "diffInput") {
+      if (n === "escape") {
+        eat();
+        openDiffPicker(); // back to the picker
+      } else if (n === "return") {
+        eat();
+        submitRef();
+      } else if (n === "backspace") {
+        eat();
+        setRefInput((v) => v.slice(0, -1));
+      } else if (/^[A-Za-z0-9._/~^-]$/.test(n)) {
+        eat();
+        setRefInput((v) => v + n);
+      }
+      return;
+    }
 
     // An overlay (＋ menu / diff picker) owns the keyboard while open.
     if (overlay !== "none") {
@@ -387,6 +419,51 @@ function TerminalView({
               : undefined
           }
         />
+      )}
+      {overlay === "diffInput" && (
+        <box
+          position="absolute"
+          top={0}
+          left={0}
+          width="100%"
+          height="100%"
+          zIndex={150}
+          alignItems="center"
+          justifyContent="center"
+          shouldFill={false}
+          onMouseDown={() => openDiffPicker()}
+        >
+          <box
+            width={48}
+            borderStyle="rounded"
+            border
+            borderColor={theme.accent}
+            backgroundColor={theme.panel}
+            title=" Diff vs ref / commit "
+            titleAlignment="center"
+            flexDirection="column"
+            paddingTop={1}
+            paddingBottom={1}
+            paddingLeft={2}
+            paddingRight={2}
+          >
+            <text fg={theme.fgMuted} marginBottom={1}>
+              {"ref, branch, commit, or range (A..B)"}
+            </text>
+            <box flexDirection="row" alignItems="center">
+              <text fg={theme.accent}>{"❯ "}</text>
+              <text fg={theme.fg}>{refInput}</text>
+              <text fg={theme.accent}>{"▏"}</text>
+            </box>
+            <text
+              fg={theme.fgFaint}
+              attributes={TextAttributes.DIM}
+              marginTop={1}
+            >
+              {"⏎ open · esc back"}
+            </text>
+          </box>
+        </box>
       )}
     </box>
   );

@@ -4,7 +4,7 @@
  */
 import { run } from "./proc";
 
-export type DiffTarget = "working" | "staged" | "base";
+export type DiffTarget = "working" | "staged" | "base" | "ref";
 
 /** True if the `hunk` binary is on PATH. */
 export async function isAvailable(): Promise<boolean> {
@@ -20,12 +20,15 @@ export async function isAvailable(): Promise<boolean> {
  * Shell command that opens the requested diff in hunk. Runs in the worktree cwd
  * (hunk has no -C flag), so the tmux window must be created with `-c <path>`.
  */
-export function diffCommand(target: DiffTarget, base?: string): string {
+export function diffCommand(target: DiffTarget, arg?: string): string {
   switch (target) {
     case "staged":
       return "hunk diff --staged";
     case "base":
-      return `hunk diff ${base || "main"}...HEAD`;
+      return `hunk diff ${arg || "main"}...HEAD`;
+    case "ref":
+      // Raw git-diff argument: a ref, or a range like "A..B" / "A...B".
+      return `hunk diff ${arg || "HEAD"}`;
     case "working":
     default:
       return "hunk diff";
