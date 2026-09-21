@@ -30,9 +30,51 @@ export function sessionName(repoId: string, worktreeId: string): string {
   return `agentree_${slug}_${hash}`;
 }
 
-/** Command to run in a PTY: attach the session if it exists, else create it. */
-export function attachCommand(session: string, cwd: string): string[] {
-  return ["tmux", "new-session", "-A", "-s", session, "-c", cwd];
+export interface TermStyle {
+  /** Hex background, e.g. "#0d0f14". */
+  bg: string;
+  /** Hex foreground, e.g. "#e6e9ef". */
+  fg: string;
+}
+
+/**
+ * Command to run in a PTY: attach the session if it exists, else create it.
+ * Turns the status bar off (session-scoped, not `-g`) so the embedded terminal
+ * shows only the shell — no tmux footer chrome — and applies the app's theme
+ * colors to the pane so the terminal blends with the UI.
+ */
+export function attachCommand(
+  session: string,
+  cwd: string,
+  style?: TermStyle,
+): string[] {
+  const cmd = [
+    "tmux",
+    "new-session",
+    "-A",
+    "-s",
+    session,
+    "-c",
+    cwd,
+    ";",
+    "set-option",
+    "status",
+    "off",
+  ];
+  if (style) {
+    const s = `bg=${style.bg},fg=${style.fg}`;
+    cmd.push(
+      ";",
+      "set-option",
+      "window-style",
+      s,
+      ";",
+      "set-option",
+      "window-active-style",
+      s,
+    );
+  }
+  return cmd;
 }
 
 /** Whether a session already exists (used for a "live" indicator). */

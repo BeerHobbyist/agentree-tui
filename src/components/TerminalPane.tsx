@@ -13,6 +13,8 @@ interface TerminalPaneProps {
   focused: boolean;
   /** Called when the pane is clicked, so the app can switch focus to it. */
   onRequestFocus: () => void;
+  /** Called to hand focus back to the sidebar (back button / Ctrl+g). */
+  onExit: () => void;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -67,9 +69,14 @@ function TerminalView({
   worktree,
   focused,
   onRequestFocus,
+  onExit,
 }: TerminalPaneProps) {
   const command = useMemo(
-    () => attachCommand(sessionName(repoId, worktree.id), worktree.path),
+    () =>
+      attachCommand(sessionName(repoId, worktree.id), worktree.path, {
+        bg: theme.bg,
+        fg: theme.fg,
+      }),
     [repoId, worktree.id, worktree.path],
   );
   const { ref, onData, onTerminalResize, status, error } =
@@ -107,19 +114,26 @@ function TerminalView({
         <text fg={theme.fg} flexGrow={1} wrapMode="none" truncate>
           {worktree.branch}
         </text>
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={0}>
-          {status === "exited" ? "session ended" : "^g sidebar"}
+        {/* Clickable back-to-sidebar button (also bound to Ctrl+g). */}
+        <text
+          fg={theme.accent}
+          flexShrink={0}
+          onMouseDown={onExit}
+        >
+          {status === "exited" ? " session ended " : " ‹ sidebar (^g) "}
         </text>
       </box>
+      {/* No fixed cols/rows: the constructor would pin the layout width to
+          `cols`. Let it fill the pane; onScreenChange/onResize drive sizing. */}
       <embedded-terminal
         ref={ref}
-        cols={80}
-        rows={24}
         maxScrollback={5000}
         onData={onData}
         onTerminalResize={onTerminalResize}
         onMouseDown={onRequestFocus}
         flexGrow={1}
+        width="100%"
+        minWidth={0}
       />
     </box>
   );

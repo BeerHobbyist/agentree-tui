@@ -5,6 +5,7 @@ import type { Worktree } from "../data/model";
 interface WorktreeItemProps {
   worktree: Worktree;
   active: boolean;
+  onClick?: () => void;
 }
 
 function agentBadge(agent: Worktree["agent"]) {
@@ -18,7 +19,7 @@ function agentBadge(agent: Worktree["agent"]) {
   }
 }
 
-export function WorktreeItem({ worktree, active }: WorktreeItemProps) {
+export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
   const badge = agentBadge(worktree.agent);
   const dotColor = worktree.dirty ? theme.dirty : theme.clean;
   const hasStats = worktree.added > 0 || worktree.removed > 0;
@@ -29,6 +30,7 @@ export function WorktreeItem({ worktree, active }: WorktreeItemProps) {
       flexDirection="row"
       backgroundColor={active ? theme.activeBg : theme.panel}
       height={2}
+      onMouseDown={onClick}
     >
       {/* Accent bar for the active row */}
       <box width={1} backgroundColor={active ? theme.accent : theme.panel} />

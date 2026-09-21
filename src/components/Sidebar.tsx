@@ -11,6 +11,10 @@ interface SidebarProps {
   activeKey: string;
   /** Open the add-worktree flow with this project preselected. */
   onAddWorktree: (projectId: string) => void;
+  /** Click a worktree row → open its terminal. */
+  onOpenWorktree: (repoId: string, worktreeId: string) => void;
+  /** Click a project header → select it + toggle fold. */
+  onSelectProject: (projectId: string) => void;
   width?: number;
 }
 
@@ -27,11 +31,15 @@ function ProjectGroup({
   collapsed,
   activeKey,
   onAddWorktree,
+  onOpenWorktree,
+  onSelectProject,
 }: {
   project: Project;
   collapsed: boolean;
   activeKey: string;
   onAddWorktree: (projectId: string) => void;
+  onOpenWorktree: (repoId: string, worktreeId: string) => void;
+  onSelectProject: (projectId: string) => void;
 }) {
   const headerActive = activeKey === projectKey(project.id);
   const dirtyCount = project.worktrees.filter((w) => w.dirty).length;
@@ -42,6 +50,7 @@ function ProjectGroup({
       <box
         flexDirection="row"
         backgroundColor={headerActive ? theme.activeBg : theme.panel}
+        onMouseDown={() => onSelectProject(project.id)}
       >
         {/* accent gutter for the selected header */}
         <box
@@ -114,6 +123,7 @@ function ProjectGroup({
               key={wt.id}
               worktree={wt}
               active={worktreeKey(project.id, wt.id) === activeKey}
+              onClick={() => onOpenWorktree(project.id, wt.id)}
             />
           ))}
         </box>
@@ -127,6 +137,8 @@ export function Sidebar({
   collapsed,
   activeKey,
   onAddWorktree,
+  onOpenWorktree,
+  onSelectProject,
   width = 38,
 }: SidebarProps) {
   const dirtyCount = projects.reduce(
@@ -159,6 +171,8 @@ export function Sidebar({
               collapsed={collapsed.has(project.id)}
               activeKey={activeKey}
               onAddWorktree={onAddWorktree}
+              onOpenWorktree={onOpenWorktree}
+              onSelectProject={onSelectProject}
             />
           ))
         )}

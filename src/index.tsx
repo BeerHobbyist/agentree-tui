@@ -180,6 +180,26 @@ function App({
     openAdd({ nameWithOwner: proj.id, name: proj.name, root: proj.root });
   };
 
+  /** Open (mount + focus) a worktree's terminal — used by click and Enter. */
+  const openWorktreeTerminal = (repoId: string, worktreeId: string) => {
+    setOpen({ repoId, worktreeId });
+    setFocusMode("terminal");
+    const rows = buildRows(projectsRef.current, collapsedRef.current);
+    const idx = rows.findIndex(
+      (r) =>
+        r.kind === "worktree" &&
+        r.project.id === repoId &&
+        r.worktree.id === worktreeId,
+    );
+    if (idx >= 0) setActiveIndex(idx);
+  };
+
+  /** Click a project header: return focus to the sidebar and toggle its fold. */
+  const selectProject = (projectId: string) => {
+    setFocusMode("sidebar");
+    setCollapsedFor(projectId, !collapsedRef.current.has(projectId));
+  };
+
   useKeyboard((key) => {
     // The modal owns the keyboard while open; App nav stays inert.
     if (modalOpenRef.current) return;
@@ -228,8 +248,7 @@ function App({
         const id = row.project.id;
         setCollapsedFor(id, !collapsedRef.current.has(id));
       } else if (row && row.kind === "worktree" && !row.worktree.missing) {
-        setOpen({ repoId: row.project.id, worktreeId: row.worktree.id });
-        setFocusMode("terminal");
+        openWorktreeTerminal(row.project.id, row.worktree.id);
       }
     }
   });
@@ -253,6 +272,8 @@ function App({
         collapsed={collapsed}
         activeKey={activeKey}
         onAddWorktree={openAddForProject}
+        onOpenWorktree={openWorktreeTerminal}
+        onSelectProject={selectProject}
       />
       {open && openProject && openWorktree ? (
         <TerminalPane
@@ -260,6 +281,7 @@ function App({
           worktree={openWorktree}
           focused={focusMode === "terminal"}
           onRequestFocus={() => setFocusMode("terminal")}
+          onExit={() => setFocusMode("sidebar")}
         />
       ) : (
         <MainPane row={active} />
