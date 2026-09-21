@@ -4,27 +4,44 @@
 import type { RepoSummary } from "../data/model";
 import { run, runOrThrow } from "./proc";
 
-/** List the authenticated user's repositories, most-recently-updated first. */
-export async function listRepos(limit = 200): Promise<RepoSummary[]> {
+/** Shape of the GitHub REST `/user/repos` items we care about. */
+interface ApiRepo {
+  name: string;
+  full_name: string;
+  description: string | null;
+  private: boolean;
+  pushed_at: string | null;
+  updated_at: string | null;
+  html_url: string | null;
+}
+
+/**
+ * List every repository the token can access — owned, collaborator, and org
+ * repos — most-recently-pushed first. Uses the REST `/user/repos` endpoint
+ * (`gh repo list` only returns the user's own repos). `--slurp` returns one
+ * array per page, so the result is flattened.
+ */
+let repoCache: RepoSummary[] | null = null;
+
+export async function listRepos(force = false): Promise<RepoSummary[]> {
+  if (repoCache && !force) return repoCache;
   const out = await runOrThrow([
     "gh",
-    "repo",
-    "list",
-    "--limit",
-    String(limit),
-    "--json",
-    "name,nameWithOwner,description,isPrivate,updatedAt,url",
+    "api",
+    "--paginate",
+    "--slurp",
+    "user/repos?per_page=100&sort=pushed&affiliation=owner,collaborator,organization_member",
   ]);
-  const parsed = JSON.parse(out) as RepoSummary[];
-  // gh already sorts by pushed/updated; keep as-is but ensure shape.
-  return parsed.map((r) => ({
+  const pages = JSON.parse(out) as ApiRepo[][];
+  repoCache = pages.flat().map((r) => ({
     name: r.name,
-    nameWithOwner: r.nameWithOwner,
+    nameWithOwner: r.full_name,
     description: r.description ?? "",
-    isPrivate: !!r.isPrivate,
-    updatedAt: r.updatedAt ?? "",
-    url: r.url ?? "",
+    isPrivate: !!r.private,
+    updatedAt: r.pushed_at ?? r.updated_at ?? "",
+    url: r.html_url ?? "",
   }));
+  return repoCache;
 }
 
 /** Clone a repo (owner/name) into `dest`. Throws with stderr on failure. */

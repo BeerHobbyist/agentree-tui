@@ -92,9 +92,9 @@ export function AddWorktreeModal({
   });
   ref.current = { phase, repos, query, index, repo, root, existing, branch };
 
-  const loadRepos = () => {
+  const loadRepos = (force = false) => {
     setPhase("repoLoading");
-    listRepos().then(
+    listRepos(force).then(
       (list) => {
         if (!mounted.current) return;
         setRepos(list);
@@ -261,7 +261,7 @@ export function AddWorktreeModal({
 
     switch (s.phase) {
       case "repoError": {
-        if (name === "r") loadRepos();
+        if (name === "r") loadRepos(true);
         return;
       }
       case "repoList": {
