@@ -165,6 +165,12 @@ function TerminalView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, status]);
 
+  // A session always needs at least one window with at least one pane; closing
+  // the last pane of the last tab would kill the tmux session out from under
+  // the attached PTY, leaving no way to open a new terminal for this worktree.
+  const activeWindow = windows.find((w) => w.active);
+  const canClosePane = windows.length > 1 || (activeWindow?.panes ?? 1) > 1;
+
   // Run a tmux action, then refresh the bar and keep keys on the terminal.
   const act = (fn: () => Promise<void>) => {
     fn()
@@ -346,10 +352,10 @@ function TerminalView({
       act(() => newWindow(session, worktree.path));
     } else if (n === "w" && !key.shift) {
       eat();
-      act(() => killPane(session));
+      if (canClosePane) act(() => killPane(session));
     } else if (n === "W" || (n === "w" && key.shift)) {
       eat();
-      act(() => killWindow(session)); // current tab
+      if (windows.length > 1) act(() => killWindow(session)); // current tab
     } else if (n === "\\") {
       eat();
       act(() => splitWindow(session, "h", worktree.path));
@@ -380,10 +386,17 @@ function TerminalView({
         windows={windows}
         onSelect={(i) => act(() => selectWindow(session, i))}
         onNewTab={openMenu}
-        onCloseTab={(i) => act(() => killWindow(session, i))}
+        onCloseTab={(i) => {
+          if (windows.length <= 1) return;
+          act(() => killWindow(session, i));
+        }}
         onSplit={(dir) => act(() => splitWindow(session, dir, worktree.path))}
-        onClosePane={() => act(() => killPane(session))}
+        onClosePane={() => {
+          if (!canClosePane) return;
+          act(() => killPane(session));
+        }}
         onExit={onExit}
+        canClosePane={canClosePane}
       />
       {/* No fixed cols/rows: the constructor would pin the layout width to
           `cols`. Let it fill the pane; onResize drives sizing. */}

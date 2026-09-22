@@ -10,6 +10,8 @@ interface TabBarProps {
   onSplit: (dir: "h" | "v") => void;
   onClosePane: () => void;
   onExit: () => void;
+  /** False when this is the only pane in the only tab — closing it would kill the session. */
+  canClosePane: boolean;
 }
 
 /**
@@ -25,6 +27,7 @@ export function TabBar({
   onSplit,
   onClosePane,
   onExit,
+  canClosePane,
 }: TabBarProps) {
   const theme = useTheme();
   return (
@@ -56,13 +59,17 @@ export function TabBar({
             >
               {` ${w.active ? "●" : "○"} ${w.name}${w.panes > 1 ? ` ⑂${w.panes}` : ""} `}
             </text>
-            {/* Per-tab close button (delete this window). */}
-            <text
-              fg={w.active ? theme.removed : theme.fgFaint}
-              onMouseDown={() => onCloseTab(w.index)}
-            >
-              {"× "}
-            </text>
+            {/* Per-tab close button (delete this window). Hidden for the last
+                remaining tab: tmux can't have a session with zero windows, so
+                closing it would kill the session and strand the pane. */}
+            {windows.length > 1 && (
+              <text
+                fg={w.active ? theme.removed : theme.fgFaint}
+                onMouseDown={() => onCloseTab(w.index)}
+              >
+                {"× "}
+              </text>
+            )}
           </box>
         ))}
         <text fg={theme.accent} flexShrink={0} onMouseDown={onNewTab}>
@@ -77,7 +84,11 @@ export function TabBar({
       <text fg={theme.fgMuted} flexShrink={0} onMouseDown={() => onSplit("v")}>
         {" ⬍"}
       </text>
-      <text fg={theme.removed} flexShrink={0} onMouseDown={onClosePane}>
+      <text
+        fg={canClosePane ? theme.removed : theme.fgFaint}
+        flexShrink={0}
+        onMouseDown={canClosePane ? onClosePane : undefined}
+      >
         {"  ✕"}
       </text>
       <text
