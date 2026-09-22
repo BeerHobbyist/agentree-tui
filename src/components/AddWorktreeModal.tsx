@@ -4,7 +4,7 @@ import { TextAttributes } from "@opentui/core";
 import { useEffect, useRef, useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
-import type { Project, RepoSummary } from "../data/model";
+import type { OpenPr, Project, RepoSummary } from "../data/model";
 import {
   branchLeaf,
   repoDir,
@@ -15,10 +15,12 @@ import {
   clone,
   fetchRepoPage,
   getCachedRepos,
+  listOpenPrs,
   setRepoCache,
 } from "../services/gh";
 import {
   addWorktree,
+  fetchPrBranch,
   ignoreWorktreesDir,
   listWorktrees,
   localBranchExists,
@@ -91,6 +93,8 @@ export function AddWorktreeModal({
   const [repo, setRepo] = useState<RepoSummary | null>(null);
   const [root, setRoot] = useState<string>("");
   const [existing, setExisting] = useState<ExistingWorktree[]>([]);
+  const [prs, setPrs] = useState<OpenPr[]>([]);
+  const [pendingPr, setPendingPr] = useState<OpenPr | null>(null);
   const [branch, setBranch] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
@@ -103,6 +107,11 @@ export function AddWorktreeModal({
     };
   }, []);
 
+  // PRs that don't already have a worktree for their branch.
+  const availablePrs = prs.filter(
+    (pr) => !existing.some((w) => w.branch === pr.headRefName),
+  );
+
   // Everything the keyboard handler needs, mirrored to refs (handler is global).
   const ref = useRef({
     phase,
@@ -112,9 +121,22 @@ export function AddWorktreeModal({
     repo,
     root,
     existing,
+    prs: availablePrs,
+    pendingPr,
     branch,
   });
-  ref.current = { phase, repos, query, index, repo, root, existing, branch };
+  ref.current = {
+    phase,
+    repos,
+    query,
+    index,
+    repo,
+    root,
+    existing,
+    prs: availablePrs,
+    pendingPr,
+    branch,
+  };
 
   const loadRepos = (force = false) => {
     // Instant when we already have the full list cached.
@@ -175,7 +197,7 @@ export function AddWorktreeModal({
         url: "",
       });
       setRoot(preselect.root);
-      openActions(preselect.root);
+      openActions(preselect.root, preselect.nameWithOwner);
     } else {
       loadRepos();
     }
@@ -216,13 +238,13 @@ export function AddWorktreeModal({
     setRoot(repoRoot);
 
     if (existsSync(repoRoot)) {
-      openActions(repoRoot);
+      openActions(repoRoot, r.nameWithOwner);
     } else {
       setPhase("cloning");
       clone(r.nameWithOwner, repoRoot).then(
         () => {
           if (!mounted.current) return;
-          openActions(repoRoot);
+          openActions(repoRoot, r.nameWithOwner);
         },
         (err) => {
           if (!mounted.current) return;
@@ -233,8 +255,9 @@ export function AddWorktreeModal({
     }
   };
 
-  const openActions = (repoRoot: string) => {
+  const openActions = (repoRoot: string, nameWithOwner: string) => {
     ignoreWorktreesDir(repoRoot);
+    setPrs([]);
     buildExisting(repoRoot).then(
       (list) => {
         if (!mounted.current) return;
@@ -248,6 +271,11 @@ export function AddWorktreeModal({
         setPhase("cloneError");
       },
     );
+    // Best-effort: open PRs are an extra option, not required to use the modal.
+    listOpenPrs(nameWithOwner).then((list) => {
+      if (!mounted.current) return;
+      setPrs(list);
+    });
   };
 
   /** Persist + reconcile + hand the fresh projects and selection back to App. */
@@ -280,6 +308,7 @@ export function AddWorktreeModal({
     const name = branchName.trim();
     if (!name) return;
     setBranch(name);
+    setPendingPr(null);
     setPhase("creating");
 
     (async () => {
@@ -323,6 +352,55 @@ export function AddWorktreeModal({
     });
   };
 
+  /** Create (or load) a worktree from an open PR, naming it after the PR's branch. */
+  const createFromPr = (pr: OpenPr) => {
+    if (!repo) return;
+    const name = pr.headRefName;
+    setBranch(name);
+    setPendingPr(pr);
+    setPhase("creating");
+
+    (async () => {
+      // If a worktree already exists on this branch, load it instead.
+      const current = await listWorktrees(root);
+      const same = current.find((w) => w.branch === name);
+      if (same) {
+        const isMain = resolve(same.path) === resolve(root);
+        await loadExisting({
+          id: isMain ? "main" : sanitizeBranchForPath(name),
+          name: isMain ? "main" : branchLeaf(name),
+          branch: name,
+          path: same.path,
+          isMain,
+        });
+        return;
+      }
+
+      await fetchPrBranch(root, pr.number, name);
+      const path = worktreePath(root, name);
+      mkdirSync(dirname(path), { recursive: true });
+      await addWorktree(root, path, name, { newBranch: false });
+
+      const id = sanitizeBranchForPath(name);
+      await addManagedWorktree(
+        state,
+        { nameWithOwner: repo.nameWithOwner, name: repo.name, root },
+        {
+          id,
+          branch: name,
+          name: branchLeaf(name),
+          path,
+          createdAt: new Date().toISOString(),
+        },
+      );
+      await apply({ repoId: repo.nameWithOwner, worktreeId: id });
+    })().catch((err) => {
+      if (!mounted.current) return;
+      setErrorMsg(errText(err));
+      setPhase("createError");
+    });
+  };
+
   useKeyboard((key) => {
     const s = ref.current;
     const name = key.name ?? "";
@@ -335,7 +413,8 @@ export function AddWorktreeModal({
       if (s.phase === "branchInput") return void setPhase("actions");
       if (s.phase === "cloneError")
         return preselect ? onClose() : void setPhase("repoList");
-      if (s.phase === "createError") return void setPhase("branchInput");
+      if (s.phase === "createError")
+        return void setPhase(s.pendingPr ? "actions" : "branchInput");
       return onClose();
     }
 
@@ -363,7 +442,7 @@ export function AddWorktreeModal({
         return;
       }
       case "actions": {
-        const total = s.existing.length + 1; // +1 for "create new"
+        const total = s.existing.length + s.prs.length + 1; // +1 for "create new"
         if (name === "down" || name === "j") {
           setIndex(Math.min(s.index + 1, total - 1));
         } else if (name === "up" || name === "k") {
@@ -372,9 +451,12 @@ export function AddWorktreeModal({
           if (s.index === 0) {
             setBranch("");
             setPhase("branchInput");
-          } else {
+          } else if (s.index <= s.existing.length) {
             const wt = s.existing[s.index - 1];
             if (wt) void loadExisting(wt);
+          } else {
+            const pr = s.prs[s.index - s.existing.length - 1];
+            if (pr) createFromPr(pr);
           }
         }
         return;
@@ -394,7 +476,10 @@ export function AddWorktreeModal({
         return;
       }
       case "createError": {
-        if (name === "r") createWorktree(s.branch);
+        if (name === "r") {
+          if (s.pendingPr) createFromPr(s.pendingPr);
+          else createWorktree(s.branch);
+        }
         return;
       }
     }
@@ -434,6 +519,7 @@ export function AddWorktreeModal({
           query,
           index,
           existing,
+          prs: availablePrs,
           branch,
           errorMsg,
           loadingMore,
@@ -445,9 +531,12 @@ export function AddWorktreeModal({
               if (i === 0) {
                 setBranch("");
                 setPhase("branchInput");
-              } else {
+              } else if (i <= existing.length) {
                 const wt = existing[i - 1];
                 if (wt) void loadExisting(wt);
+              } else {
+                const pr = availablePrs[i - existing.length - 1];
+                if (pr) createFromPr(pr);
               }
             }
           },
@@ -467,6 +556,7 @@ interface BodyProps {
   query: string;
   index: number;
   existing: ExistingWorktree[];
+  prs: OpenPr[];
   branch: string;
   errorMsg: string;
   loadingMore: boolean;
@@ -608,6 +698,10 @@ function Actions(p: BodyProps) {
     ...p.existing.map((w) => ({
       label: (w.isMain ? "◆ " : "○ ") + w.name,
       hint: w.branch,
+    })),
+    ...p.prs.map((pr) => ({
+      label: `⇄ #${pr.number} ${pr.title}`,
+      hint: pr.headRefName,
     })),
   ];
   return (

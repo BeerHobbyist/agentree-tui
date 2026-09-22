@@ -83,6 +83,22 @@ export async function addWorktree(
 }
 
 /**
+ * Fetch a PR's head commit into local branch `branch` (created or moved to
+ * match). Uses GitHub's `refs/pull/<n>/head`, which works for PRs from forks
+ * too, unlike fetching `headRefName` directly off `origin`.
+ */
+export async function fetchPrBranch(
+  root: string,
+  prNumber: number,
+  branch: string,
+): Promise<void> {
+  await runOrThrow(
+    ["git", "fetch", "origin", `+refs/pull/${prNumber}/head:refs/heads/${branch}`],
+    { cwd: root },
+  );
+}
+
+/**
  * Best-effort base branch ref for "diff vs base": the remote's default branch
  * (origin/HEAD) if known, else origin/main, else main/master.
  */

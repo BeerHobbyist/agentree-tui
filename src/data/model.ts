@@ -16,6 +16,11 @@ export interface PrInfo {
   draft: boolean;
 }
 
+/** An open pull request offered when creating a worktree, with its source branch. */
+export interface OpenPr extends PrInfo {
+  headRefName: string;
+}
+
 export interface Worktree {
   id: string;
   /** Short label shown in the list, usually the branch's leaf name. */

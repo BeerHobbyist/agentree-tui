@@ -16,7 +16,9 @@ Working, at MVP+ level:
   `⇡#N` via `gh`), keyboard + mouse nav.
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
-  persisted; `＋` on a header or `a` preselects the project.
+  persisted; `＋` on a header or `a` preselects the project. The repo's open
+  PRs are listed alongside existing worktrees as one-key picks, fetched via
+  `refs/pull/<n>/head` (works for forks) and named after the PR's branch.
 - **Embedded terminals** — OpenTUI `EmbeddedTerminal` + **Bun native PTY** + tmux
   for persistence. One terminal per worktree; opens on `Enter`.
 - **Tabs + pane splitting** — tmux windows (tabs) and panes (splits) composited

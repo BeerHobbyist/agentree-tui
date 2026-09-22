@@ -1,7 +1,7 @@
 /**
  * Thin async wrappers over the `gh` CLI.
  */
-import type { PrInfo, RepoSummary } from "../data/model";
+import type { OpenPr, PrInfo, RepoSummary } from "../data/model";
 import { run, runOrThrow } from "./proc";
 
 /** Shape of the GitHub REST `/user/repos` items we care about. */
@@ -124,4 +124,40 @@ export async function prForBranch(
   }
   prCache.set(key, result);
   return result;
+}
+
+/** All open PRs for a repo, most-recently-updated first. Best-effort: [] on failure. */
+export async function listOpenPrs(nameWithOwner: string): Promise<OpenPr[]> {
+  try {
+    const { code, stdout } = await run([
+      "gh",
+      "pr",
+      "list",
+      "-R",
+      nameWithOwner,
+      "--state",
+      "open",
+      "--limit",
+      "100",
+      "--json",
+      "number,title,url,isDraft,headRefName",
+    ]);
+    if (code !== 0) return [];
+    const arr = JSON.parse(stdout) as {
+      number: number;
+      title: string;
+      url: string;
+      isDraft: boolean;
+      headRefName: string;
+    }[];
+    return arr.map((pr) => ({
+      number: pr.number,
+      title: pr.title ?? "",
+      url: pr.url ?? "",
+      draft: !!pr.isDraft,
+      headRefName: pr.headRefName,
+    }));
+  } catch {
+    return [];
+  }
 }
