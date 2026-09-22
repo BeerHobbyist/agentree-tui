@@ -11,6 +11,8 @@ export interface ProcResult {
 
 export interface RunOptions {
   cwd?: string;
+  /** Child environment. Defaults to the live `process.env`. */
+  env?: Record<string, string | undefined>;
 }
 
 /** Run a command, capturing stdout/stderr. Never throws on non-zero exit. */
@@ -18,8 +20,11 @@ export async function run(
   cmd: string[],
   opts: RunOptions = {},
 ): Promise<ProcResult> {
+  // Bun snapshots the environment at process start, so passing it explicitly
+  // is what makes a `process.env.PATH` change (tests' fake binaries) take.
   const proc = Bun.spawn(cmd, {
     cwd: opts.cwd,
+    env: opts.env ?? process.env,
     stdout: "pipe",
     stderr: "pipe",
   });

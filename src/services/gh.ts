@@ -78,6 +78,11 @@ export async function isAuthenticated(): Promise<boolean> {
 // Cache PR lookups per repo+branch for the session (network calls are slow).
 const prCache = new Map<string, PrInfo | null>();
 
+/** Drop every cached PR lookup (tests, and a future manual refresh). */
+export function clearPrCache(): void {
+  prCache.clear();
+}
+
 /** The open PR whose head is `branch`, or null. Cached; `force` refetches. */
 export async function prForBranch(
   nameWithOwner: string,

@@ -106,6 +106,11 @@ export function cycleTheme(): string {
   return next;
 }
 
+/** Back to the default palette — the global store would otherwise leak between tests. */
+export function resetTheme(): void {
+  setTheme(onedark.name);
+}
+
 function subscribe(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);

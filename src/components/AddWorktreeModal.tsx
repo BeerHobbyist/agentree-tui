@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { TextAttributes } from "@opentui/core";
+import { TextAttributes, type ParsedKey } from "@opentui/core";
 import { useEffect, useRef, useState } from "react";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
@@ -136,6 +136,22 @@ export function AddWorktreeModal({
     prs: availablePrs,
     pendingPr,
     branch,
+  };
+
+  // A burst of keystrokes (fast typing, a paste, key repeat) is delivered in a
+  // single tick, before React re-renders and refreshes the mirror above. These
+  // update the mirror too, so each key in the burst sees the previous one.
+  const applyQuery = (next: string) => {
+    ref.current.query = next;
+    setQuery(next);
+  };
+  const applyIndex = (next: number) => {
+    ref.current.index = next;
+    setIndex(next);
+  };
+  const applyBranch = (next: string) => {
+    ref.current.branch = next;
+    setBranch(next);
   };
 
   const loadRepos = (force = false) => {
@@ -404,6 +420,7 @@ export function AddWorktreeModal({
   useKeyboard((key) => {
     const s = ref.current;
     const name = key.name ?? "";
+    const typed = typedChar(key);
 
     // Escape is a universal back/cancel. With a preselected repo there's no
     // repo-picker to return to, so actions/cloneError close outright.
@@ -426,30 +443,30 @@ export function AddWorktreeModal({
       case "repoList": {
         const list = filteredRepos();
         if (name === "down" || name === "j") {
-          setIndex(Math.min(s.index + 1, Math.max(list.length - 1, 0)));
+          applyIndex(Math.min(s.index + 1, Math.max(list.length - 1, 0)));
         } else if (name === "up" || name === "k") {
-          setIndex(Math.max(s.index - 1, 0));
+          applyIndex(Math.max(s.index - 1, 0));
         } else if (name === "return") {
           const chosen = list[s.index];
           if (chosen) chooseRepo(chosen);
         } else if (name === "backspace") {
-          setQuery(s.query.slice(0, -1));
-          setIndex(0);
-        } else if (isPrintable(name)) {
-          setQuery(s.query + name);
-          setIndex(0);
+          applyQuery(s.query.slice(0, -1));
+          applyIndex(0);
+        } else if (typed && isPrintable(typed)) {
+          applyQuery(s.query + typed);
+          applyIndex(0);
         }
         return;
       }
       case "actions": {
         const total = s.existing.length + s.prs.length + 1; // +1 for "create new"
         if (name === "down" || name === "j") {
-          setIndex(Math.min(s.index + 1, total - 1));
+          applyIndex(Math.min(s.index + 1, total - 1));
         } else if (name === "up" || name === "k") {
-          setIndex(Math.max(s.index - 1, 0));
+          applyIndex(Math.max(s.index - 1, 0));
         } else if (name === "return") {
           if (s.index === 0) {
-            setBranch("");
+            applyBranch("");
             setPhase("branchInput");
           } else if (s.index <= s.existing.length) {
             const wt = s.existing[s.index - 1];
@@ -465,9 +482,9 @@ export function AddWorktreeModal({
         if (name === "return") {
           createWorktree(s.branch);
         } else if (name === "backspace") {
-          setBranch(s.branch.slice(0, -1));
-        } else if (isBranchChar(name)) {
-          setBranch(s.branch + name);
+          applyBranch(s.branch.slice(0, -1));
+        } else if (typed && isBranchChar(typed)) {
+          applyBranch(s.branch + typed);
         }
         return;
       }
@@ -781,12 +798,23 @@ function relevance(q: string, r: RepoSummary): number {
   return 0;
 }
 
-function isPrintable(name: string): boolean {
-  return /^[A-Za-z0-9._/\-]$/.test(name);
+/**
+ * The character a key event typed, or null for keys that type nothing.
+ * `key.name` is lowercased with a separate shift flag, so an uppercase letter
+ * has to come from the sequence — otherwise `JIRA-12` types as `jira-12`.
+ */
+function typedChar(key: ParsedKey): string | null {
+  if (key.ctrl || key.meta || key.option) return null;
+  const seq = key.sequence ?? "";
+  return seq.length === 1 ? seq : null;
 }
 
-function isBranchChar(name: string): boolean {
-  return /^[A-Za-z0-9._/\-]$/.test(name);
+function isPrintable(ch: string): boolean {
+  return /^[A-Za-z0-9._/\-]$/.test(ch);
+}
+
+function isBranchChar(ch: string): boolean {
+  return /^[A-Za-z0-9._/\-]$/.test(ch);
 }
 
 function errText(err: unknown): string {
