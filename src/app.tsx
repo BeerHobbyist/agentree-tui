@@ -1,9 +1,11 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useRenderer } from "@opentui/react";
+import { existsSync } from "node:fs";
 import { useEffect, useRef, useState } from "react";
 import { useTheme, cycleTheme } from "./theme";
 import type { Project, Worktree } from "./data/model";
-import { status as gitStatus } from "./services/git";
+import { removeWorktree, status as gitStatus } from "./services/git";
+import { killSession, sessionName as tmuxSessionName } from "./services/tmux";
 import { prForBranch } from "./services/gh";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
 import {
@@ -11,9 +13,10 @@ import {
   type PreselectRepo,
   type Selection,
 } from "./components/AddWorktreeModal";
-import type { State } from "./store";
+import { reconcile, removeManagedWorktree, type State } from "./store";
 import { TerminalPane } from "./components/TerminalPane";
 import { HelpOverlay } from "./components/HelpOverlay";
+import { ConfirmModal } from "./components/ConfirmModal";
 
 function MainPane({ row }: { row: Row | undefined }) {
   const theme = useTheme();
@@ -90,6 +93,15 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     null,
   );
   const [focusMode, setFocusMode] = useState<"sidebar" | "terminal">("sidebar");
+  // Pending "close worktree" confirmation (d key), and a surfaced error if it fails.
+  const [confirmClose, setConfirmClose] = useState<{
+    repoId: string;
+    worktreeId: string;
+    name: string;
+    dirty: boolean;
+    missing: boolean;
+  } | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
 
   // Refs mirror state so the keyboard handler always reads current values.
   const projectsRef = useRef(projects);
@@ -104,6 +116,12 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   modalOpenRef.current = modalOpen;
   const helpOpenRef = useRef(helpOpen);
   helpOpenRef.current = helpOpen;
+  const openRef = useRef(open);
+  openRef.current = open;
+  const confirmCloseRef = useRef(confirmClose);
+  confirmCloseRef.current = confirmClose;
+  const closeErrorRef = useRef(closeError);
+  closeErrorRef.current = closeError;
 
   // Background pass: fill real git status for on-disk worktrees, non-blocking.
   // Keyed on the set of paths so status updates don't retrigger the effect.
@@ -280,6 +298,64 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     setCollapsedFor(projectId, !collapsedRef.current.has(projectId));
   };
 
+  /** Ask to close (delete from disk) the worktree under the cursor. */
+  const requestCloseWorktree = (row: Row | undefined) => {
+    if (!row || row.kind !== "worktree") return;
+    if (row.worktree.id === "main") {
+      setCloseError(
+        "The main working copy can't be closed this way — remove the project instead.",
+      );
+      return;
+    }
+    setConfirmClose({
+      repoId: row.project.id,
+      worktreeId: row.worktree.id,
+      name: row.worktree.name,
+      dirty: row.worktree.dirty,
+      missing: !!row.worktree.missing,
+    });
+  };
+
+  /** Kill its tmux session, delete it on disk (unless already missing), and drop it from state. */
+  const performCloseWorktree = async () => {
+    const target = confirmCloseRef.current;
+    if (!target) return;
+    setConfirmClose(null);
+    try {
+      const project = projectsRef.current.find((p) => p.id === target.repoId);
+      const wt = project?.worktrees.find((w) => w.id === target.worktreeId);
+      // `--force` also cleans up a worktree whose directory is already gone —
+      // git still tracks it as "prunable" until told to remove it, and
+      // leaving that behind would make reconcile() re-adopt it right back.
+      if (project && wt && existsSync(project.root)) {
+        await killSession(tmuxSessionName(target.repoId, target.worktreeId)).catch(
+          () => {},
+        );
+        await removeWorktree(project.root, wt.path, { force: true });
+      }
+      await removeManagedWorktree(state, target.repoId, target.worktreeId);
+      const newProjects = await reconcile(state);
+      setProjects(newProjects);
+
+      // The closed worktree's terminal, if mounted, is no longer valid.
+      const wasOpen = openRef.current;
+      if (
+        wasOpen &&
+        wasOpen.repoId === target.repoId &&
+        wasOpen.worktreeId === target.worktreeId
+      ) {
+        setOpen(null);
+        setFocusMode("sidebar");
+      }
+
+      // Keep the selection in bounds in the new (shorter) row list.
+      const rows = buildRows(newProjects, collapsedRef.current);
+      applyActiveIndex(Math.min(activeIndexRef.current, Math.max(rows.length - 1, 0)));
+    } catch (err) {
+      setCloseError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   useKeyboard((key) => {
     // Help overlay is top-most: esc / ? / q close it, everything else is inert.
     if (helpOpenRef.current) {
@@ -291,6 +367,9 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
 
     // The modal owns the keyboard while open; App nav stays inert.
     if (modalOpenRef.current) return;
+
+    // The close-worktree confirm/error overlays own the keyboard while open.
+    if (confirmCloseRef.current || closeErrorRef.current) return;
 
     // While a terminal is focused, TerminalView owns the keyboard (input +
     // Ctrl+g to return + Alt tab chords). App nav stays inert.
@@ -322,6 +401,10 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     }
     if (key.name === "?") {
       setHelpOpen(true);
+      return;
+    }
+    if (key.name === "d") {
+      requestCloseWorktree(row);
       return;
     }
 
@@ -402,6 +485,28 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
       )}
       {helpOpen && (
         <HelpOverlay themeName={theme.name} onClose={() => setHelpOpen(false)} />
+      )}
+      {confirmClose && (
+        <ConfirmModal
+          title="Close worktree"
+          message={`Delete "${confirmClose.name}" from disk? This cannot be undone.`}
+          detail={
+            confirmClose.missing
+              ? "Already gone on disk — this only forgets it."
+              : confirmClose.dirty
+                ? "It has uncommitted changes, which will be lost."
+                : undefined
+          }
+          onConfirm={() => void performCloseWorktree()}
+          onCancel={() => setConfirmClose(null)}
+        />
+      )}
+      {closeError && (
+        <ConfirmModal
+          title="Could not close worktree"
+          message={closeError}
+          onCancel={() => setCloseError(null)}
+        />
       )}
     </box>
   );
