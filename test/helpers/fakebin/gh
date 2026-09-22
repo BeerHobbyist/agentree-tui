@@ -1,0 +1,86 @@
+#!/bin/sh
+# Fake `gh` for the test suite.
+#
+# Dispatches on the subcommand, serves fixtures from $FAKE_GH_DIR, clones from
+# the local fixture remotes in $FAKE_GH_REMOTES, and appends every invocation
+# to $FAKE_GH_LOG so tests can assert on the argv. $FAKE_GH_FAIL is a
+# comma-separated list of subcommands that should fail (api, clone, pr, auth).
+
+if [ -n "$FAKE_GH_LOG" ]; then
+  printf '%s\n' "$*" >> "$FAKE_GH_LOG"
+fi
+
+fails() {
+  case ",$FAKE_GH_FAIL," in
+    *",$1,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+sub="$1"
+shift
+
+case "$sub" in
+  auth)
+    if fails auth; then
+      echo "You are not logged into any GitHub hosts." >&2
+      exit 1
+    fi
+    exit 0
+    ;;
+  api)
+    if fails api; then
+      echo "HTTP 401: Bad credentials (https://api.github.com/user/repos)" >&2
+      exit 1
+    fi
+    page=$(printf '%s' "$1" | sed -n 's/.*[?&]page=\([0-9][0-9]*\).*/\1/p')
+    [ -n "$page" ] || page=1
+    file="$FAKE_GH_DIR/repos-page-$page.json"
+    if [ -f "$file" ]; then
+      cat "$file"
+    else
+      echo '[]'
+    fi
+    exit 0
+    ;;
+  repo)
+    if [ "$1" != "clone" ]; then
+      echo "fake gh: unsupported repo subcommand: $1" >&2
+      exit 1
+    fi
+    if fails clone; then
+      echo "could not clone: repository not found" >&2
+      exit 1
+    fi
+    name="$2"
+    dest="$3"
+    src="$FAKE_GH_REMOTES/$(printf '%s' "$name" | tr '/' '_')"
+    if [ ! -d "$src" ]; then
+      echo "fake gh: no fixture remote for $name ($src)" >&2
+      exit 1
+    fi
+    git clone --quiet "$src" "$dest"
+    exit $?
+    ;;
+  pr)
+    if fails pr; then
+      echo "fake gh: pr failed" >&2
+      exit 1
+    fi
+    # `--head <branch>` is the per-branch badge lookup; without it, the modal
+    # is listing every open PR.
+    file="$FAKE_GH_DIR/open-prs.json"
+    case " $* " in
+      *" --head "*) file="$FAKE_GH_DIR/prs.json" ;;
+    esac
+    if [ -f "$file" ]; then
+      cat "$file"
+    else
+      echo '[]'
+    fi
+    exit 0
+    ;;
+esac
+
+echo "fake gh: unhandled subcommand: $sub" >&2
+exit 1

@@ -10,11 +10,20 @@ import { run } from "./proc";
  * user's own tmux (so listing/killing never touches theirs) and lets us set
  * theme options globally (`-g`) so every window/tab inherits them.
  */
-export const SOCKET = "agentree";
+export const DEFAULT_SOCKET = "agentree";
+
+/**
+ * Read at call time (not module load) so tests can point the app at a
+ * throwaway server: killing sessions on the shared socket would take the
+ * user's own tmux down with it.
+ */
+export function socketName(): string {
+  return process.env.AGENTREE_TMUX_SOCKET || DEFAULT_SOCKET;
+}
 
 /** Build a `tmux -L <socket> …` argv. */
 function tx(...args: string[]): string[] {
-  return ["tmux", "-L", SOCKET, ...args];
+  return ["tmux", "-L", socketName(), ...args];
 }
 
 /** True if the tmux binary is present and runnable. */
