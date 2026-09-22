@@ -5,6 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "bun run --watch src/index.tsx",
+    "build": "bun build --compile --minify src/index.tsx --outfile dist/agentree",
+    "install:bin": "bun run build && install -m 755 dist/agentree $HOME/.local/bin/agentree && echo \"installed -> $HOME/.local/bin/agentree\"",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
