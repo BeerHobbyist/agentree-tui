@@ -88,10 +88,16 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [preselect, setPreselect] = useState<PreselectRepo | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  // The worktree whose terminal is mounted in the content pane, and where keys go.
+  // The worktree whose terminal is visible in the content pane, and where keys go.
   const [open, setOpen] = useState<{ repoId: string; worktreeId: string } | null>(
     null,
   );
+  // Every worktree opened at least once. Their terminals stay mounted (hidden)
+  // so switching back is instant: re-attaching tmux would clear+redraw the
+  // emulator, which reads as a flash. Only the `open` one is visible.
+  const [opened, setOpened] = useState<
+    { repoId: string; worktreeId: string }[]
+  >([]);
   const [focusMode, setFocusMode] = useState<"sidebar" | "terminal">("sidebar");
   // Pending "close worktree" confirmation (d key), and a surfaced error if it fails.
   const [confirmClose, setConfirmClose] = useState<{
@@ -250,6 +256,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     // sidebar selection, instead of leaving the previously open one behind.
     // Focus stays on the sidebar (unlike Enter/click), so keyboard shortcuts
     // keep working right after the modal closes.
+    markOpened(sel.repoId, sel.worktreeId);
     setOpen({ repoId: sel.repoId, worktreeId: sel.worktreeId });
     setModalOpen(false);
     setPreselect(null);
@@ -258,6 +265,15 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const openAdd = (pre: PreselectRepo | null) => {
     setPreselect(pre);
     setModalOpen(true);
+  };
+
+  /** Record a worktree as opened so its terminal stays mounted across switches. */
+  const markOpened = (repoId: string, worktreeId: string) => {
+    setOpened((prev) =>
+      prev.some((o) => o.repoId === repoId && o.worktreeId === worktreeId)
+        ? prev
+        : [...prev, { repoId, worktreeId }],
+    );
   };
 
   const renderer = useRenderer();
@@ -280,6 +296,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
 
   /** Open (mount + focus) a worktree's terminal — used by click and Enter. */
   const openWorktreeTerminal = (repoId: string, worktreeId: string) => {
+    markOpened(repoId, worktreeId);
     setOpen({ repoId, worktreeId });
     setFocusMode("terminal");
     const rows = buildRows(projectsRef.current, collapsedRef.current);
@@ -337,14 +354,18 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
       const newProjects = await reconcile(state);
       setProjects(newProjects);
 
-      // The closed worktree's terminal, if mounted, is no longer valid.
+      // The closed worktree's terminal is no longer valid: drop it from the
+      // mounted set (unmounts it, tearing down its PTY).
+      const isClosed = (o: { repoId: string; worktreeId: string }) =>
+        o.repoId === target.repoId && o.worktreeId === target.worktreeId;
+      const remaining = opened.filter((o) => !isClosed(o));
+      setOpened(remaining);
+
+      // If it was the visible one, fall back to another mounted terminal (or
+      // the placeholder pane) and return focus to the sidebar.
       const wasOpen = openRef.current;
-      if (
-        wasOpen &&
-        wasOpen.repoId === target.repoId &&
-        wasOpen.worktreeId === target.worktreeId
-      ) {
-        setOpen(null);
+      if (wasOpen && isClosed(wasOpen)) {
+        setOpen(remaining[remaining.length - 1] ?? null);
         setFocusMode("sidebar");
       }
 
@@ -441,13 +462,22 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const active = rows[Math.min(activeIndex, rows.length - 1)];
   const activeKey = active ? rowKey(active) : "";
 
-  // Resolve the opened worktree (if any) for the content pane.
-  const openProject = open
-    ? projects.find((p) => p.id === open.repoId)
-    : undefined;
-  const openWorktree = openProject?.worktrees.find(
-    (w) => w.id === open?.worktreeId && !w.missing,
-  );
+  // Resolve every mounted worktree that still exists on disk. Their terminals
+  // all stay rendered; only the `open` one is visible (see `opened`).
+  const activeTermKey = open ? `${open.repoId}:${open.worktreeId}` : null;
+  const mounted = opened
+    .map((o) => {
+      const project = projects.find((p) => p.id === o.repoId);
+      const worktree = project?.worktrees.find(
+        (w) => w.id === o.worktreeId && !w.missing,
+      );
+      return project && worktree
+        ? { key: `${o.repoId}:${o.worktreeId}`, repoId: o.repoId, worktree }
+        : null;
+    })
+    .filter((m): m is NonNullable<typeof m> => m !== null);
+  // Show the placeholder pane only when no mounted terminal is the visible one.
+  const showMain = !mounted.some((m) => m.key === activeTermKey);
 
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.bg}>
@@ -461,17 +491,23 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
         onCycleTheme={() => cycleTheme()}
         onHelp={() => setHelpOpen(true)}
       />
-      {open && openProject && openWorktree ? (
-        <TerminalPane
-          repoId={open.repoId}
-          worktree={openWorktree}
-          focused={focusMode === "terminal"}
-          onRequestFocus={() => setFocusMode("terminal")}
-          onExit={() => setFocusMode("sidebar")}
-        />
-      ) : (
-        <MainPane row={active} />
-      )}
+      <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
+        {mounted.map((m) => {
+          const isActive = m.key === activeTermKey;
+          return (
+            <TerminalPane
+              key={m.key}
+              repoId={m.repoId}
+              worktree={m.worktree}
+              visible={isActive}
+              focused={isActive && focusMode === "terminal"}
+              onRequestFocus={() => setFocusMode("terminal")}
+              onExit={() => setFocusMode("sidebar")}
+            />
+          );
+        })}
+        {showMain && <MainPane row={active} />}
+      </box>
       {modalOpen && (
         <AddWorktreeModal
           state={state}
