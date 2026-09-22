@@ -15,6 +15,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["␣  /  h  l", "fold / unfold project"],
       ["⏎", "open worktree terminal · fold project"],
       ["a", "add worktree to selected project"],
+      ["d", "close worktree (deletes it from disk)"],
       ["n", "add a project (pick a GitHub repo)"],
       ["t", "cycle theme"],
       ["?", "toggle this help"],

@@ -103,6 +103,18 @@ export async function addManagedWorktree(
   await saveState(state);
 }
 
+/** Drop a worktree from a repo's managed list (not from disk) and persist. */
+export async function removeManagedWorktree(
+  state: State,
+  nameWithOwner: string,
+  worktreeId: string,
+): Promise<void> {
+  const repo = findRepo(state, nameWithOwner);
+  if (!repo) return;
+  repo.worktrees = repo.worktrees.filter((w) => w.id !== worktreeId);
+  await saveState(state);
+}
+
 function toUiWorktree(
   w: Pick<StoredWorktree, "id" | "name" | "branch" | "path">,
   extra: Partial<Worktree> = {},
@@ -169,11 +181,14 @@ export async function reconcile(state: State): Promise<Project[]> {
       );
     }
 
-    // 2. Stored worktrees: present on disk → normal; else → missing.
+    // 2. Stored worktrees: present on disk → normal; else → missing. A path
+    // git still tracks (e.g. its directory was `rm -rf`'d rather than removed
+    // with `git worktree remove`) counts as matched either way — otherwise
+    // step 3 below would treat it as unclaimed and adopt a duplicate for it.
     for (const w of repo.worktrees) {
       const key = resolve(w.path);
+      if (byPath.has(key)) matchedPaths.add(key);
       if (byPath.has(key) && existsSync(w.path)) {
-        matchedPaths.add(key);
         worktrees.push(toUiWorktree(w));
       } else {
         worktrees.push(toUiWorktree(w, { missing: true }));

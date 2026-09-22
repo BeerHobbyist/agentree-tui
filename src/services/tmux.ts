@@ -284,3 +284,8 @@ export async function killWindow(
   const target = index === undefined ? session : `${session}:${index}`;
   await run(tx("kill-window", "-t", target));
 }
+
+/** Kill a whole session (all windows/panes). No-op if it doesn't exist. */
+export async function killSession(session: string): Promise<void> {
+  await run(tx("kill-session", "-t", session));
+}

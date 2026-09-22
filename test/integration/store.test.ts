@@ -7,6 +7,7 @@ import {
   findRepo,
   loadState,
   reconcile,
+  removeManagedWorktree,
   saveState,
   upsertRepo,
   type State,
@@ -104,6 +105,32 @@ describe("upsertRepo / addManagedWorktree", () => {
   });
 });
 
+describe("removeManagedWorktree", () => {
+  test("drops it from state and persists", async () => {
+    const state = loadState();
+    await addManagedWorktree(state, meta("/tmp/widget"), {
+      id: "feat-x",
+      branch: "feature/x",
+      name: "x",
+      path: "/tmp/widget/.worktrees/feat-x",
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+
+    await removeManagedWorktree(state, "acme/widget", "feat-x");
+    expect(findRepo(state, "acme/widget")!.worktrees).toEqual([]);
+    expect(sandbox.readState()!.repos[0]!.worktrees).toEqual([]);
+  });
+
+  test("is a no-op for an unknown repo or worktree id", async () => {
+    const state = loadState();
+    upsertRepo(state, meta("/tmp/widget"));
+
+    await removeManagedWorktree(state, "acme/widget", "nope");
+    await removeManagedWorktree(state, "nope/nope", "nope");
+    expect(findRepo(state, "acme/widget")!.worktrees).toEqual([]);
+  });
+});
+
 describe("reconcile", () => {
   test("surfaces the main working copy even though it is never stored", async () => {
     const root = await fixtureRepo();
@@ -135,6 +162,21 @@ describe("reconcile", () => {
     const projects = await reconcile(state);
     const x = projects[0]!.worktrees.find((w) => w.name === "x")!;
     expect(x.missing).toBe(true);
+  });
+
+  test("does not re-adopt a missing worktree as a duplicate on a later reconcile", async () => {
+    // Its directory was `rm -rf`'d rather than removed with `git worktree
+    // remove`, so git still lists it (as "prunable") even though it's gone.
+    const root = await fixtureRepo([{ branch: "feature/x" }]);
+    const state = loadState();
+    upsertRepo(state, meta(root));
+    await reconcile(state); // adopt it
+    rmSync(join(root, ".worktrees", "feature-x"), { recursive: true, force: true });
+    await reconcile(state); // first reconcile after it vanished: marks missing
+
+    const projects = await reconcile(state); // a second reconcile shouldn't duplicate it
+    expect(projects[0]!.worktrees.filter((w) => w.name === "x")).toHaveLength(1);
+    expect(findRepo(state, "acme/widget")!.worktrees).toHaveLength(1);
   });
 
   test("marks everything missing when the clone itself is gone", async () => {

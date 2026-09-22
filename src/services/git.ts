@@ -83,6 +83,21 @@ export async function addWorktree(
 }
 
 /**
+ * Remove a worktree: deletes its directory and git's bookkeeping for it.
+ * `force` also discards uncommitted changes, which callers must confirm with
+ * the user first since this is destructive and cannot be undone.
+ */
+export async function removeWorktree(
+  root: string,
+  path: string,
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  const args = ["git", "worktree", "remove", path];
+  if (opts.force) args.push("--force");
+  await runOrThrow(args, { cwd: root });
+}
+
+/**
  * Fetch a PR's head commit into local branch `branch` (created or moved to
  * match). Uses GitHub's `refs/pull/<n>/head`, which works for PRs from forks
  * too, unlike fetching `headRefName` directly off `origin`.

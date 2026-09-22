@@ -8,6 +8,7 @@ import {
   ignoreWorktreesDir,
   listWorktrees,
   localBranchExists,
+  removeWorktree,
   status,
 } from "../../src/services/git";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
@@ -71,6 +72,28 @@ describe("addWorktree", () => {
     expect(
       addWorktree(repo, join(repo, ".worktrees", "dup2"), "dup", { newBranch: false }),
     ).rejects.toThrow();
+  });
+});
+
+describe("removeWorktree", () => {
+  test("deletes the directory and git's bookkeeping for it", async () => {
+    const path = join(repo, ".worktrees", "feat-x");
+    await addWorktree(repo, path, "feature/x", { newBranch: true });
+    await removeWorktree(repo, path);
+    expect(existsSync(path)).toBe(false);
+    expect((await listWorktrees(repo)).map((w) => w.branch)).toEqual(["main"]);
+  });
+
+  test("refuses to drop uncommitted changes unless forced", async () => {
+    const path = join(repo, ".worktrees", "feat-x");
+    await addWorktree(repo, path, "feature/x", { newBranch: true });
+    writeFile(path, "scratch.txt", "x\n");
+
+    expect(removeWorktree(repo, path)).rejects.toThrow();
+    expect(existsSync(path)).toBe(true);
+
+    await removeWorktree(repo, path, { force: true });
+    expect(existsSync(path)).toBe(false);
   });
 });
 
