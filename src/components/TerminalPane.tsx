@@ -200,8 +200,11 @@ function TerminalView({
 
   // The view stays mounted across worktree switches (see TerminalPane), so
   // session-scoped UI state must be reset by hand instead of by remounting.
+  // `windows` is deliberately left alone here — clearing it would blank the
+  // tab bar on every switch before the async refresh below repopulates it,
+  // which reads as a glitch. It's naturally replaced once refreshWindows()
+  // resolves for the new session.
   useEffect(() => {
-    setWindows([]);
     setOverlay("none");
     setMenuIndex(0);
     setRefInput("");
