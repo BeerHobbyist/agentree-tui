@@ -46,7 +46,8 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 
 ## File map
 
-- `src/index.tsx` — App shell: state (projects, collapsed, activeIndex, modal,
+- `src/index.tsx` — entry point: load state, reconcile, mount `App`.
+- `src/app.tsx` — App shell: state (projects, collapsed, activeIndex, modal,
   open terminal, focusMode), global `useKeyboard`, quit, wiring.
 - `src/theme.ts` — dark palette.
 - `src/config.ts` — workspace root (`~/agentree`, `AGENTREE_HOME`), state file
@@ -150,8 +151,32 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
 - **gh**: `gh repo list` is owner-only (~38); use `gh api --paginate user/repos`
   for all accessible repos (~548). Load incrementally + cache; rank the filter.
 
+## Tests
+
+`bun test` — 120 tests, ~4s. Unit (pure helpers), integration (real git in a temp
+dir, a fake `gh` on PATH), and E2E that drive the whole `App` headlessly through
+OpenTUI's test renderer with mock keys and frame capture. Details and the
+helper API: `docs/TESTING.md`.
+
+Three input bugs the E2E found on its first run, all fixed:
+- **Burst coalescing** — the key handlers read state through refs React only
+  refreshes on render, so keys arriving in one tick (fast typing, paste, key
+  repeat) all acted on the same stale value: `feature/x` typed as `x`, holding
+  `j` moved one row. Writes now update the mirror too.
+- **`G` never fired** — Shift+G arrives as `name: "g"` with `shift: true`, so
+  "jump to last row" was unreachable and behaved like `g`.
+- **Uppercase was swallowed** — the inputs appended `key.name`, which is
+  lowercased; `JIRA-12` typed as `jira-12`. They now use `key.sequence`.
+
+Seams added for testability: `App` lives in `src/app.tsx` (`index.tsx` is just
+the entry point), the tmux socket is `AGENTREE_TMUX_SOCKET`-overridable,
+`proc.run()` passes `process.env` explicitly (so a test's `PATH` shim applies),
+and `clearPrCache()` / `resetTheme()` exist to reset module-level state.
+
 ## Deferred / follow-ups
 
+- Test coverage for the terminal pane (tmux tabs/panes, diff picker, mouse→pane)
+  and a CI job running `bun test` (needs `tmux` on the runner).
 - Multiple-terminal keep-alive for instant worktree switching; restore/list live
   sessions on startup; agent-waiting detection via `screen()` scraping.
 - `+/−` diffstat badge (currently 0); layout-restore JSON (reboot survival).
@@ -164,6 +189,9 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
 - **tmux required** (3.7c installed). If absent, the terminal pane shows an
   install hint. Most of this was verified via headless harnesses (the sandbox has
   no interactive TTY) — worth occasional live passes (`bun run dev`).
+- **Tests never touch the real environment**: every test goes through
+  `createSandbox()`, which redirects `AGENTREE_HOME`, `XDG_CONFIG_HOME` and the
+  tmux socket into a temp dir.
 - **Incident**: during a test a `tmux kill-server` on the *default* socket killed
   the user's real sessions. Now isolated via `-L agentree`; never `kill-server`
   a shared socket — kill specific sessions only.
