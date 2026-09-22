@@ -99,7 +99,7 @@ export function TabBar({
         wrapMode="none"
         truncate
       >
-        {"  ⌥t tab · ⌥d diff · ⌥w pane · ⌥hjkl pane · ^g sidebar"}
+        {"  ⌥t tab · ⌥a agent · ⌥d diff · ⌥w pane · ⌥hjkl pane · ^g sidebar"}
       </text>
     </box>
   );

@@ -107,4 +107,30 @@ describe("attachCommand", () => {
     const cmd = attachCommand("s", "/tmp", { bg: "#000", fg: "#fff" }).join(" ");
     expect(cmd).toContain("window-style bg=#000,fg=#fff");
   });
+
+  test("omits a startup command when none is given", () => {
+    expect(attachCommand("s", "/tmp")).not.toContain("claude");
+  });
+
+  test("runs a startup command right after -c, as new-session's shell-command", () => {
+    const cmd = attachCommand("s", "/tmp", undefined, "claude");
+    expect(cmd.slice(0, 9)).toEqual([
+      "tmux",
+      "-L",
+      socketName(),
+      "new-session",
+      "-A",
+      "-s",
+      "s",
+      "-c",
+      "/tmp",
+    ]);
+    expect(cmd[9]).toBe("claude");
+  });
+
+  test("keeps theming after the startup command", () => {
+    const cmd = attachCommand("s", "/tmp", { bg: "#000", fg: "#fff" }, "claude").join(" ");
+    expect(cmd).toContain("-c /tmp claude ; set-option");
+    expect(cmd).toContain("window-style bg=#000,fg=#fff");
+  });
 });
