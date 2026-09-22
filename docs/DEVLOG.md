@@ -153,8 +153,10 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
 
 ## Tests
 
-`bun test` — 124 tests, ~5s. CI (`.github/workflows/ci.yml`) runs install,
-typecheck, test and the compile build on every PR and every push to main. Unit (pure helpers), integration (real git in a temp
+`bun test` — 124 tests, ~5s. The CI workflow (install, typecheck, test, compile
+build on every PR and every push to main) is staged at `.github/ci-workflow.yml`
+and still has to be moved to `.github/workflows/ci.yml` to take effect — writing
+that path needs the `workflow` scope. Unit (pure helpers), integration (real git in a temp
 dir, a fake `gh` on PATH), and E2E that drive the whole `App` headlessly through
 OpenTUI's test renderer with mock keys and frame capture. Details and the
 helper API: `docs/TESTING.md`.

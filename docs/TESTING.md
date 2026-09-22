@@ -1,9 +1,12 @@
 # Testing
 
 CI runs `bun install --frozen-lockfile`, `bun run typecheck`, `bun test` and
-`bun run build` on every pull request and every push to main
-(`.github/workflows/ci.yml`). No secrets are involved — the suite never reaches
-the network.
+`bun run build` on every pull request and every push to main. No secrets are
+involved — the suite never reaches the network.
+
+The workflow is staged at `.github/ci-workflow.yml` and is **not active yet**:
+it has to be moved to `.github/workflows/ci.yml` by someone whose credentials
+carry the `workflow` scope (the header of that file has the command).
 
 ```bash
 bun test                      # the whole suite (~5s)
