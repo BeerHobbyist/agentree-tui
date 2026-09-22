@@ -228,6 +228,11 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
         r.worktree.id === sel.worktreeId,
     );
     if (idx >= 0) applyActiveIndex(idx);
+    // Mount the new worktree's terminal so the content pane matches the
+    // sidebar selection, instead of leaving the previously open one behind.
+    // Focus stays on the sidebar (unlike Enter/click), so keyboard shortcuts
+    // keep working right after the modal closes.
+    setOpen({ repoId: sel.repoId, worktreeId: sel.worktreeId });
     setModalOpen(false);
     setPreselect(null);
   };
