@@ -50,6 +50,12 @@ const DIFF_TARGETS: DiffTarget[] = ["working", "staged", "base", "ref"];
 interface TerminalPaneProps {
   repoId: string;
   worktree: Worktree;
+  /**
+   * Whether this pane is the visible one. Hidden panes stay mounted (keeping
+   * their PTY/tmux attach alive) so switching back doesn't re-attach and flash;
+   * they're display:none, so they take no layout space.
+   */
+  visible: boolean;
   /** Whether the terminal should hold keyboard focus. */
   focused: boolean;
   /** Called when the pane is clicked, so the app can switch focus to it. */
@@ -58,10 +64,17 @@ interface TerminalPaneProps {
   onExit: () => void;
 }
 
-function Centered({ children }: { children: React.ReactNode }) {
+function Centered({
+  visible = true,
+  children,
+}: {
+  visible?: boolean;
+  children: React.ReactNode;
+}) {
   const theme = useTheme();
   return (
     <box
+      visible={visible}
       flexGrow={1}
       flexDirection="column"
       backgroundColor={theme.bg}
@@ -88,14 +101,14 @@ export function TerminalPane(props: TerminalPaneProps) {
 
   if (tmuxOk === null) {
     return (
-      <Centered>
+      <Centered visible={props.visible}>
         <text fg={theme.fgMuted}>{"Starting…"}</text>
       </Centered>
     );
   }
   if (!tmuxOk) {
     return (
-      <Centered>
+      <Centered visible={props.visible}>
         <text fg={theme.dirty}>{"tmux not found"}</text>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
           {"Install it to use terminals:  sudo pacman -S tmux"}
@@ -113,6 +126,7 @@ export function TerminalPane(props: TerminalPaneProps) {
 function TerminalView({
   repoId,
   worktree,
+  visible,
   focused,
   onRequestFocus,
   onExit,
@@ -405,7 +419,7 @@ function TerminalView({
 
   if (status === "error") {
     return (
-      <Centered>
+      <Centered visible={visible}>
         <text fg={theme.dirty}>{"Could not start terminal"}</text>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
           {error ?? ""}
@@ -415,7 +429,12 @@ function TerminalView({
   }
 
   return (
-    <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
+    <box
+      visible={visible}
+      flexGrow={1}
+      flexDirection="column"
+      backgroundColor={theme.bg}
+    >
       <TabBar
         windows={windows}
         onSelect={(i) => act(() => selectWindow(session, i))}
