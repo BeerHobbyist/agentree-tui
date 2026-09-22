@@ -1,7 +1,12 @@
 # Testing
 
+CI runs `bun install --frozen-lockfile`, `bun run typecheck`, `bun test` and
+`bun run build` on every pull request and every push to main
+(`.github/workflows/ci.yml`). No secrets are involved — the suite never reaches
+the network.
+
 ```bash
-bun test                      # the whole suite (~4s)
+bun test                      # the whole suite (~5s)
 bun test test/unit            # or one layer
 bun test test/e2e/add-worktree.test.tsx
 ```
@@ -27,12 +32,16 @@ the network.
   `beforeEach` and `cleanup()` in `afterEach` — otherwise it reads and writes the
   developer's real `~/.config/agentree/state.json`, `~/agentree` and tmux server.
 - **`test/helpers/fakebin/gh`** — a shell script serving `api`, `repo clone`,
-  `pr list` and `auth status`. `sandbox.setRepoPage()` publishes fixtures,
+  `pr list` (both the per-branch badge lookup and the picker's open-PR listing)
+  and `auth status`. `sandbox.setRepoPage()`, `setOpenPrs()` and `setBranchPr()`
+  publish fixtures,
   `sandbox.failGh("api")` makes a subcommand fail, `sandbox.ghCalls()` returns the
   recorded argv. Bun snapshots the environment at process start, so this only
   works because `proc.run()` passes `process.env` to `Bun.spawn` explicitly.
 - **`test/helpers/repo.ts`** — `makeRepo`, `makeRemote` (the repo "on GitHub" that
-  the fake `gh` clones from), `withUpstream({ ahead, behind })`.
+  the fake `gh` clones from), `withUpstream({ ahead, behind })`, and `addPrHead`,
+  which publishes a commit reachable only through `refs/pull/<n>/head`, the way a
+  PR from a fork looks.
 - **`test/helpers/app.tsx`** — `renderApp()` loads state, reconciles it and mounts
   `App` headlessly; `quitCount()` replaces `process.exit`.
 - **`test/helpers/frame.ts`** — `waitForText`, `waitForTextGone`, `waitUntil`,
@@ -49,6 +58,10 @@ app.mockInput.pressEnter();
 
 Things worth knowing:
 
+- **Wait for the modal, not for its text.** The add-worktree modal swaps its body
+  between phases, so "Create new worktree" disappears while it is still open and
+  still owns the keyboard — a key sent then is swallowed. Use
+  `waitForModalClosed(app)`.
 - **Always wait, never sleep.** The app talks to git and `gh` in the background;
   `waitForText` polls (sleep → `renderOnce()` → capture) and prints the last frame
   when it gives up. OpenTUI's own `waitForFrame` counts render passes rather than
@@ -67,7 +80,7 @@ Things worth knowing:
 
 ## Not covered yet
 
-The terminal pane (tmux windows/panes, the diff picker, mouse-to-pane mapping) and
-a CI job. The PTY path is testable the same way — mounting `useTerminalSession`
+The terminal pane: tmux windows/panes, the diff picker, mouse-to-pane mapping. The
+PTY path is testable the same way — mounting `useTerminalSession`
 against a tmux server on `AGENTREE_TMUX_SOCKET` renders live shell output into the
 captured frames — it just needs `tmux` installed on the runner.

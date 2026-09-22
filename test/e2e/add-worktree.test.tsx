@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadState, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { settle, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
+import { settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
 import { git, makeRemote, makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -57,7 +57,7 @@ describe("adding a worktree from scratch", () => {
     app.mockInput.pressEnter();
 
     // The modal closes and the new worktree shows up under its project.
-    await waitForTextGone(app, "New branch name");
+    await waitForModalClosed(app);
     const frame = await waitForText(app, "feature/x");
     expect(frame).toContain("widget");
 
@@ -143,7 +143,7 @@ describe("typing", () => {
     await waitForText(app, "❯ JIRA-12");
     app.mockInput.pressEnter();
 
-    await waitForTextGone(app, "New branch name");
+    await waitForModalClosed(app);
     await waitUntil(
       app,
       () => sandbox.readState()?.repos[0]?.worktrees.length === 1,
@@ -201,7 +201,7 @@ describe("loading a worktree that already exists", () => {
     expect(frame).toContain("◆ main");
     app.mockInput.pressEnter();
 
-    await waitForTextGone(app, "Create new worktree");
+    await waitForModalClosed(app);
     await waitUntil(
       app,
       () => sandbox.readState()?.repos[0]?.worktrees.length === 1,
@@ -228,7 +228,7 @@ describe("loading a worktree that already exists", () => {
     await app.mockInput.typeText("feature/x");
     app.mockInput.pressEnter();
 
-    await waitForTextGone(app, "New branch name");
+    await waitForModalClosed(app);
     await waitUntil(
       app,
       () => sandbox.readState()?.repos[0]?.worktrees.length === 1,
@@ -253,7 +253,7 @@ describe("adding to the project under the cursor", () => {
     expect(sandbox.ghCalls().some((c) => c.startsWith("api"))).toBe(false);
 
     app.mockInput.pressEscape();
-    await waitForTextGone(app, "Create new worktree");
+    await waitForModalClosed(app);
   });
 });
 

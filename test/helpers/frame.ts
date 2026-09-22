@@ -115,6 +115,19 @@ export function waitForTextGone(
   return poll(t, (f) => !f.includes(text), `absence of ${JSON.stringify(text)}`, opts);
 }
 
+/**
+ * Wait until the add-worktree modal has closed. Its phases swap the body out
+ * (a list becomes "Creating worktree…"), so waiting for body text to vanish
+ * says nothing about whether the modal still owns the keyboard — its border
+ * title does.
+ */
+export function waitForModalClosed(
+  t: TestRendererSetup,
+  opts?: WaitOptions,
+): Promise<string> {
+  return waitForTextGone(t, "Add worktree", opts);
+}
+
 /** Wait until a non-frame condition holds (state written to disk, a spy fired). */
 export function waitUntil(
   t: TestRendererSetup,

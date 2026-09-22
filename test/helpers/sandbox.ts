@@ -24,6 +24,15 @@ export interface FakeRepo {
   pushedAt?: string;
 }
 
+/** A pull request as the fake `gh pr list` should report it. */
+export interface FakePr {
+  number: number;
+  title: string;
+  headRefName: string;
+  url?: string;
+  isDraft?: boolean;
+}
+
 export interface Sandbox {
   /** Temp root holding everything this test created. */
   root: string;
@@ -41,11 +50,25 @@ export interface Sandbox {
   readState(): State | null;
   /** Publish a page of repos for the fake `gh api user/repos`. */
   setRepoPage(page: number, repos: FakeRepo[]): void;
+  /** Publish the repo's open PRs, as the add-worktree picker lists them. */
+  setOpenPrs(prs: FakePr[]): void;
+  /** Publish the PR the sidebar's per-branch badge lookup should find. */
+  setBranchPr(pr: FakePr | null): void;
   /** Make the fake `gh` fail for these subcommands (api, clone, pr, auth). */
   failGh(...subcommands: string[]): void;
   /** Every `gh` invocation so far, one argv string per line. */
   ghCalls(): string[];
   cleanup(): void;
+}
+
+function toApiPr(pr: FakePr) {
+  return {
+    number: pr.number,
+    title: pr.title,
+    url: pr.url ?? `https://github.com/acme/widget/pull/${pr.number}`,
+    isDraft: pr.isDraft ?? false,
+    headRefName: pr.headRefName,
+  };
 }
 
 function toApiRepo(r: FakeRepo) {
@@ -130,6 +153,12 @@ export function createSandbox(): Sandbox {
       } catch {
         return null;
       }
+    },
+    setOpenPrs(prs) {
+      writeFileSync(join(fixtures, "open-prs.json"), JSON.stringify(prs.map(toApiPr)));
+    },
+    setBranchPr(pr) {
+      writeFileSync(join(fixtures, "prs.json"), JSON.stringify(pr ? [toApiPr(pr)] : []));
     },
     setRepoPage(page, repos) {
       const file = join(fixtures, `repos-page-${page}.json`);

@@ -153,7 +153,8 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
 
 ## Tests
 
-`bun test` — 120 tests, ~4s. Unit (pure helpers), integration (real git in a temp
+`bun test` — 124 tests, ~5s. CI (`.github/workflows/ci.yml`) runs install,
+typecheck, test and the compile build on every PR and every push to main. Unit (pure helpers), integration (real git in a temp
 dir, a fake `gh` on PATH), and E2E that drive the whole `App` headlessly through
 OpenTUI's test renderer with mock keys and frame capture. Details and the
 helper API: `docs/TESTING.md`.
@@ -175,8 +176,7 @@ and `clearPrCache()` / `resetTheme()` exist to reset module-level state.
 
 ## Deferred / follow-ups
 
-- Test coverage for the terminal pane (tmux tabs/panes, diff picker, mouse→pane)
-  and a CI job running `bun test` (needs `tmux` on the runner).
+- Test coverage for the terminal pane (tmux tabs/panes, diff picker, mouse→pane).
 - Multiple-terminal keep-alive for instant worktree switching; restore/list live
   sessions on startup; agent-waiting detection via `screen()` scraping.
 - `+/−` diffstat badge (currently 0); layout-restore JSON (reboot survival).

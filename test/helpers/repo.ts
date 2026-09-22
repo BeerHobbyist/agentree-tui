@@ -64,6 +64,26 @@ export async function makeRemote(
   return path;
 }
 
+/**
+ * Publish a PR head in a fixture remote the way GitHub does: a commit reachable
+ * only through `refs/pull/<n>/head`, with no branch of its own (as for a fork).
+ */
+export async function addPrHead(
+  remote: string,
+  prNumber: number,
+  branch: string,
+): Promise<string> {
+  const tmpBranch = `pr-fixture-${prNumber}`;
+  await git(["checkout", "-q", "-b", tmpBranch], remote);
+  writeFile(remote, `pr-${prNumber}.txt`, `pr ${prNumber}\n`);
+  await commitAll(remote, `pr ${prNumber}`);
+  const sha = (await git(["rev-parse", "HEAD"], remote)).trim();
+  await git(["update-ref", `refs/pull/${prNumber}/head`, sha], remote);
+  await git(["checkout", "-q", "-"], remote);
+  await git(["branch", "-D", tmpBranch], remote);
+  return sha;
+}
+
 /** Give `root` an upstream it is `ahead` commits ahead / `behind` behind. */
 export async function withUpstream(
   root: string,

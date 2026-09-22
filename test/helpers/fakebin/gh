@@ -67,8 +67,14 @@ case "$sub" in
       echo "fake gh: pr failed" >&2
       exit 1
     fi
-    if [ -f "$FAKE_GH_DIR/prs.json" ]; then
-      cat "$FAKE_GH_DIR/prs.json"
+    # `--head <branch>` is the per-branch badge lookup; without it, the modal
+    # is listing every open PR.
+    file="$FAKE_GH_DIR/open-prs.json"
+    case " $* " in
+      *" --head "*) file="$FAKE_GH_DIR/prs.json" ;;
+    esac
+    if [ -f "$file" ]; then
+      cat "$file"
     else
       echo '[]'
     fi
