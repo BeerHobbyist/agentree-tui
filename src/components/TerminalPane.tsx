@@ -103,8 +103,11 @@ export function TerminalPane(props: TerminalPaneProps) {
       </Centered>
     );
   }
-  // Remount the view (and its PTY) when the worktree changes.
-  return <TerminalView key={props.repoId + ":" + props.worktree.id} {...props} />;
+  // Keep the view mounted across worktree switches — useTerminalSession
+  // already tears down and re-spawns the PTY when `command` changes.
+  // Remounting here would also destroy and recreate the embedded-terminal
+  // renderable, which briefly flashes black before the new PTY's first frame.
+  return <TerminalView {...props} />;
 }
 
 function TerminalView({
@@ -194,6 +197,16 @@ function TerminalView({
   >("none");
   const [menuIndex, setMenuIndex] = useState(0);
   const [refInput, setRefInput] = useState("");
+
+  // The view stays mounted across worktree switches (see TerminalPane), so
+  // session-scoped UI state must be reset by hand instead of by remounting.
+  useEffect(() => {
+    setWindows([]);
+    setOverlay("none");
+    setMenuIndex(0);
+    setRefInput("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
   const [hunkOk, setHunkOk] = useState<boolean | null>(null);
   useEffect(() => {
     let alive = true;
