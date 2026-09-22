@@ -51,7 +51,8 @@ only for **persistence** + compositing windows/panes inside that one terminal.
   open terminal, focusMode), global `useKeyboard`, quit, wiring.
 - `src/theme.ts` — dark palette.
 - `src/config.ts` — workspace root (`~/agentree`, `AGENTREE_HOME`), state file
-  (`~/.config/agentree/state.json`), branch→dir sanitize, `worktreePath`.
+  (`~/.config/agentree/state.json`), branch→dir sanitize, `worktreePath`,
+  `agentCommand` (startup command, `AGENTREE_AGENT_CMD`).
 - `src/data/model.ts` — `Project`, `Worktree`, `AgentStatus`, `RepoSummary`.
 - `src/store.ts` — sync `loadState`, atomic `saveState`, `reconcile()` vs
   `git worktree list` (adopt orphans, mark missing, surface main copy).
@@ -63,8 +64,8 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 - `src/services/git.ts` — worktree add/list/status, `localBranchExists`,
   `ignoreWorktreesDir` (adds `.worktrees/` to `.git/info/exclude`).
 - `src/services/tmux.ts` — dedicated **`-L agentree`** socket; `attachCommand`
-  (status off + global theme), window/pane helpers (list/new/select/next/prev/
-  split/killPane), `sessionName`.
+  (status off + global theme + optional startup command), window/pane helpers
+  (list/new/select/next/prev/split/killPane), `sessionName`.
 - `src/components/` — `Sidebar`, `WorktreeItem`, `AddWorktreeModal`,
   `EmbeddedTerminal` (registration), `TerminalPane`, `TabBar`, `HelpOverlay`,
   `MenuOverlay` (＋ menu / diff picker).
@@ -78,9 +79,9 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`)
   move between **split panes** · `⌥,`/`⌥.` prev/next **tab** · `⌥1`–`9` jump tab ·
-  `⌥t` new tab · `⌥d` open diff (hunk) · `⌥w` close pane · `⌥W` close tab ·
-  `⌥\` split horizontal · `⌥-` split vertical · `Ctrl+C` → shell ·
-  tmux-native `Ctrl+b …` works.
+  `⌥t` new tab · `⌥a` open agent (new tab) · `⌥d` open diff (hunk) · `⌥w` close
+  pane · `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical ·
+  `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
 - **Mouse** (everything is clickable): sidebar rows (worktree → open, header →
   select+fold), `＋` add worktree, footer theme + `?` help; the add-worktree modal
   repo/action rows; tab bar (tab, `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕`
@@ -111,6 +112,18 @@ e.g. `origin/main`). Quitting hunk (`q`) exits the command so the tab closes.
 shows "hunk not found — npm i -g hunkdiff" (install: `npm i -g hunkdiff` needs
 Node 22+, or `curl -fsSL https://hunk.dev/install.sh | sh`). hunk is a separate
 process rendering in its tmux pane — no special integration beyond a TTY.
+
+## Startup agent
+
+A worktree's terminal runs `agentCommand()` (`src/config.ts`) instead of a
+plain shell the first time its tmux session is created: `claude`, or
+`caffeinate -is claude` on macOS so it survives sleep/lid-close. Override with
+`AGENTREE_AGENT_CMD`. This rides `tmux new-session -A`'s `shell-command` arg —
+it only runs on session creation, so re-opening an already-open worktree just
+re-attaches to the running shell/agent instead of relaunching it
+(`attachCommand`'s new `startupCommand` param, `src/services/tmux.ts`).
+The ＋ menu / `⌥a` (`openAgent` in `TerminalPane.tsx`) opens the same command
+in a fresh tab, the same way `⌥d` opens hunk.
 
 ## Help
 

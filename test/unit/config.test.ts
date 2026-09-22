@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import {
+  agentCommand,
   branchLeaf,
   repoDir,
   sanitizeBranchForPath,
@@ -84,5 +85,30 @@ describe("locations", () => {
 
   test("worktreePath sanitizes only the directory, never the branch", () => {
     expect(worktreePath("/repo", "feature/x")).toBe("/repo/.worktrees/feature-x");
+  });
+});
+
+describe("agentCommand", () => {
+  const platform = process.platform;
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: platform });
+  });
+
+  test("defaults to `claude` outside macOS", () => {
+    Object.defineProperty(process, "platform", { value: "linux" });
+    delete process.env.AGENTREE_AGENT_CMD;
+    expect(agentCommand()).toBe("claude");
+  });
+
+  test("wraps with `caffeinate -is` on macOS, so the agent survives sleep", () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    delete process.env.AGENTREE_AGENT_CMD;
+    expect(agentCommand()).toBe("caffeinate -is claude");
+  });
+
+  test("AGENTREE_AGENT_CMD overrides the platform default", () => {
+    Object.defineProperty(process, "platform", { value: "darwin" });
+    process.env.AGENTREE_AGENT_CMD = "codex";
+    expect(agentCommand()).toBe("codex");
   });
 });

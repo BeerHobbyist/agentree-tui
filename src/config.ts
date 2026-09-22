@@ -46,3 +46,16 @@ export function branchLeaf(branch: string): string {
   const parts = branch.split("/");
   return parts[parts.length - 1] || branch;
 }
+
+/**
+ * Shell command run in a worktree's terminal the first time its tmux session
+ * is created (tmux ignores it on later re-attaches, so it only ever fires
+ * once per worktree). Override with AGENTREE_AGENT_CMD; defaults to `claude`,
+ * wrapped in `caffeinate -is` on macOS so the agent keeps running through
+ * sleep/lid-close.
+ */
+export function agentCommand(): string {
+  const override = process.env.AGENTREE_AGENT_CMD;
+  if (override) return override;
+  return process.platform === "darwin" ? "caffeinate -is claude" : "claude";
+}

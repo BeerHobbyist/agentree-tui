@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
+import { agentCommand } from "../config";
 import type { Worktree } from "../data/model";
 import {
   applyTheme,
@@ -35,6 +36,7 @@ import "./EmbeddedTerminal"; // registers <embedded-terminal>
 
 const MENU_ITEMS: MenuItem[] = [
   { label: "＋ New shell", hint: "" },
+  { label: "✻ New agent", hint: "⌥a" },
   { label: "◨ New diff (hunk)", hint: "⌥d" },
 ];
 const DIFF_ITEMS: MenuItem[] = [
@@ -121,12 +123,17 @@ function TerminalView({
   // via applyTheme below (not by rebuilding the command, which would re-spawn).
   const command = useMemo(
     () =>
-      attachCommand(session, worktree.path, {
-        bg: theme.bg,
-        fg: theme.fg,
-        border: theme.border,
-        borderActive: theme.accent,
-      }),
+      attachCommand(
+        session,
+        worktree.path,
+        {
+          bg: theme.bg,
+          fg: theme.fg,
+          border: theme.border,
+          borderActive: theme.accent,
+        },
+        agentCommand(),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session, worktree.path],
   );
@@ -220,10 +227,16 @@ function TerminalView({
       );
     });
   };
+  const openAgent = () => {
+    act(() => newWindowCmd(session, worktree.path, agentCommand(), "agent"));
+  };
   const pickOverlay = (i: number) => {
     if (overlay === "menu") {
       if (i === 0) {
         act(() => newWindow(session, worktree.path));
+        closeOverlay();
+      } else if (i === 1) {
+        openAgent();
         closeOverlay();
       } else {
         openDiffPicker();
@@ -323,6 +336,11 @@ function TerminalView({
       return;
     }
     if (!(key.option || key.meta)) return;
+    if (n === "a") {
+      eat();
+      openAgent();
+      return;
+    }
     if (n === "d") {
       eat();
       openDiffPicker();

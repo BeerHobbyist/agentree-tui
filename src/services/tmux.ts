@@ -113,13 +113,21 @@ export async function applyTheme(style: TermStyle): Promise<void> {
  * Theme options are set globally (`-g`) on our dedicated server so they apply
  * to every window/tab (not just the first) — no tmux status bar, and pane +
  * background colors match the app.
+ *
+ * `startupCommand`, if given, runs in place of the default shell — but only
+ * when the session is actually created. tmux's `-A` makes this a no-op on a
+ * later re-attach (there's no "initial window" being created to run it in),
+ * so it's safe to always pass the same startup command: it only ever fires
+ * once per worktree, the first time its terminal is opened.
  */
 export function attachCommand(
   session: string,
   cwd: string,
   style?: TermStyle,
+  startupCommand?: string,
 ): string[] {
   const cmd = tx("new-session", "-A", "-s", session, "-c", cwd);
+  if (startupCommand) cmd.push(startupCommand);
   if (style) cmd.push(";", ...themeOptions(style));
   else cmd.push(";", "set-option", "-g", "status", "off");
   return cmd;
