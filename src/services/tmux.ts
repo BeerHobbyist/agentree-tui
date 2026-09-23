@@ -115,6 +115,28 @@ export function behaviorOptions(): string[] {
   return ["set-option", "-g", "mouse", "on"];
 }
 
+/** Our slot in tmux's `terminal-overrides` array (indexed, so re-setting it on every attach is idempotent and leaves the user's own entries alone). */
+const CURSOR_RESET_OVERRIDE_INDEX = 90;
+
+/**
+ * Options that must be set *before* the client attaches: tmux reads
+ * `terminal-overrides` when it initializes the attaching client's terminal.
+ *
+ * `Se` is what tmux sends to put the cursor back to "default" (when a pane that
+ * set a cursor shape — nvim, say — returns to not caring). terminfo ships
+ * `Se=\E[2 q`, i.e. a *steady* block, so after quitting nvim the shell cursor
+ * would stop blinking. `\E[0 q` asks for the terminal's own default instead, so
+ * the user's configured cursor (usually blinking) comes back.
+ */
+export function preAttachOptions(): string[] {
+  return [
+    "set-option",
+    "-g",
+    `terminal-overrides[${CURSOR_RESET_OVERRIDE_INDEX}]`,
+    "*:Se=\\E[0 q",
+  ];
+}
+
 /** Re-apply the theme to the running server (live re-theme on theme switch). */
 export async function applyTheme(style: TermStyle): Promise<void> {
   await run(tx(...themeOptions(style)));
@@ -138,7 +160,9 @@ export function attachCommand(
   style?: TermStyle,
   startupCommand?: string,
 ): string[] {
-  const cmd = tx("new-session", "-A", "-s", session, "-c", cwd);
+  // new-session in the list makes tmux start the server if needed, so the
+  // pre-attach options can run first even on a fresh server.
+  const cmd = tx(...preAttachOptions(), ";", "new-session", "-A", "-s", session, "-c", cwd);
   if (startupCommand) cmd.push(startupCommand);
   if (style) cmd.push(";", ...themeOptions(style));
   else cmd.push(";", "set-option", "-g", "status", "off");

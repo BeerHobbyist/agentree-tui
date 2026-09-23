@@ -3,6 +3,7 @@ import {
   DEFAULT_SOCKET,
   attachCommand,
   behaviorOptions,
+  preAttachOptions,
   sessionName,
   socketName,
   themeOptions,
@@ -84,13 +85,16 @@ describe("themeOptions", () => {
   });
 });
 
+/** The argv from `new-session` onward (pre-attach options come first). */
+function fromNewSession(cmd: string[]): string[] {
+  return cmd.slice(cmd.indexOf("new-session"));
+}
+
 describe("attachCommand", () => {
   test("attaches an existing session or creates it, in the worktree", () => {
     const cmd = attachCommand("agentree_x", "/repo/.worktrees/x");
-    expect(cmd.slice(0, 9)).toEqual([
-      "tmux",
-      "-L",
-      socketName(),
+    expect(cmd.slice(0, 3)).toEqual(["tmux", "-L", socketName()]);
+    expect(fromNewSession(cmd).slice(0, 6)).toEqual([
       "new-session",
       "-A",
       "-s",
@@ -114,11 +118,8 @@ describe("attachCommand", () => {
   });
 
   test("runs a startup command right after -c, as new-session's shell-command", () => {
-    const cmd = attachCommand("s", "/tmp", undefined, "claude");
-    expect(cmd.slice(0, 9)).toEqual([
-      "tmux",
-      "-L",
-      socketName(),
+    const cmd = fromNewSession(attachCommand("s", "/tmp", undefined, "claude"));
+    expect(cmd.slice(0, 6)).toEqual([
       "new-session",
       "-A",
       "-s",
@@ -126,7 +127,7 @@ describe("attachCommand", () => {
       "-c",
       "/tmp",
     ]);
-    expect(cmd[9]).toBe("claude");
+    expect(cmd[6]).toBe("claude");
   });
 
   test("keeps theming after the startup command", () => {
@@ -148,5 +149,25 @@ describe("attachCommand", () => {
 describe("behaviorOptions", () => {
   test("turns mouse on globally", () => {
     expect(behaviorOptions().join(" ")).toBe("set-option -g mouse on");
+  });
+});
+
+describe("preAttachOptions", () => {
+  test("makes tmux reset the cursor to the terminal default, not a steady block", () => {
+    // terminfo's Se is \E[2 q (steady block); \E[0 q hands back the user's own
+    // (usually blinking) cursor when a program like nvim stops setting a shape.
+    expect(preAttachOptions()).toEqual([
+      "set-option",
+      "-g",
+      "terminal-overrides[90]",
+      "*:Se=\\E[0 q",
+    ]);
+  });
+
+  test("runs before new-session, since tmux reads overrides when the client attaches", () => {
+    const cmd = attachCommand("s", "/tmp");
+    const override = cmd.indexOf("terminal-overrides[90]");
+    expect(override).toBeGreaterThan(-1);
+    expect(override).toBeLessThan(cmd.indexOf("new-session"));
   });
 });
