@@ -11,7 +11,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { RepoSummary } from "../../src/data/model";
 import type { State } from "../../src/store";
-import { clearPrCache, clearRepoCache } from "../../src/services/gh";
 import { resetTheme } from "../../src/theme";
 
 const FAKEBIN = join(import.meta.dir, "fakebin");
@@ -167,8 +166,6 @@ export function createSandbox(): Sandbox {
 
   // Module-level caches and the theme store are global; a leak between tests
   // shows up as an unrelated test seeing the previous one's repos.
-  clearRepoCache();
-  clearPrCache();
   resetTheme();
 
   const stateFile = join(configHome, "agentree", "state.json");

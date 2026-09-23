@@ -115,6 +115,40 @@ describe("adding a worktree from scratch", () => {
   });
 });
 
+describe("caching", () => {
+  test("reopening the modal shows the cached repo list without fetching it again", async () => {
+    sandbox.setRepoPage(1, [{ nameWithOwner: "acme/widget" }, { nameWithOwner: "acme/gadget" }]);
+    app = await renderApp();
+    app.mockInput.pressKey("n");
+    await waitForText(app, "2 repos");
+    const repoFetches = () => sandbox.ghCalls().filter((c) => c.startsWith("api user/repos")).length;
+    const fetched = repoFetches();
+
+    app.mockInput.pressEscape();
+    await waitForModalClosed(app);
+    app.mockInput.pressKey("n");
+    // The modal's first frame is already the list — no loading screen, no new request.
+    const frame = await waitUntil(
+      app,
+      () => /2 repos|Loading repositories/.test(app.captureCharFrame()),
+      "the modal to open",
+    );
+    expect(frame).toContain("2 repos");
+    expect(frame).not.toContain("Loading repositories");
+    expect(repoFetches()).toBe(fetched);
+  });
+
+  test("a repo list that spans several pages is loaded in the background", async () => {
+    const page = (n: number, count: number) =>
+      Array.from({ length: count }, (_, i) => ({ nameWithOwner: `acme/repo-${n}-${i}` }));
+    sandbox.setRepoPage(1, page(1, 100)); // a full page: there may be more
+    sandbox.setRepoPage(2, page(2, 3));
+    app = await renderApp();
+    app.mockInput.pressKey("n");
+    await waitForText(app, "103 repos");
+  });
+});
+
 describe("typing", () => {
   test("a burst of keystrokes keeps every character", async () => {
     await knownProject("acme/widget");

@@ -3,10 +3,13 @@
  */
 import { testRender } from "@opentui/react/test-utils";
 import type { TestRendererSetup } from "@opentui/core/testing";
+import type { QueryClient } from "@tanstack/react-query";
 import { App } from "../../src/app";
 import { loadState, reconcile, type State } from "../../src/store";
 
 export interface RenderAppOptions {
+  /** A query cache with test timings (default: the app makes its own). */
+  queryClient?: QueryClient;
   width?: number;
   height?: number;
 }
@@ -26,7 +29,12 @@ export async function renderApp(opts: RenderAppOptions = {}): Promise<RenderedAp
   let quits = 0;
 
   const setup = await testRender(
-    <App initialProjects={initialProjects} state={state} onQuit={() => void quits++} />,
+    <App
+      initialProjects={initialProjects}
+      state={state}
+      onQuit={() => void quits++}
+      queryClient={opts.queryClient}
+    />,
     { width: opts.width ?? 100, height: opts.height ?? 30 },
   );
 

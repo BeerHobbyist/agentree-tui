@@ -2,12 +2,24 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { existsSync } from "node:fs";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  QueryClientProvider,
+  useQueries,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import { bindTerminalFocus, createQueryClient } from "./queryClient";
+import {
+  agentStatusQuery,
+  gitStatusQuery,
+  prForBranchQuery,
+  queryKeys,
+} from "./queries";
 import { useTheme, cycleTheme } from "./theme";
 import type { AgentStatus, Project, Worktree } from "./data/model";
-import { removeWorktree, status as gitStatus, type WorktreeStatus } from "./services/git";
-import { readAgentStatuses } from "./services/agents";
+import { removeWorktree } from "./services/git";
 import { killSession, sessionName as tmuxSessionName } from "./services/tmux";
-import { prForBranch } from "./services/gh";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
 import {
   AddWorktreeModal,
@@ -86,12 +98,6 @@ export function rowKey(row: Row): string {
     : worktreeKey(row.project.id, row.worktree.id);
 }
 
-/** How often git status is refreshed in the background. */
-const GIT_STATUS_POLL_MS = 5000;
-/** How often agent status is read. */
-const AGENT_POLL_MS = 1000;
-/** How often every worktree's PR is looked up again. */
-const PR_LOOKUP_MS = 60_000;
 /** At most one extra PR lookup this often (agent state changes come in bursts). */
 const PR_LOOKUP_THROTTLE_MS = 15_000;
 
@@ -106,31 +112,38 @@ function samePr(a: PrInfo | undefined, b: PrInfo | undefined): boolean {
   );
 }
 
-function sameGitStatus(w: Worktree, st: WorktreeStatus): boolean {
-  return (
-    w.dirty === st.dirty &&
-    w.changed === st.changed &&
-    w.added === st.added &&
-    w.removed === st.removed &&
-    w.ahead === st.ahead &&
-    w.behind === st.behind
-  );
-}
-
-function sameRecord(a: Record<string, string>, b: Record<string, string>): boolean {
-  const ka = Object.keys(a);
-  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
-}
-
 export interface AppProps {
   initialProjects: Project[];
   state: State;
   /** Leave the app. Injected so tests can assert a quit without exiting the runner. */
   onQuit?: () => void;
+  /** The cache for GitHub data; tests pass one with their own timings. Default: a fresh one. */
+  queryClient?: QueryClient;
 }
 
-export function App({ initialProjects, state, onQuit }: AppProps) {
+export function App(props: AppProps) {
+  // One query cache per app — tests render many apps, which mustn't share data.
+  const [client] = useState(() => props.queryClient ?? createQueryClient());
+  // The terminal window's focus is the query cache's "window focus".
+  const renderer = useRenderer();
+  useEffect(() => bindTerminalFocus(renderer), [renderer]);
+  useEffect(
+    () => () => {
+      if (!props.queryClient) client.clear(); // drop cached data and its timers
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [client],
+  );
+  return (
+    <QueryClientProvider client={client}>
+      <AppShell {...props} />
+    </QueryClientProvider>
+  );
+}
+
+function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const theme = useTheme();
+  const queryClient = useQueryClient();
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [activeIndex, setActiveIndex] = useState(0);
@@ -177,8 +190,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const layoutRef = useRef({ sidebar: 0, panel: 0 });
 
   // Refs mirror state so the keyboard handler always reads current values.
-  const projectsRef = useRef(projects);
-  projectsRef.current = projects;
+  const projectsRef = useRef(projects); // set to the live view further down
   const collapsedRef = useRef(collapsed);
   collapsedRef.current = collapsed;
   const activeIndexRef = useRef(activeIndex);
@@ -204,192 +216,102 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const prPanelWidthRef = useRef(prPanelWidth);
   prPanelWidthRef.current = prPanelWidth;
 
-  // Git status (dirty, changed files, +/−, ahead/behind) for on-disk worktrees:
-  // on start, every GIT_STATUS_POLL_MS, and right away when an agent changes
-  // state (it has probably just touched files). It used to be computed once at
-  // startup, so it drifted from reality as agents edited and committed.
-  const pathSig = projects
-    .flatMap((p) => p.worktrees.filter((w) => !w.missing).map((w) => w.path))
-    .join("|");
-  // Background loops stop once the app is gone (a test disposing it, say).
-  const alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-    },
-    [],
+  // ── What the sidebar shows beyond state.json, through the query cache ──
+  // (src/queries.ts: keys, fetchers, poll intervals). Merged into `viewProjects`
+  // below rather than written into `projects`.
+  const liveWorktrees = projects.flatMap((p) =>
+    p.worktrees.filter((w) => !w.missing).map((w) => ({ repoId: p.id, worktree: w })),
   );
-  const gitStatusInFlight = useRef(false);
-  const refreshGitStatus = useRef(() => {});
-  refreshGitStatus.current = () => {
-    if (gitStatusInFlight.current) return;
-    gitStatusInFlight.current = true;
-    const targets = projectsRef.current.flatMap((p) =>
-      p.worktrees
-        .filter((w) => !w.missing)
-        .map((w) => ({ repoId: p.id, id: w.id, path: w.path })),
-    );
-    (async () => {
-      const limit = 4;
-      for (let i = 0; i < targets.length && alive.current; i += limit) {
-        const batch = targets.slice(i, i + limit);
-        const results = await Promise.all(
-          batch.map(async (t) => ({
-            t,
-            st: await gitStatus(t.path).catch(() => null),
-          })),
-        );
-        if (!alive.current) return;
-        // Only re-render when something actually changed.
-        setProjects((prev) => {
-          let changed = false;
-          const next = prev.map((p) => ({
-            ...p,
-            worktrees: p.worktrees.map((w) => {
-              const hit = results.find(
-                (r) => r.st && r.t.repoId === p.id && r.t.id === w.id,
-              );
-              if (!hit?.st || sameGitStatus(w, hit.st)) return w;
-              changed = true;
-              return { ...w, ...hit.st };
-            }),
-          }));
-          return changed ? next : prev;
-        });
-      }
-    })().finally(() => {
-      gitStatusInFlight.current = false;
-    });
-  };
-  useEffect(() => {
-    refreshGitStatus.current();
-    const id = setInterval(() => refreshGitStatus.current(), GIT_STATUS_POLL_MS);
-    return () => clearInterval(id);
-  }, [pathSig]);
 
-  // Live agent status per tmux session (services/agents): what the agents'
-  // hooks report, corrected by tmux, with "done" shown as "idle" once you've
-  // had that worktree's terminal on screen.
-  const [agentStatus, setAgentStatus] = useState<Record<string, AgentStatus>>({});
-  /** When each session's terminal was last on screen (epoch seconds). */
-  const seenAt = useRef(new Map<string, number>());
-  /** Last raw report per session, to spot state changes. */
-  const lastReports = useRef(new Map<string, string>());
-  const agentPollInFlight = useRef(false);
-  const pollAgents = useRef(() => {});
-  pollAgents.current = () => {
-    if (agentPollInFlight.current || !alive.current) return;
-    agentPollInFlight.current = true;
-    const now = Math.floor(Date.now() / 1000);
-    readAgentStatuses(now)
-      .then((reports) => {
-        const visible = openRef.current;
-        if (visible) {
-          seenAt.current.set(tmuxSessionName(visible.repoId, visible.worktreeId), now);
-        }
-        const next: Record<string, AgentStatus> = {};
-        const raw = new Map<string, string>();
-        let transitioned = reports.size !== lastReports.current.size;
-        for (const [session, r] of reports) {
-          const key = `${r.state} ${r.since}`;
-          raw.set(session, key);
-          if (lastReports.current.get(session) !== key) transitioned = true;
-          const seen = (seenAt.current.get(session) ?? 0) >= r.since;
-          next[session] = r.state === "done" && seen ? "idle" : r.state;
-        }
-        lastReports.current = raw;
-        setAgentStatus((prev) => (sameRecord(prev, next) ? prev : next));
-        if (transitioned) {
-          refreshGitStatus.current();
-          refreshPrsSoon();
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        agentPollInFlight.current = false;
-      });
-  };
-  useEffect(() => {
-    const id = setInterval(() => pollAgents.current(), AGENT_POLL_MS);
-    return () => clearInterval(id);
-  }, []);
-  // Opening a worktree marks its "done" as seen now, not on the next tick.
-  useEffect(() => {
-    pollAgents.current();
-  }, [open]);
+  // Git status (dirty, changed files, +/−, ahead/behind) — polled per worktree,
+  // invalidated when an agent changes state (it has probably touched files).
+  const gitStatuses = useQueries({
+    queries: liveWorktrees.map(({ worktree }) => gitStatusQuery(worktree.path)),
+  });
 
-  // The open PR for each worktree's branch: on start, again every PR_LOOKUP_MS,
-  // when an agent changes state (it may have just opened or pushed to one), and
-  // on `r`. It used to be looked up once and cached for the whole session.
-  const prSig = projects
-    .flatMap((p) =>
-      p.worktrees
-        .filter((w) => !w.missing && w.branch && w.branch !== "(detached)")
-        .map((w) => `${p.id}:${w.id}:${w.branch}`),
-    )
-    .join("|");
-  const prLookupInFlight = useRef(false);
-  const prLookupQueued = useRef<boolean | null>(null);
-  const lastForcedPrLookup = useRef(0);
-  const refreshPrs = useRef((_force: boolean) => {});
-  refreshPrs.current = (force) => {
-    if (prLookupInFlight.current) {
-      // Run again when this one finishes (a new worktree needs its lookup).
-      prLookupQueued.current = (prLookupQueued.current ?? false) || force;
-      return;
-    }
-    prLookupInFlight.current = true;
-    const targets = projectsRef.current.flatMap((p) =>
-      p.worktrees
-        .filter((w) => !w.missing && w.branch && w.branch !== "(detached)")
-        .map((w) => ({ repoId: p.id, id: w.id, branch: w.branch })),
-    );
-    (async () => {
-      const limit = 4;
-      for (let i = 0; i < targets.length && alive.current; i += limit) {
-        const batch = targets.slice(i, i + limit);
-        const results = await Promise.all(
-          batch.map(async (t) => ({
-            t,
-            pr: await prForBranch(t.repoId, t.branch, force).catch(() => null),
-          })),
-        );
-        if (!alive.current) return;
-        setProjects((prev) => {
-          let changed = false;
-          const next = prev.map((p) => ({
-            ...p,
-            worktrees: p.worktrees.map((w) => {
-              const hit = results.find((r) => r.t.repoId === p.id && r.t.id === w.id);
-              if (!hit || samePr(w.pr, hit.pr ?? undefined)) return w;
-              changed = true;
-              return { ...w, pr: hit.pr ?? undefined };
-            }),
-          }));
-          return changed ? next : prev;
-        });
+  // Each branch's open PR (the ⇡#N badge) — polled every minute, invalidated
+  // when an agent changes state and on `r`. A failed lookup keeps the last
+  // answer rather than dropping the badge.
+  const prTargets = liveWorktrees.filter(
+    ({ worktree: w }) => w.branch && w.branch !== "(detached)",
+  );
+  const branchPrs = useQueries({
+    queries: prTargets.map(({ repoId, worktree }) => prForBranchQuery(repoId, worktree.branch)),
+  });
+  // A PR whose checks or title moved has newer details too: mark its cached
+  // details stale, so the panel refetches them when it next shows that PR.
+  const knownPrs = useRef(new Map<string, PrInfo>());
+  const branchPrSig = branchPrs.map((q) => JSON.stringify(q.data ?? null)).join("|");
+  useEffect(() => {
+    const next = new Map<string, PrInfo>();
+    prTargets.forEach(({ repoId }, i) => {
+      const pr = branchPrs[i]?.data;
+      if (!pr) return;
+      const key = `${repoId}#${pr.number}`;
+      const before = knownPrs.current.get(key);
+      if (before && !samePr(before, pr)) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.prDetails(repoId, pr.number) });
       }
-    })().finally(() => {
-      prLookupInFlight.current = false;
-      const queued = prLookupQueued.current;
-      prLookupQueued.current = null;
-      if (queued !== null && alive.current) refreshPrs.current(queued);
+      next.set(key, pr);
     });
-  };
-  useEffect(() => {
-    refreshPrs.current(false);
-  }, [prSig]);
-  useEffect(() => {
-    const id = setInterval(() => refreshPrs.current(true), PR_LOOKUP_MS);
-    return () => clearInterval(id);
-  }, []);
-  /** A forced lookup, at most once per PR_LOOKUP_THROTTLE_MS. */
-  const refreshPrsSoon = () => {
+    knownPrs.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [branchPrSig]);
+
+  /** Re-ask GitHub for every branch's PR, at most once per PR_LOOKUP_THROTTLE_MS. */
+  const lastPrInvalidation = useRef(0);
+  const invalidatePrLookupsSoon = () => {
     const now = Date.now();
-    if (now - lastForcedPrLookup.current < PR_LOOKUP_THROTTLE_MS) return;
-    lastForcedPrLookup.current = now;
-    refreshPrs.current(true);
+    if (now - lastPrInvalidation.current < PR_LOOKUP_THROTTLE_MS) return;
+    lastPrInvalidation.current = now;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.allPrForBranch });
   };
+
+  // Live agent status per tmux session (services/agents), shown with "done"
+  // turned into "idle" once that worktree's terminal has been on screen.
+  const agentReports = useQuery(agentStatusQuery()).data;
+  const openSession = open ? tmuxSessionName(open.repoId, open.worktreeId) : null;
+  /** When each session's terminal was last on screen (epoch seconds). */
+  const [seenAt, setSeenAt] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!openSession) return;
+    const now = Math.floor(Date.now() / 1000);
+    setSeenAt((prev) => (prev[openSession] === now ? prev : { ...prev, [openSession]: now }));
+  }, [openSession, agentReports]);
+  const agentStatus: Record<string, AgentStatus> = {};
+  for (const [session, r] of Object.entries(agentReports ?? {})) {
+    const seen = session === openSession || (seenAt[session] ?? 0) >= r.since;
+    agentStatus[session] = r.state === "done" && seen ? "idle" : r.state;
+  }
+  // An agent changing state has probably touched files, and may have opened
+  // or pushed to a PR.
+  const reportsSig = JSON.stringify(agentReports ?? null);
+  const lastReportsSig = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastReportsSig.current !== null && lastReportsSig.current !== reportsSig) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.allGitStatus });
+      invalidatePrLookupsSoon();
+    }
+    lastReportsSig.current = reportsSig;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportsSig]);
+
+  // Projects as the sidebar shows them: state.json's worktrees plus live git
+  // status, PR and agent status.
+  const statusByPath = new Map(liveWorktrees.map(({ worktree }, i) => [worktree.path, gitStatuses[i]?.data]));
+  const prByWorktree = new Map(
+    prTargets.map(({ repoId, worktree }, i) => [`${repoId}:${worktree.id}`, branchPrs[i]?.data]),
+  );
+  const viewProjects: Project[] = projects.map((p) => ({
+    ...p,
+    worktrees: p.worktrees.map((w) => {
+      const st = w.missing ? undefined : statusByPath.get(w.path);
+      const pr = prByWorktree.get(`${p.id}:${w.id}`) ?? undefined;
+      return { ...w, ...st, pr, agent: agentStatus[tmuxSessionName(p.id, w.id)] ?? "none" };
+    }),
+  }));
+  // Handlers read the live view (a worktree's dirty flag, say), not just state.json.
+  projectsRef.current = viewProjects;
 
   // A burst of keystrokes (key repeat, a paste) arrives in one tick, before
   // React re-renders and refreshes the mirrors above, so every write also
@@ -679,8 +601,8 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     }
     if (key.name === "r") {
       prPanelRef.current?.refresh();
-      lastForcedPrLookup.current = Date.now();
-      refreshPrs.current(true);
+      lastPrInvalidation.current = Date.now();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.allPrForBranch });
       return;
     }
     if (key.name === "pagedown" || key.name === "pageup") {
@@ -729,20 +651,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     }
   });
 
-  // What the sidebar shows: projects with each worktree's live agent status.
-  const viewProjects = useMemo(
-    () =>
-      projects.map((p) => ({
-        ...p,
-        worktrees: p.worktrees.map((w) => {
-          const agent = agentStatus[tmuxSessionName(p.id, w.id)] ?? "none";
-          return agent === w.agent ? w : { ...w, agent };
-        }),
-      })),
-    [projects, agentStatus],
-  );
-
-  const rows = buildRows(projects, collapsed);
+  const rows = buildRows(viewProjects, collapsed);
   const active = rows[Math.min(activeIndex, rows.length - 1)];
   const activeKey = active ? rowKey(active) : "";
 
@@ -751,7 +660,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const activeTermKey = open ? `${open.repoId}:${open.worktreeId}` : null;
   const mounted = opened
     .map((o) => {
-      const project = projects.find((p) => p.id === o.repoId);
+      const project = viewProjects.find((p) => p.id === o.repoId);
       const worktree = project?.worktrees.find(
         (w) => w.id === o.worktreeId && !w.missing,
       );

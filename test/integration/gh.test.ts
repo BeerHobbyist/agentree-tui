@@ -6,14 +6,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
-  clearPrCache,
-  clearRepoCache,
   clone,
   fetchRepoPage,
-  getCachedRepos,
   isAuthenticated,
   prForBranch,
-  setRepoCache,
 } from "../../src/services/gh";
 import { fetchPrDetails } from "../../src/services/pr";
 import { createSandbox, repoSummary, type Sandbox } from "../helpers/sandbox";
@@ -76,16 +72,6 @@ describe("fetchRepoPage", () => {
   });
 });
 
-describe("repo cache", () => {
-  test("starts empty, round-trips, and clears", () => {
-    expect(getCachedRepos()).toBeNull();
-    setRepoCache([repoSummary("acme/widget")]);
-    expect(getCachedRepos()).toHaveLength(1);
-    clearRepoCache();
-    expect(getCachedRepos()).toBeNull();
-  });
-});
-
 describe("prForBranch", () => {
   test("returns the open PR for a branch", async () => {
     await Bun.write(
@@ -124,46 +110,15 @@ describe("prForBranch", () => {
     expect(sandbox.ghCalls().at(-1)).toContain("statusCheckRollup");
   });
 
-  test("a lookup still in flight when the cache is cleared doesn't write it back", async () => {
-    sandbox.setBranchPr({ number: 7, title: "t", headRefName: "feature/x" });
-    const inFlight = prForBranch("acme/widget", "feature/x");
-    clearPrCache();
-    expect((await inFlight)?.number).toBe(7); // the caller still gets its answer…
-    sandbox.setBranchPr(null);
-    expect(await prForBranch("acme/widget", "feature/x")).toBeNull(); // …but it wasn't cached
-  });
-
   test("a branch-specific PR is only found for that branch", async () => {
     sandbox.setBranchPr({ number: 7, title: "t", headRefName: "feature/x" }, "feature/x");
     expect((await prForBranch("acme/widget", "feature/x"))?.number).toBe(7);
     expect(await prForBranch("acme/widget", "feature/y")).toBeNull();
   });
 
-  test("caches per repo and branch, including the misses", async () => {
-    await prForBranch("acme/widget", "feature/x");
-    await prForBranch("acme/widget", "feature/x");
-    expect(sandbox.ghCalls().filter((c) => c.startsWith("pr list"))).toHaveLength(1);
-
-    await prForBranch("acme/widget", "feature/y");
-    expect(sandbox.ghCalls().filter((c) => c.startsWith("pr list"))).toHaveLength(2);
-  });
-
-  test("force refetches", async () => {
-    await prForBranch("acme/widget", "feature/x");
-    await prForBranch("acme/widget", "feature/x", true);
-    expect(sandbox.ghCalls().filter((c) => c.startsWith("pr list"))).toHaveLength(2);
-  });
-
-  test("clearPrCache makes the next lookup hit gh again", async () => {
-    await prForBranch("acme/widget", "feature/x");
-    clearPrCache();
-    await prForBranch("acme/widget", "feature/x");
-    expect(sandbox.ghCalls().filter((c) => c.startsWith("pr list"))).toHaveLength(2);
-  });
-
-  test("a failing gh degrades to no badge", async () => {
+  test("a failing gh is an error, not \"no PR\" — so a cache keeps the last good badge", async () => {
     sandbox.failGh("pr");
-    expect(await prForBranch("acme/widget", "feature/x")).toBeNull();
+    await expect(prForBranch("acme/widget", "feature/x")).rejects.toThrow("pr failed");
   });
 });
 

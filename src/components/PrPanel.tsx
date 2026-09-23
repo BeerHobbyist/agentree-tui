@@ -1,20 +1,13 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "@opentui/core";
 import { useTheme, type Theme } from "../theme";
 import type { CheckState, PrDetails, PrInfo, PrReviewer } from "../data/model";
-import {
-  excerpt,
-  fetchPrDetails,
-  mergeStatus,
-  relativeTime,
-  summarizeChecks,
-  type Tone,
-} from "../services/pr";
+import { excerpt, mergeStatus, relativeTime, summarizeChecks, type Tone } from "../services/pr";
+import { useQuery } from "@tanstack/react-query";
+import { prDetailsQuery } from "../queries";
 import { openExternal } from "../services/open";
 import { ResizeHandle } from "./ResizeHandle";
 
-/** How often an open panel re-fetches its PR. */
-export const PR_REFRESH_MS = 30_000;
 /** Comments shown before "…N more on GitHub". */
 const MAX_COMMENTS = 20;
 
@@ -153,49 +146,20 @@ export function PrPanel({
   const theme = useTheme();
   const rootRef = useRef<BoxRenderable>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
-  const [details, setDetails] = useState<PrDetails | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-  // Responses for a PR we've since switched away from are dropped.
-  const requestId = useRef(0);
+  // Cached per PR (src/queries.ts): coming back to a PR seen recently shows
+  // it immediately; stale data is refreshed in the background.
+  const query = useQuery(prDetailsQuery(repo, pr.number));
+  const details = query.data ?? null;
+  const error = query.error ? (query.error instanceof Error ? query.error.message : String(query.error)) : null;
 
-  const load = () => {
-    const id = ++requestId.current;
-    setLoading(true);
-    fetchPrDetails(repo, pr.number)
-      .then((d) => {
-        if (id !== requestId.current) return;
-        setDetails(d);
-        setError(null);
-        setFetchedAt(Date.now());
-      })
-      .catch((e: unknown) => {
-        if (id !== requestId.current) return;
-        setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
-        if (id === requestId.current) setLoading(false);
-      });
-  };
-
+  // A different PR starts at the top.
   useEffect(() => {
-    setDetails(null);
-    setError(null);
-    setFetchedAt(null);
     scrollRef.current?.scrollTo(0);
-    load();
-    const timer = setInterval(load, PR_REFRESH_MS);
-    return () => {
-      clearInterval(timer);
-      requestId.current++; // abandon anything in flight
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, pr.number]);
 
   if (handleRef) {
     handleRef.current = {
-      refresh: load,
+      refresh: () => void query.refetch(),
       scroll: (lines) => scrollRef.current?.scrollBy(lines),
     };
   }
@@ -411,8 +375,13 @@ export function PrPanel({
 
         {/* Footer */}
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={0} wrapMode="none" truncate>
-          {(loading ? "refreshing…" : fetchedAt ? `updated ${relativeTime(new Date(fetchedAt).toISOString())}` : "") +
-            " · o open · r refresh"}
+          {(query.isFetching
+            ? "refreshing…"
+            : error && details
+              ? "refresh failed"
+              : query.dataUpdatedAt
+                ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
+                : "") + " · o open · r refresh"}
         </text>
       </box>
     </box>

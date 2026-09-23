@@ -207,6 +207,10 @@ describe("controls", () => {
     const edge = 140 - 46; // default width, flush right
     await app.mockMouse.drag(edge, 20, 80, 20);
     await waitUntil(app, () => sandbox.readState()?.ui?.prPanelWidth === 60, "the width to be saved");
-    expect((app.captureCharFrame().split("\n")[0] ?? "").lastIndexOf("│")).toBe(80);
+    await waitUntil(
+      app,
+      () => (app.captureCharFrame().split("\n")[0] ?? "").lastIndexOf("│") === 80,
+      "the panel's edge at column 80",
+    );
   });
 });
