@@ -14,8 +14,8 @@ Working, at MVP+ level:
 - **Sidebar** — projects as foldable groups, worktrees indented under a guide rule
   with live **agent status** (◆ needs action · ◐ working · ✓ done · ○ idle), an
   uncommitted-changes count (`●3`), +/− and ahead/behind, and an open-PR badge
-  `⇡#N` via `gh` coloured by CI; keyboard + mouse nav. **Resizable** (drag its
-  edge or `[` / `]`), width remembered.
+  `⇡#N` via `gh` coloured by CI; keyboard + mouse nav, and clicking it gives it
+  the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered.
 - **PR panel** — on the right, for the worktree on screen when it has an open
   PR: merge status, reviews, checks, labels, description and comments; `p` / ⌥p
   toggles, `o` opens on GitHub, `r` refreshes.
@@ -25,9 +25,11 @@ Working, at MVP+ level:
   PRs are listed alongside existing worktrees as one-key picks, fetched via
   `refs/pull/<n>/head` (works for forks) and named after the PR's branch.
 - **Embedded terminals** — OpenTUI `EmbeddedTerminal` + **Bun native PTY** + tmux
-  for persistence. One terminal per worktree, opened on `Enter` and kept mounted
-  afterwards so switching back is instant. Programs inside get the mouse (click,
-  drag-select, scroll in nvim/pagers) and your terminal's own blinking cursor.
+  for persistence. One terminal per worktree, kept mounted once opened so
+  switching back is instant. A click on a worktree shows its terminal and leaves
+  the keyboard in the sidebar; `Enter` or a double-click types in it. Programs
+  inside get the mouse (click, drag-select, scroll in nvim/pagers) and your
+  terminal's own blinking cursor.
 - **Tabs + pane splitting** — tmux windows (tabs) and panes (splits) composited
   inside the one embedded terminal; app-styled tab/tool bar; keyboard + mouse.
 - **Ctrl+C reaches the shell**; app quit via `q` / Ctrl+C while the sidebar is focused.
@@ -124,20 +126,22 @@ the app polls those and cross-checks tmux (see **Agent status**).
   `=` reset width · `p` PR panel · `o` open PR · `r` refresh PR · PgUp/PgDn
   scroll PR panel · `t` cycle theme · `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
-- **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`)
-  move between **split panes** · `⌥,`/`⌥.` prev/next **tab** · `⌥1`–`9` jump tab ·
-  `⌥t` new tab · `⌥a` open agent (new tab) · `⌥d` open diff (hunk) · `⌥p` PR
-  panel · `⌥w` close
-  pane · `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical ·
-  `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
-- **Mouse** (everything is clickable): sidebar rows (worktree → open, header →
-  select+fold), `＋` add worktree, footer theme + `?` help; **drag the sidebar's
-  right edge** to resize (double-click resets); the add-worktree modal
-  repo/action rows; tab bar (tab, `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕`
-  close pane, `‹` back). Inside a terminal tmux has `mouse on`: clicks, drags and
-  the wheel reach the program (nvim, pagers), and clicking a split pane selects
-  it (this replaced the old coordinate → `list-panes` hit-testing). Click anywhere
-  to close help.
+- **Terminal (focused)**: `Ctrl+g` (or a click on the sidebar) back to sidebar ·
+  `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`) move between **split panes** · `⌥,`/`⌥.` prev/next
+  **tab** · `⌥1`–`9` jump tab · `⌥t` new tab · `⌥a` open agent (new tab) · `⌥d`
+  open diff (hunk) · `⌥p` PR panel · `⌥w` close pane · `⌥W` close tab · `⌥\`
+  split horizontal · `⌥-` split vertical · `Ctrl+C` → shell · tmux-native
+  `Ctrl+b …` works.
+- **Mouse** (everything is clickable): focus follows the click — anywhere on the
+  sidebar gives it the keyboard, inside a terminal gives that terminal the
+  keyboard. Sidebar rows: worktree → select and show its terminal (keys stay in
+  the sidebar), double-click (400ms) → type in it; header → select+fold. `＋` add
+  worktree, footer theme + `?` help; **drag the sidebar's right edge** to resize
+  (double-click resets); the add-worktree modal repo/action rows; tab bar (tab,
+  `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕` close pane, `‹` back). Inside a
+  terminal tmux has `mouse on`: clicks, drags and the wheel reach the program
+  (nvim, pagers), and clicking a split pane selects it (this replaced the old
+  coordinate → `list-panes` hit-testing). Click anywhere to close help.
 
 ## Theming
 
@@ -338,6 +342,14 @@ each other.
   => false)` (in `src/queryClient.ts`) is the documented fix for such runtimes.
   One `QueryClient` per `App` instance (tests inject their own via `renderApp({
   queryClient })`) — module-level caches used to leak between tests.
+- **A cache hit renders before everything around it loads.** The add-worktree
+  modal's open PRs come from the cache instantly, while the repo's existing
+  worktrees are still being read — so for a frame a PR that already had a
+  worktree was offered again (CI caught it, #29). Anything filtered against
+  local state has to wait for that state (`existingLoaded`), not just its query.
+- **Mouse-down bubbles to every ancestor**: the sidebar root's `onMouseDown`
+  (click → sidebar focus) sees each row's mouse-down too, so a row that hands
+  focus elsewhere (double-click → terminal) must `stopPropagation()`.
 - **Unmounting a terminal kills its tmux client** (the session lives on in the
   server): closing the PTY alone let a client that was still starting go on and
   start a server nobody was attached to.
@@ -349,7 +361,7 @@ each other.
 
 ## Tests
 
-`bun test` — 201 tests, ~15s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 253 tests, ~30s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -370,7 +382,10 @@ Three input bugs the E2E found on its first run, all fixed:
 Seams added for testability: `App` lives in `src/app.tsx` (`index.tsx` is just
 the entry point), the tmux socket is `AGENTREE_TMUX_SOCKET`-overridable,
 `proc.run()` passes `process.env` explicitly (so a test's `PATH` shim applies),
-and `clearPrCache()` / `resetTheme()` exist to reset module-level state.
+`resetTheme()` resets the one module-level state left, and `renderApp()` takes a
+`queryClient` (each app gets a fresh one otherwise, so no cache leaks between
+tests). Where the keyboard is gets checked by pressing `?`: the sidebar opens
+help, a focused terminal swallows it.
 
 The sandbox also runs an inert agent command (`AGENTREE_AGENT_CMD=sh`) — tests
 that open a terminal used to start the real `claude` — and its cleanup stops the
@@ -409,8 +424,14 @@ throwaway PTY probes instead.
 
 ### 2026-09-23
 
-- TanStack Query for all data fetching (PR details cached across worktree switches)
-- #27 PR panel (right side: merge, reviews, checks, comments; `p` `o` `r`, ⌥p)
+- #30 `f863910` Clicking the sidebar gives it the keyboard (was `Ctrl+g` only);
+  a single click on a worktree shows it, a double-click types in it
+- #29 `8b8b943` Add-worktree modal no longer offers a PR that already has a
+  worktree for a frame (cache hit raced the worktree list; main CI was red)
+- #28 `a10dd39` TanStack Query for all data fetching (PR details cached across
+  worktree switches, badges keep their last answer on failure); `59a2d7b`
+  terminal focus (mode 1004) drives it — refresh on return, GitHub quiet when away
+- #27 `849f8d2` PR panel (right side: merge, reviews, checks, comments; `p` `o` `r`, ⌥p)
 - #26 `7ef52b9` Live agent status (Claude Code hooks + tmux) and an accurate,
   live changed-files count; help overlay scrolls; test sandbox hardening
 - #25 `e214420` Resizable sidebar (drag the divider, `[` `]` `=`, remembered)
