@@ -103,6 +103,18 @@ export function themeOptions(style: TermStyle): string[] {
   return out;
 }
 
+/**
+ * Global (`-g`) behavior options, applied on attach. `mouse on` is what lets
+ * mouse reach programs inside tmux: tmux then requests mouse reporting from our
+ * emulator (so OpenTUI actually forwards clicks) and relays events to the
+ * focused pane's program — clicking in vim/nvim, scrolling in a pager, and
+ * selecting split panes all start working. It's a `-g` option, so setting it on
+ * attach persists for every session and window on the server.
+ */
+export function behaviorOptions(): string[] {
+  return ["set-option", "-g", "mouse", "on"];
+}
+
 /** Re-apply the theme to the running server (live re-theme on theme switch). */
 export async function applyTheme(style: TermStyle): Promise<void> {
   await run(tx(...themeOptions(style)));
@@ -130,6 +142,7 @@ export function attachCommand(
   if (startupCommand) cmd.push(startupCommand);
   if (style) cmd.push(";", ...themeOptions(style));
   else cmd.push(";", "set-option", "-g", "status", "off");
+  cmd.push(";", ...behaviorOptions());
   return cmd;
 }
 
