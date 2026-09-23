@@ -94,6 +94,8 @@ export function AddWorktreeModal({
   const [repo, setRepo] = useState<RepoSummary | null>(null);
   const [root, setRoot] = useState<string>("");
   const [existing, setExisting] = useState<ExistingWorktree[]>([]);
+  /** Whether `existing` has been read for the current repo yet. */
+  const [existingLoaded, setExistingLoaded] = useState(false);
 
   const [pendingPr, setPendingPr] = useState<OpenPr | null>(null);
   const [branch, setBranch] = useState("");
@@ -141,10 +143,12 @@ export function AddWorktreeModal({
     };
   }, []);
 
-  // PRs that don't already have a worktree for their branch.
-  const availablePrs = prs.filter(
-    (pr) => !existing.some((w) => w.branch === pr.headRefName),
-  );
+  // PRs that don't already have a worktree for their branch. Until the repo's
+  // worktrees are known, offer none — the (cached) PR list can arrive first,
+  // and would briefly offer a PR whose worktree already exists.
+  const availablePrs = existingLoaded
+    ? prs.filter((pr) => !existing.some((w) => w.branch === pr.headRefName))
+    : [];
 
   // Everything the keyboard handler needs, mirrored to refs (handler is global).
   const ref = useRef({
@@ -257,10 +261,12 @@ export function AddWorktreeModal({
 
   const openActions = (repoRoot: string) => {
     ignoreWorktreesDir(repoRoot);
+    setExistingLoaded(false);
     buildExisting(repoRoot).then(
       (list) => {
         if (!mounted.current) return;
         setExisting(list);
+        setExistingLoaded(true);
         setIndex(0);
         setPhase("actions");
       },

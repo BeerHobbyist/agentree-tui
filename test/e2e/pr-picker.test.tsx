@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
+import { settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
 import { addPrHead, git, makeRemote } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -81,9 +81,21 @@ describe("the PR rows", () => {
     await waitForModalClosed(app);
 
     // Reopen: the PR now has a worktree, so only that worktree is listed.
+    // (Wait for the modal's own row — the sidebar shows "contributor-fix" too.)
+    // And not even briefly while the worktree list loads (the PR list is cached,
+    // so it can arrive first): no frame on the way may offer it.
+    // Render without sleeping, so the modal's first frames come before its
+    // `git worktree list` has had time to finish.
     app.mockInput.pressKey("a");
-    await waitForText(app, "Create new worktree");
-    const frame = await waitForText(app, "contributor-fix");
+    let first = "";
+    for (let i = 0; i < 500 && !first.includes("Create new worktree"); i++) {
+      await new Promise((r) => setImmediate(r)); // let the key through…
+      await settle(app); // …and render, well before a git subprocess returns
+      first = app.captureCharFrame();
+    }
+    expect(first).toContain("Create new worktree");
+    expect(first).not.toContain("⇄ #7");
+    const frame = await waitForText(app, "○ contributor-fix");
     expect(frame).not.toContain("⇄ #7");
   });
 
