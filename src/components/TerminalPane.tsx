@@ -10,14 +10,12 @@ import {
   isAvailable,
   killPane,
   killWindow,
-  listPaneGeometry,
   listWindows,
   newWindow,
   newWindowCmd,
   nextWindow,
   prevWindow,
   selectPane,
-  selectPaneById,
   selectWindow,
   sessionName,
   splitWindow,
@@ -290,24 +288,16 @@ function TerminalView({
     closeOverlay();
   };
 
-  // Click inside the terminal → focus + select the tmux pane under the cursor.
-  // Deterministic: map the click to emulator-local cells (which equal the tmux
-  // client grid) and select the pane whose geometry contains it.
-  const handleMouseDown = (event: { x: number; y: number }) => {
-    onRequestFocus();
-    const el = ref.current;
-    if (!el) return;
-    const lx = event.x - el.screenX;
-    const ly = event.y - el.screenY;
-    listPaneGeometry(session)
-      .then((panes) => {
-        if (panes.length <= 1) return;
-        const hit = panes.find(
-          (p) => lx >= p.left && lx <= p.right && ly >= p.top && ly <= p.bottom,
-        );
-        if (hit) selectPaneById(hit.id);
-      })
-      .catch(() => {});
+  // Click inside the terminal → give it app focus so keys route to the shell.
+  //
+  // Uses the generic `onMouse` slot, NOT `onMouseDown`. EmbeddedTerminal installs
+  // its own per-type handlers (onMouseDown/Up/Move/Drag/Scroll) that forward the
+  // event to the child program; passing an `onMouseDown` prop would overwrite the
+  // "down" forwarder (the React reconciler assigns straight into that slot), so
+  // clicks would stop reaching vim/nvim. `onMouse` is a separate listener that
+  // runs alongside the forwarders. Pane selection is left to tmux (`mouse on`).
+  const handleMouse = (event: { type: string }) => {
+    if (event.type === "down") onRequestFocus();
   };
 
 
@@ -458,7 +448,7 @@ function TerminalView({
         maxScrollback={5000}
         onData={onData}
         onTerminalResize={onTerminalResize}
-        onMouseDown={handleMouseDown}
+        onMouse={handleMouse}
         flexGrow={1}
         width="100%"
         minWidth={0}

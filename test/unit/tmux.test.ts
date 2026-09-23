@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   DEFAULT_SOCKET,
   attachCommand,
+  behaviorOptions,
   sessionName,
   socketName,
   themeOptions,
@@ -132,5 +133,20 @@ describe("attachCommand", () => {
     const cmd = attachCommand("s", "/tmp", { bg: "#000", fg: "#fff" }, "claude").join(" ");
     expect(cmd).toContain("-c /tmp claude ; set-option");
     expect(cmd).toContain("window-style bg=#000,fg=#fff");
+  });
+
+  test("enables mouse so clicks reach programs inside tmux (vim, pagers)", () => {
+    // With a theme…
+    expect(attachCommand("s", "/tmp", { bg: "#000", fg: "#fff" }).join(" ")).toContain(
+      "set-option -g mouse on",
+    );
+    // …and without one.
+    expect(attachCommand("s", "/tmp").join(" ")).toContain("set-option -g mouse on");
+  });
+});
+
+describe("behaviorOptions", () => {
+  test("turns mouse on globally", () => {
+    expect(behaviorOptions().join(" ")).toBe("set-option -g mouse on");
   });
 });
