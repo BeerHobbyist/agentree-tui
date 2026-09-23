@@ -55,6 +55,21 @@ describe("loadState", () => {
     await saveState(state);
     expect(loadState().repos.map((r) => r.nameWithOwner)).toEqual(["acme/widget"]);
   });
+
+  test("keeps UI preferences (the sidebar width) across a save and reload", async () => {
+    const state = loadState();
+    state.ui = { sidebarWidth: 52 };
+    await saveState(state);
+    expect(loadState().ui).toEqual({ sidebarWidth: 52 });
+  });
+
+  test("ignores a malformed sidebar width instead of trusting it", () => {
+    mkdirSync(join(sandbox.configHome, "agentree"), { recursive: true });
+    for (const sidebarWidth of ["wide", -5, 0, null]) {
+      writeFileSync(sandbox.stateFile, JSON.stringify({ version: 1, repos: [], ui: { sidebarWidth } }));
+      expect(loadState().ui).toBeUndefined();
+    }
+  });
 });
 
 describe("saveState", () => {

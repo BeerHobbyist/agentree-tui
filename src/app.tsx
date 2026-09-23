@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core";
-import { useKeyboard, useRenderer } from "@opentui/react";
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { existsSync } from "node:fs";
 import { useEffect, useRef, useState } from "react";
 import { useTheme, cycleTheme } from "./theme";
@@ -13,7 +13,12 @@ import {
   type PreselectRepo,
   type Selection,
 } from "./components/AddWorktreeModal";
-import { reconcile, removeManagedWorktree, type State } from "./store";
+import { reconcile, removeManagedWorktree, saveState, type State } from "./store";
+import {
+  DEFAULT_SIDEBAR_WIDTH,
+  SIDEBAR_WIDTH_STEP,
+  clampSidebarWidth,
+} from "./layout";
 import { TerminalPane } from "./components/TerminalPane";
 import { HelpOverlay } from "./components/HelpOverlay";
 import { ConfirmModal } from "./components/ConfirmModal";
@@ -108,6 +113,13 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     missing: boolean;
   } | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
+  // Sidebar width the user chose (drag / [ ] keys), remembered in state.json.
+  // What's rendered is this clamped to the current screen, so shrinking the
+  // window doesn't lose the preference.
+  const [sidebarWidth, setSidebarWidth] = useState(
+    () => state.ui?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
+  );
+  const { width: screenWidth } = useTerminalDimensions();
 
   // Refs mirror state so the keyboard handler always reads current values.
   const projectsRef = useRef(projects);
@@ -128,6 +140,10 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   confirmCloseRef.current = confirmClose;
   const closeErrorRef = useRef(closeError);
   closeErrorRef.current = closeError;
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  const screenWidthRef = useRef(screenWidth);
+  screenWidthRef.current = screenWidth;
 
   // Background pass: fill real git status for on-disk worktrees, non-blocking.
   // Keyed on the set of paths so status updates don't retrigger the effect.
@@ -221,6 +237,36 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     activeIndexRef.current = idx;
     setActiveIndex(idx);
   };
+  /** Set the sidebar width (clamped to the screen), updating the mirror too. */
+  const applySidebarWidth = (width: number) => {
+    const next = clampSidebarWidth(width, screenWidthRef.current);
+    sidebarWidthRef.current = next;
+    setSidebarWidth(next);
+    return next;
+  };
+
+  /**
+   * Remember the sidebar width in state.json: once when a drag is released, and
+   * on each `[` / `]` / `=` that changes it. Written straight away rather than
+   * debounced, so quitting right after a resize can't drop it. The default width
+   * isn't stored, so a future change to the default still applies.
+   */
+  const persistSidebarWidth = () => {
+    const width = sidebarWidthRef.current;
+    const ui = { ...state.ui };
+    if (width === DEFAULT_SIDEBAR_WIDTH) delete ui.sidebarWidth;
+    else ui.sidebarWidth = width;
+    if (ui.sidebarWidth === state.ui?.sidebarWidth) return; // nothing changed
+    if (Object.keys(ui).length > 0) state.ui = ui;
+    else delete state.ui;
+    void saveState(state).catch(() => {});
+  };
+
+  const resetSidebarWidth = () => {
+    applySidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+    persistSidebarWidth();
+  };
+
   const applyCollapsed = (next: Set<string>) => {
     collapsedRef.current = next;
     setCollapsed(next);
@@ -416,6 +462,16 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
       if (row) openAddForProject(row.project.id);
       return;
     }
+    if (key.name === "[" || key.name === "]") {
+      const step = key.name === "]" ? SIDEBAR_WIDTH_STEP : -SIDEBAR_WIDTH_STEP;
+      applySidebarWidth(sidebarWidthRef.current + step);
+      persistSidebarWidth();
+      return;
+    }
+    if (key.name === "=") {
+      resetSidebarWidth();
+      return;
+    }
     if (key.name === "t") {
       cycleTheme();
       return;
@@ -490,6 +546,10 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
         onSelectProject={selectProject}
         onCycleTheme={() => cycleTheme()}
         onHelp={() => setHelpOpen(true)}
+        width={clampSidebarWidth(sidebarWidth, screenWidth)}
+        onResize={applySidebarWidth}
+        onResizeEnd={() => persistSidebarWidth()}
+        onResetWidth={resetSidebarWidth}
       />
       <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
         {mounted.map((m) => {
