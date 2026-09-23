@@ -8,6 +8,7 @@
 import {
   EmbeddedTerminalRenderable,
   type CursorStyleOptions,
+  type MouseEvent,
   type OptimizedBuffer,
   type RGBA,
 } from "@opentui/core";
@@ -166,6 +167,26 @@ class StableCursorEmbeddedTerminal extends EmbeddedTerminalRenderable {
       ctx.setCursorStyle = origStyle;
       ctx.setCursorColor = origColor;
     }
+  }
+
+  /** Whether the mouse button currently held went down on this terminal. */
+  private pressStartedHere = false;
+
+  /**
+   * Drop a button release whose press began somewhere else — e.g. dragging the
+   * sidebar divider and letting go over the terminal. The renderer hands that
+   * release to the captured divider *and* to whatever is under the pointer, so
+   * without this the program inside would get a release with no press.
+   */
+  override processMouseEvent(event: MouseEvent): void {
+    if (event.type === "down") {
+      this.pressStartedHere = true;
+    } else if (event.type === "up") {
+      const startedHere = this.pressStartedHere;
+      this.pressStartedHere = false;
+      if (!startedHere) return;
+    }
+    super.processMouseEvent(event);
   }
 
   protected override destroySelf(): void {

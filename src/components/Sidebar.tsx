@@ -1,6 +1,9 @@
-import { TextAttributes } from "@opentui/core";
+import { useRef } from "react";
+import { TextAttributes, type BoxRenderable } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
+import { DEFAULT_SIDEBAR_WIDTH } from "../layout";
+import { ResizeHandle } from "./ResizeHandle";
 import { WorktreeItem } from "./WorktreeItem";
 
 interface SidebarProps {
@@ -20,6 +23,12 @@ interface SidebarProps {
   /** Open the help overlay. */
   onHelp: () => void;
   width?: number;
+  /** Dragging the right-edge divider: the width it's being dragged to. */
+  onResize?: (width: number) => void;
+  /** The divider drag ended. */
+  onResizeEnd?: () => void;
+  /** Double-clicked the divider: back to the default width. */
+  onResetWidth?: () => void;
 }
 
 export function projectKey(projectId: string): string {
@@ -146,9 +155,13 @@ export function Sidebar({
   onSelectProject,
   onCycleTheme,
   onHelp,
-  width = 38,
+  width = DEFAULT_SIDEBAR_WIDTH,
+  onResize,
+  onResizeEnd,
+  onResetWidth,
 }: SidebarProps) {
   const theme = useTheme();
+  const rootRef = useRef<BoxRenderable>(null);
   const dirtyCount = projects.reduce(
     (n, p) => n + p.worktrees.filter((w) => w.dirty).length,
     0,
@@ -156,61 +169,70 @@ export function Sidebar({
 
   return (
     <box
+      ref={rootRef}
       width={width}
-      flexDirection="column"
+      flexShrink={0}
+      flexDirection="row"
       backgroundColor={theme.panel}
-      border={["right"]}
-      borderColor={theme.border}
     >
-      {/* Project groups */}
-      <box flexDirection="column" flexGrow={1} paddingTop={1}>
-        {projects.length === 0 ? (
-          <box flexDirection="column" paddingLeft={2} paddingRight={2}>
-            <text fg={theme.fgMuted}>{"No projects yet."}</text>
-            <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-              {"Press n to add one."}
+      <box flexDirection="column" flexGrow={1} minWidth={0}>
+        {/* Project groups */}
+        <box flexDirection="column" flexGrow={1} paddingTop={1}>
+          {projects.length === 0 ? (
+            <box flexDirection="column" paddingLeft={2} paddingRight={2}>
+              <text fg={theme.fgMuted}>{"No projects yet."}</text>
+              <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
+                {"Press n to add one."}
+              </text>
+            </box>
+          ) : (
+            projects.map((project) => (
+              <ProjectGroup
+                key={project.id}
+                project={project}
+                collapsed={collapsed.has(project.id)}
+                activeKey={activeKey}
+                onAddWorktree={onAddWorktree}
+                onOpenWorktree={onOpenWorktree}
+                onSelectProject={onSelectProject}
+              />
+            ))
+          )}
+        </box>
+
+        {/* Footer / status summary */}
+        <box
+          flexDirection="column"
+          borderColor={theme.border}
+          border={["top"]}
+          paddingLeft={2}
+          paddingRight={2}
+        >
+          <box flexDirection="row" alignItems="center">
+            <text fg={theme.dirty}>{"●"}</text>
+            <text fg={theme.fgMuted} flexGrow={1}>
+              {" " + dirtyCount + " dirty"}
+            </text>
+            {/* Clickable footer controls (also keys t / ?). */}
+            <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onCycleTheme}>
+              {" ◑ " + theme.name + " "}
+            </text>
+            <text fg={theme.accent} flexShrink={0} onMouseDown={onHelp}>
+              {" ? "}
             </text>
           </box>
-        ) : (
-          projects.map((project) => (
-            <ProjectGroup
-              key={project.id}
-              project={project}
-              collapsed={collapsed.has(project.id)}
-              activeKey={activeKey}
-              onAddWorktree={onAddWorktree}
-              onOpenWorktree={onOpenWorktree}
-              onSelectProject={onSelectProject}
-            />
-          ))
-        )}
-      </box>
-
-      {/* Footer / status summary */}
-      <box
-        flexDirection="column"
-        borderColor={theme.border}
-        border={["top"]}
-        paddingLeft={2}
-        paddingRight={2}
-      >
-        <box flexDirection="row" alignItems="center">
-          <text fg={theme.dirty}>{"●"}</text>
-          <text fg={theme.fgMuted} flexGrow={1}>
-            {" " + dirtyCount + " dirty"}
-          </text>
-          {/* Clickable footer controls (also keys t / ?). */}
-          <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onCycleTheme}>
-            {" ◑ " + theme.name + " "}
-          </text>
-          <text fg={theme.accent} flexShrink={0} onMouseDown={onHelp}>
-            {" ? "}
+          <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
+            {"↑↓ move  ⏎ terminal  a +wt  d close  n new  t theme  ? help  q quit"}
           </text>
         </box>
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-          {"↑↓ move  ⏎ terminal  a +wt  d close  n new  t theme  ? help  q quit"}
-        </text>
       </box>
+      {/* Right edge: drag to resize (replaces the old right border). The
+          dragged-to column becomes the new last column of the sidebar. */}
+      <ResizeHandle
+        onDrag={(screenX) => onResize?.(screenX - (rootRef.current?.screenX ?? 0) + 1)}
+        onDragEnd={() => onResizeEnd?.()}
+        onReset={() => onResetWidth?.()}
+      />
     </box>
   );
 }

@@ -32,10 +32,27 @@ export interface StoredRepo {
   worktrees: StoredWorktree[];
 }
 
+/** App preferences that aren't about repos, e.g. layout. */
+export interface UiState {
+  /** Sidebar width the user dragged/resized to; omitted = default. */
+  sidebarWidth?: number;
+}
+
 export interface State {
   version: 1;
   workspaceRoot: string;
   repos: StoredRepo[];
+  ui?: UiState;
+}
+
+/** Keep only well-formed ui fields from a parsed state file. */
+function sanitizeUi(raw: unknown): UiState | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const { sidebarWidth } = raw as { sidebarWidth?: unknown };
+  if (typeof sidebarWidth === "number" && Number.isFinite(sidebarWidth) && sidebarWidth > 0) {
+    return { sidebarWidth: Math.round(sidebarWidth) };
+  }
+  return undefined;
 }
 
 function emptyState(): State {
@@ -50,7 +67,13 @@ export function loadState(): State {
     if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.repos)) {
       return emptyState();
     }
-    return { version: 1, workspaceRoot: workspaceRoot(), repos: parsed.repos };
+    const ui = sanitizeUi(parsed.ui);
+    return {
+      version: 1,
+      workspaceRoot: workspaceRoot(),
+      repos: parsed.repos,
+      ...(ui && { ui }),
+    };
   } catch {
     return emptyState();
   }
