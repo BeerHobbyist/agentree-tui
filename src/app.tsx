@@ -9,7 +9,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { createQueryClient } from "./queryClient";
+import { bindTerminalFocus, createQueryClient } from "./queryClient";
 import {
   agentStatusQuery,
   gitStatusQuery,
@@ -124,6 +124,9 @@ export interface AppProps {
 export function App(props: AppProps) {
   // One query cache per app — tests render many apps, which mustn't share data.
   const [client] = useState(() => props.queryClient ?? createQueryClient());
+  // The terminal window's focus is the query cache's "window focus".
+  const renderer = useRenderer();
+  useEffect(() => bindTerminalFocus(renderer), [renderer]);
   useEffect(
     () => () => {
       if (!props.queryClient) client.clear(); // drop cached data and its timers

@@ -5,7 +5,12 @@
  * refetches whatever is on screen and marks the rest stale.
  *
  * Defaults (src/queryClient.ts): fresh for 30s, dropped 10 min after nothing
- * shows it, one retry.
+ * shows it, one retry, refetched when stale and the terminal regains focus.
+ *
+ * GitHub queries pause their polling while the terminal isn't focused (they
+ * catch up on return). Local ones — agent status, git status, tmux tabs — keep
+ * polling in the background (`refetchIntervalInBackground`), since agentree may
+ * be on screen without keyboard focus, and that's when "needs action" matters.
  */
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import type { PrInfo } from "./data/model";
@@ -72,6 +77,7 @@ export const gitStatusQuery = (path: string) =>
     queryFn: () => limited(() => gitStatus(path)),
     staleTime: 0,
     refetchInterval: GIT_STATUS_MS,
+    refetchIntervalInBackground: true,
   });
 
 /**
@@ -86,6 +92,7 @@ export const agentStatusQuery = () =>
       Object.fromEntries(await readAgentStatuses()),
     staleTime: 0,
     refetchInterval: AGENT_STATUS_MS,
+    refetchIntervalInBackground: true,
     retry: false,
   });
 
@@ -129,6 +136,7 @@ export const tmuxWindowsQuery = (session: string) =>
     queryFn: () => listWindows(session),
     staleTime: 0,
     refetchInterval: TMUX_WINDOWS_MS,
+    refetchIntervalInBackground: true,
     retry: false,
   });
 

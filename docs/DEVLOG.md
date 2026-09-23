@@ -63,6 +63,14 @@ state → git status + PR lookups; a PR badge changing → that PR's details; a 
 action → that session's windows). Imperative actions (clone, create worktree,
 kill session) stay plain calls.
 
+The terminal window's focus is the cache's "window focus" (`bindTerminalFocus`):
+OpenTUI turns on focus reporting (DEC mode 1004) when the terminal says it
+supports it and emits `focus` / `blur`. Coming back to the terminal refreshes
+anything stale; GitHub polling pauses while it isn't focused; local polling
+(agent status, git status, tmux tabs) keeps going, since agentree may be on
+screen without keyboard focus. Terminals without focus reporting never blur,
+so nothing changes for them.
+
 Agent status runs beside this: agents agentree starts load Claude Code hooks
 (`--settings`) that write one-line reports under `~/.config/agentree/agents/`;
 the app polls those and cross-checks tmux (see **Agent status**).
@@ -320,6 +328,11 @@ each other.
   terminfo's `Se` resets the cursor to a steady block; `#{window_activity}`
   updates on every output (1s resolution); `new-session -e` env reaches later
   windows too.
+- **Terminal focus ≠ browser "focus"**: TanStack's browser focus is tab
+  *visibility*; terminal focus (mode 1004) is *keyboard* focus — a visible but
+  unfocused window blurs. Hence only network polling pauses on blur. The focus
+  state is global: each binding resets it and a cleanup only undoes its own
+  binding (an app's unmount lands a moment after `dispose()`).
 - **TanStack Query under Bun**: with no `window` it assumes a *server* — refetch
   timers off, `gcTime` Infinity, no retries. `environmentManager.setIsServer(()
   => false)` (in `src/queryClient.ts`) is the documented fix for such runtimes.
