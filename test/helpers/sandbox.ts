@@ -31,6 +31,8 @@ export interface FakePr {
   headRefName: string;
   url?: string;
   isDraft?: boolean;
+  /** Raw `statusCheckRollup` entries (the badge is coloured by them). */
+  checks?: Record<string, unknown>[];
 }
 
 export interface Sandbox {
@@ -52,8 +54,17 @@ export interface Sandbox {
   setRepoPage(page: number, repos: FakeRepo[]): void;
   /** Publish the repo's open PRs, as the add-worktree picker lists them. */
   setOpenPrs(prs: FakePr[]): void;
-  /** Publish the PR the sidebar's per-branch badge lookup should find. */
-  setBranchPr(pr: FakePr | null): void;
+  /**
+   * Publish the PR the sidebar's per-branch badge lookup should find — for
+   * `branch` only when given, otherwise for every branch.
+   */
+  setBranchPr(pr: FakePr | null, branch?: string): void;
+  /** Publish what `gh pr view <number> --json …` returns (raw GitHub shape). */
+  setPrView(number: number, pr: Record<string, unknown>): void;
+  /** Publish a PR's inline review comments (raw REST shape). */
+  setPrComments(number: number, comments: Record<string, unknown>[]): void;
+  /** URLs the app asked to open in a browser. */
+  openedUrls(): string[];
   /** Make the fake `gh` fail for these subcommands (api, clone, pr, auth). */
   failGh(...subcommands: string[]): void;
   /** Every `gh` invocation so far, one argv string per line. */
@@ -68,6 +79,7 @@ function toApiPr(pr: FakePr) {
     url: pr.url ?? `https://github.com/acme/widget/pull/${pr.number}`,
     isDraft: pr.isDraft ?? false,
     headRefName: pr.headRefName,
+    statusCheckRollup: pr.checks ?? [],
   };
 }
 
@@ -105,6 +117,7 @@ export function createSandbox(): Sandbox {
   const remotes = join(root, "remotes");
   const fixtures = join(root, "gh-fixtures");
   const ghLog = join(root, "gh.log");
+  const openLog = join(root, "open.log");
   const gitconfig = join(root, "gitconfig");
   for (const d of [workspace, configHome, remotes, fixtures]) {
     mkdirSync(d, { recursive: true });
@@ -120,6 +133,10 @@ export function createSandbox(): Sandbox {
    */
   const stopTmux = () => {
     Bun.spawnSync(["tmux", "-L", tmuxSocket, "kill-server"], { stdout: "ignore", stderr: "ignore" });
+    // A server started just after its socket file was removed can't be reached
+    // by kill-server any more; its command line still names this test's unique
+    // socket, so match on that.
+    Bun.spawnSync(["pkill", "-f", `tmux -L ${tmuxSocket} `], { stdout: "ignore", stderr: "ignore" });
     const uid = process.getuid?.() ?? 0;
     rmSync(join(process.env.TMUX_TMPDIR || "/tmp", `tmux-${uid}`, tmuxSocket), { force: true });
   };
@@ -137,6 +154,9 @@ export function createSandbox(): Sandbox {
     FAKE_GH_REMOTES: remotes,
     FAKE_GH_LOG: ghLog,
     FAKE_GH_FAIL: "",
+    // Record browser opens instead of launching one.
+    AGENTREE_OPEN_CMD: join(FAKEBIN, "fake-open"),
+    FAKE_OPEN_LOG: openLog,
     // Keep git away from the developer's identity and global config.
     GIT_CONFIG_GLOBAL: gitconfig,
     GIT_AUTHOR_NAME: "agentree test",
@@ -170,8 +190,22 @@ export function createSandbox(): Sandbox {
     setOpenPrs(prs) {
       writeFileSync(join(fixtures, "open-prs.json"), JSON.stringify(prs.map(toApiPr)));
     },
-    setBranchPr(pr) {
-      writeFileSync(join(fixtures, "prs.json"), JSON.stringify(pr ? [toApiPr(pr)] : []));
+    setBranchPr(pr, branch) {
+      const file = branch ? `prs-head-${branch.replace(/\//g, "_")}.json` : "prs.json";
+      writeFileSync(join(fixtures, file), JSON.stringify(pr ? [toApiPr(pr)] : []));
+    },
+    setPrView(number, pr) {
+      writeFileSync(join(fixtures, `pr-view-${number}.json`), JSON.stringify(pr));
+    },
+    setPrComments(number, comments) {
+      writeFileSync(join(fixtures, `pr-comments-${number}.json`), JSON.stringify(comments));
+    },
+    openedUrls() {
+      try {
+        return readFileSync(openLog, "utf8").split("\n").filter(Boolean);
+      } catch {
+        return [];
+      }
     },
     setRepoPage(page, repos) {
       const file = join(fixtures, `repos-page-${page}.json`);

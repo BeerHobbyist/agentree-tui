@@ -14,14 +14,21 @@ import {
   type PreselectRepo,
   type Selection,
 } from "./components/AddWorktreeModal";
-import { reconcile, removeManagedWorktree, saveState, type State } from "./store";
+import { reconcile, removeManagedWorktree, saveState, type State, type UiState } from "./store";
 import {
+  DEFAULT_PR_PANEL_WIDTH,
   DEFAULT_SIDEBAR_WIDTH,
+  MIN_CONTENT_WIDTH,
+  MIN_PR_PANEL_WIDTH,
   SIDEBAR_WIDTH_STEP,
   clampSidebarWidth,
+  fitPanels,
 } from "./layout";
 import { TerminalPane } from "./components/TerminalPane";
 import { HelpOverlay } from "./components/HelpOverlay";
+import { PrPanel, type PrPanelHandle } from "./components/PrPanel";
+import { openExternal } from "./services/open";
+import type { PrInfo } from "./data/model";
 import { ConfirmModal } from "./components/ConfirmModal";
 
 function MainPane({ row }: { row: Row | undefined }) {
@@ -83,6 +90,21 @@ export function rowKey(row: Row): string {
 const GIT_STATUS_POLL_MS = 5000;
 /** How often agent status is read. */
 const AGENT_POLL_MS = 1000;
+/** How often every worktree's PR is looked up again. */
+const PR_LOOKUP_MS = 60_000;
+/** At most one extra PR lookup this often (agent state changes come in bursts). */
+const PR_LOOKUP_THROTTLE_MS = 15_000;
+
+function samePr(a: PrInfo | undefined, b: PrInfo | undefined): boolean {
+  if (!a || !b) return a === b;
+  return (
+    a.number === b.number &&
+    a.title === b.title &&
+    a.url === b.url &&
+    a.draft === b.draft &&
+    a.checks === b.checks
+  );
+}
 
 function sameGitStatus(w: Worktree, st: WorktreeStatus): boolean {
   return (
@@ -142,6 +164,17 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     () => state.ui?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
   );
   const { width: screenWidth } = useTerminalDimensions();
+  // The PR panel on the right, for the worktree on screen when it has a PR:
+  // shown unless switched off with `p`. Both that and its width are remembered.
+  const [prPanelHidden, setPrPanelHidden] = useState(() => state.ui?.prPanelHidden ?? false);
+  const [prPanelWidth, setPrPanelWidth] = useState(
+    () => state.ui?.prPanelWidth ?? DEFAULT_PR_PANEL_WIDTH,
+  );
+  const prPanelRef = useRef<PrPanelHandle | null>(null);
+  /** The PR on screen (set while rendering), for the key handler. */
+  const currentPrRef = useRef<{ repo: string; pr: PrInfo } | null>(null);
+  /** The rendered side-panel widths (set while rendering). */
+  const layoutRef = useRef({ sidebar: 0, panel: 0 });
 
   // Refs mirror state so the keyboard handler always reads current values.
   const projectsRef = useRef(projects);
@@ -166,6 +199,10 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   sidebarWidthRef.current = sidebarWidth;
   const screenWidthRef = useRef(screenWidth);
   screenWidthRef.current = screenWidth;
+  const prPanelHiddenRef = useRef(prPanelHidden);
+  prPanelHiddenRef.current = prPanelHidden;
+  const prPanelWidthRef = useRef(prPanelWidth);
+  prPanelWidthRef.current = prPanelWidth;
 
   // Git status (dirty, changed files, +/−, ahead/behind) for on-disk worktrees:
   // on start, every GIT_STATUS_POLL_MS, and right away when an agent changes
@@ -174,6 +211,14 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const pathSig = projects
     .flatMap((p) => p.worktrees.filter((w) => !w.missing).map((w) => w.path))
     .join("|");
+  // Background loops stop once the app is gone (a test disposing it, say).
+  const alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
   const gitStatusInFlight = useRef(false);
   const refreshGitStatus = useRef(() => {});
   refreshGitStatus.current = () => {
@@ -186,7 +231,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     );
     (async () => {
       const limit = 4;
-      for (let i = 0; i < targets.length; i += limit) {
+      for (let i = 0; i < targets.length && alive.current; i += limit) {
         const batch = targets.slice(i, i + limit);
         const results = await Promise.all(
           batch.map(async (t) => ({
@@ -194,6 +239,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
             st: await gitStatus(t.path).catch(() => null),
           })),
         );
+        if (!alive.current) return;
         // Only re-render when something actually changed.
         setProjects((prev) => {
           let changed = false;
@@ -232,7 +278,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const agentPollInFlight = useRef(false);
   const pollAgents = useRef(() => {});
   pollAgents.current = () => {
-    if (agentPollInFlight.current) return;
+    if (agentPollInFlight.current || !alive.current) return;
     agentPollInFlight.current = true;
     const now = Math.floor(Date.now() / 1000);
     readAgentStatuses(now)
@@ -253,7 +299,10 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
         }
         lastReports.current = raw;
         setAgentStatus((prev) => (sameRecord(prev, next) ? prev : next));
-        if (transitioned) refreshGitStatus.current();
+        if (transitioned) {
+          refreshGitStatus.current();
+          refreshPrsSoon();
+        }
       })
       .catch(() => {})
       .finally(() => {
@@ -269,7 +318,9 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     pollAgents.current();
   }, [open]);
 
-  // Background pass: look up open PRs for each worktree's branch (cached in gh.ts).
+  // The open PR for each worktree's branch: on start, again every PR_LOOKUP_MS,
+  // when an agent changes state (it may have just opened or pushed to one), and
+  // on `r`. It used to be looked up once and cached for the whole session.
   const prSig = projects
     .flatMap((p) =>
       p.worktrees
@@ -277,8 +328,17 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
         .map((w) => `${p.id}:${w.id}:${w.branch}`),
     )
     .join("|");
-  useEffect(() => {
-    let cancelled = false;
+  const prLookupInFlight = useRef(false);
+  const prLookupQueued = useRef<boolean | null>(null);
+  const lastForcedPrLookup = useRef(0);
+  const refreshPrs = useRef((_force: boolean) => {});
+  refreshPrs.current = (force) => {
+    if (prLookupInFlight.current) {
+      // Run again when this one finishes (a new worktree needs its lookup).
+      prLookupQueued.current = (prLookupQueued.current ?? false) || force;
+      return;
+    }
+    prLookupInFlight.current = true;
     const targets = projectsRef.current.flatMap((p) =>
       p.worktrees
         .filter((w) => !w.missing && w.branch && w.branch !== "(detached)")
@@ -286,32 +346,50 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     );
     (async () => {
       const limit = 4;
-      for (let i = 0; i < targets.length; i += limit) {
+      for (let i = 0; i < targets.length && alive.current; i += limit) {
         const batch = targets.slice(i, i + limit);
         const results = await Promise.all(
           batch.map(async (t) => ({
             t,
-            pr: await prForBranch(t.repoId, t.branch).catch(() => null),
+            pr: await prForBranch(t.repoId, t.branch, force).catch(() => null),
           })),
         );
-        if (cancelled) return;
-        setProjects((prev) =>
-          prev.map((p) => ({
+        if (!alive.current) return;
+        setProjects((prev) => {
+          let changed = false;
+          const next = prev.map((p) => ({
             ...p,
             worktrees: p.worktrees.map((w) => {
-              const hit = results.find(
-                (r) => r.t.repoId === p.id && r.t.id === w.id,
-              );
-              return hit ? { ...w, pr: hit.pr ?? undefined } : w;
+              const hit = results.find((r) => r.t.repoId === p.id && r.t.id === w.id);
+              if (!hit || samePr(w.pr, hit.pr ?? undefined)) return w;
+              changed = true;
+              return { ...w, pr: hit.pr ?? undefined };
             }),
-          })),
-        );
+          }));
+          return changed ? next : prev;
+        });
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    })().finally(() => {
+      prLookupInFlight.current = false;
+      const queued = prLookupQueued.current;
+      prLookupQueued.current = null;
+      if (queued !== null && alive.current) refreshPrs.current(queued);
+    });
+  };
+  useEffect(() => {
+    refreshPrs.current(false);
   }, [prSig]);
+  useEffect(() => {
+    const id = setInterval(() => refreshPrs.current(true), PR_LOOKUP_MS);
+    return () => clearInterval(id);
+  }, []);
+  /** A forced lookup, at most once per PR_LOOKUP_THROTTLE_MS. */
+  const refreshPrsSoon = () => {
+    const now = Date.now();
+    if (now - lastForcedPrLookup.current < PR_LOOKUP_THROTTLE_MS) return;
+    lastForcedPrLookup.current = now;
+    refreshPrs.current(true);
+  };
 
   // A burst of keystrokes (key repeat, a paste) arrives in one tick, before
   // React re-renders and refreshes the mirrors above, so every write also
@@ -336,13 +414,47 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
    */
   const persistSidebarWidth = () => {
     const width = sidebarWidthRef.current;
-    const ui = { ...state.ui };
-    if (width === DEFAULT_SIDEBAR_WIDTH) delete ui.sidebarWidth;
-    else ui.sidebarWidth = width;
-    if (ui.sidebarWidth === state.ui?.sidebarWidth) return; // nothing changed
-    if (Object.keys(ui).length > 0) state.ui = ui;
+    saveUi({ sidebarWidth: width === DEFAULT_SIDEBAR_WIDTH ? undefined : width });
+  };
+
+  /** Merge UI preferences into state.json; `undefined` drops a field. No-op if nothing changed. */
+  const saveUi = (patch: Partial<UiState>) => {
+    const ui: Record<string, unknown> = { ...state.ui };
+    let changed = false;
+    for (const [key, value] of Object.entries(patch)) {
+      if (ui[key] === value) continue;
+      changed = true;
+      if (value === undefined) delete ui[key];
+      else ui[key] = value;
+    }
+    if (!changed) return;
+    if (Object.keys(ui).length > 0) state.ui = ui as UiState;
     else delete state.ui;
     void saveState(state).catch(() => {});
+  };
+
+  /** Show / hide the PR panel (`p`, ⌥p, its ✕, or the tab bar's PR button). */
+  const togglePrPanel = () => {
+    const hidden = !prPanelHiddenRef.current;
+    prPanelHiddenRef.current = hidden;
+    setPrPanelHidden(hidden);
+    saveUi({ prPanelHidden: hidden || undefined });
+  };
+
+  /** Resize the PR panel, within what's left beside the sidebar and content. */
+  const applyPrPanelWidth = (width: number) => {
+    const room = screenWidthRef.current - layoutRef.current.sidebar - MIN_CONTENT_WIDTH;
+    const next = Math.round(Math.min(Math.max(width, MIN_PR_PANEL_WIDTH), Math.max(room, MIN_PR_PANEL_WIDTH)));
+    prPanelWidthRef.current = next;
+    setPrPanelWidth(next);
+  };
+  const persistPrPanelWidth = () => {
+    const width = prPanelWidthRef.current;
+    saveUi({ prPanelWidth: width === DEFAULT_PR_PANEL_WIDTH ? undefined : width });
+  };
+  const resetPrPanelWidth = () => {
+    applyPrPanelWidth(DEFAULT_PR_PANEL_WIDTH);
+    persistPrPanelWidth();
   };
 
   const resetSidebarWidth = () => {
@@ -555,6 +667,26 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
       resetSidebarWidth();
       return;
     }
+    // PR panel: toggle, open on GitHub, refresh, scroll.
+    if (key.name === "p") {
+      togglePrPanel();
+      return;
+    }
+    if (key.name === "o") {
+      const current = currentPrRef.current;
+      if (current) openExternal(current.pr.url);
+      return;
+    }
+    if (key.name === "r") {
+      prPanelRef.current?.refresh();
+      lastForcedPrLookup.current = Date.now();
+      refreshPrs.current(true);
+      return;
+    }
+    if (key.name === "pagedown" || key.name === "pageup") {
+      prPanelRef.current?.scroll(key.name === "pagedown" ? 10 : -10);
+      return;
+    }
     if (key.name === "t") {
       cycleTheme();
       return;
@@ -631,6 +763,17 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   // Show the placeholder pane only when no mounted terminal is the visible one.
   const showMain = !mounted.some((m) => m.key === activeTermKey);
 
+  // The PR panel follows the worktree on screen: the open terminal's, or the
+  // selected row's when no terminal is showing.
+  const onScreen = mounted.find((m) => m.key === activeTermKey) ??
+    (active?.kind === "worktree" ? { repoId: active.project.id, worktree: active.worktree } : null);
+  const currentPr = onScreen?.worktree.pr
+    ? { repo: onScreen.repoId, pr: onScreen.worktree.pr }
+    : null;
+  currentPrRef.current = currentPr;
+  const layout = fitPanels(screenWidth, sidebarWidth, prPanelWidth, !prPanelHidden && !!currentPr);
+  layoutRef.current = layout;
+
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.bg}>
       <Sidebar
@@ -642,7 +785,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
         onSelectProject={selectProject}
         onCycleTheme={() => cycleTheme()}
         onHelp={() => setHelpOpen(true)}
-        width={clampSidebarWidth(sidebarWidth, screenWidth)}
+        width={layout.sidebar}
         onResize={applySidebarWidth}
         onResizeEnd={() => persistSidebarWidth()}
         onResetWidth={resetSidebarWidth}
@@ -659,11 +802,25 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
               focused={isActive && focusMode === "terminal"}
               onRequestFocus={() => setFocusMode("terminal")}
               onExit={() => setFocusMode("sidebar")}
+              prPanelShown={layout.panel > 0}
+              onTogglePrPanel={togglePrPanel}
             />
           );
         })}
         {showMain && <MainPane row={active} />}
       </box>
+      {layout.panel > 0 && currentPr && (
+        <PrPanel
+          repo={currentPr.repo}
+          pr={currentPr.pr}
+          width={layout.panel}
+          onResize={applyPrPanelWidth}
+          onResizeEnd={persistPrPanelWidth}
+          onResetWidth={resetPrPanelWidth}
+          onClose={togglePrPanel}
+          handleRef={prPanelRef}
+        />
+      )}
       {modalOpen && (
         <AddWorktreeModal
           state={state}

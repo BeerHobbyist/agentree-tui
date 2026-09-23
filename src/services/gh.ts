@@ -3,6 +3,7 @@
  */
 import type { OpenPr, PrInfo, RepoSummary } from "../data/model";
 import { run, runOrThrow } from "./proc";
+import { checkState, summarizeChecks, type RawCheck } from "./pr";
 
 /** Shape of the GitHub REST `/user/repos` items we care about. */
 interface ApiRepo {
@@ -77,10 +78,13 @@ export async function isAuthenticated(): Promise<boolean> {
 
 // Cache PR lookups per repo+branch for the session (network calls are slow).
 const prCache = new Map<string, PrInfo | null>();
+/** Bumped by clearPrCache, so a lookup started before a clear can't write stale data back. */
+let prCacheGeneration = 0;
 
 /** Drop every cached PR lookup (tests, and a future manual refresh). */
 export function clearPrCache(): void {
   prCache.clear();
+  prCacheGeneration++;
 }
 
 /** The open PR whose head is `branch`, or null. Cached; `force` refetches. */
@@ -91,6 +95,7 @@ export async function prForBranch(
 ): Promise<PrInfo | null> {
   const key = `${nameWithOwner}#${branch}`;
   if (!force && prCache.has(key)) return prCache.get(key)!;
+  const generation = prCacheGeneration;
   let result: PrInfo | null = null;
   try {
     const { code, stdout } = await run([
@@ -106,7 +111,7 @@ export async function prForBranch(
       "--limit",
       "1",
       "--json",
-      "number,title,url,isDraft",
+      "number,title,url,isDraft,statusCheckRollup",
     ]);
     if (code === 0) {
       const arr = JSON.parse(stdout) as {
@@ -114,20 +119,24 @@ export async function prForBranch(
         title: string;
         url: string;
         isDraft: boolean;
+        statusCheckRollup?: RawCheck[] | null;
       }[];
       const pr = arr[0];
-      if (pr)
+      if (pr) {
+        const checks = summarizeChecks((pr.statusCheckRollup ?? []).map(checkState));
         result = {
           number: pr.number,
           title: pr.title ?? "",
           url: pr.url ?? "",
           draft: !!pr.isDraft,
+          ...(checks ? { checks } : {}),
         };
+      }
     }
   } catch {
     result = null;
   }
-  prCache.set(key, result);
+  if (generation === prCacheGeneration) prCache.set(key, result);
   return result;
 }
 
