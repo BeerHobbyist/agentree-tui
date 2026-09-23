@@ -16,6 +16,8 @@ Working, at MVP+ level:
   uncommitted-changes count (`●3`), +/− and ahead/behind, and an open-PR badge
   `⇡#N` via `gh` coloured by CI; keyboard + mouse nav, and clicking it gives it
   the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered.
+  Worktrees can be **renamed** (`R` / right-click): a label shown instead of the
+  branch's leaf name — the branch and directory keep their names.
 - **PR panel** — on the right, for the worktree on screen when it has an open
   PR: merge status, reviews, checks, labels, description and comments; `p` / ⌥p
   toggles, `o` opens on GitHub, `r` refreshes.
@@ -122,9 +124,10 @@ the app polls those and cross-checks tmux (see **Agent status**).
 
 - **Sidebar**: `↑↓`/`j k` move · `g`/`G` first/last · `space` or `h`/`l` fold ·
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
-  `d` close (delete) worktree · `n` add project · `[`/`]` narrower/wider sidebar ·
-  `=` reset width · `p` PR panel · `o` open PR · `r` refresh PR · PgUp/PgDn
-  scroll PR panel · `t` cycle theme · `?` help · `q` or `Ctrl+C` quit.
+  `R` rename worktree (label only) · `d` close (delete) worktree · `n` add
+  project · `[`/`]` narrower/wider sidebar · `=` reset width · `p` PR panel ·
+  `o` open PR · `r` refresh PR · PgUp/PgDn scroll PR panel · `t` cycle theme ·
+  `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` (or a click on the sidebar) back to sidebar ·
   `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`) move between **split panes** · `⌥,`/`⌥.` prev/next
@@ -135,13 +138,14 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - **Mouse** (everything is clickable): focus follows the click — anywhere on the
   sidebar gives it the keyboard, inside a terminal gives that terminal the
   keyboard. Sidebar rows: worktree → select and show its terminal (keys stay in
-  the sidebar), double-click (400ms) → type in it; header → select+fold. `＋` add
-  worktree, footer theme + `?` help; **drag the sidebar's right edge** to resize
-  (double-click resets); the add-worktree modal repo/action rows; tab bar (tab,
-  `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕` close pane, `‹` back). Inside a
-  terminal tmux has `mouse on`: clicks, drags and the wheel reach the program
-  (nvim, pagers), and clicking a split pane selects it (this replaced the old
-  coordinate → `list-panes` hit-testing). Click anywhere to close help.
+  the sidebar), double-click (400ms) → type in it, right-click → rename; header →
+  select+fold. `＋` add worktree, footer theme + `?` help; **drag the sidebar's
+  right edge** to resize (double-click resets); the add-worktree modal
+  repo/action rows; tab bar (tab, `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕`
+  close pane, `‹` back). Inside a terminal tmux has `mouse on`: clicks, drags
+  and the wheel reach the program (nvim, pagers), and clicking a split pane
+  selects it (this replaced the old coordinate → `list-panes` hit-testing).
+  Click anywhere to close help.
 
 ## Theming
 
@@ -284,9 +288,11 @@ each other.
 ## Persistence
 
 - `~/.config/agentree/state.json`: `{ version, workspaceRoot, repos[] { nameWithOwner,
-  name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt } },
-  ui? { sidebarWidth?, prPanelHidden?, prPanelWidth? } }`. Volatile git status is computed at runtime, never
-  persisted. Atomic write.
+  name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt },
+  labels? { [worktreeId]: label } }, ui? { sidebarWidth?, prPanelHidden?,
+  prPanelWidth? } }`. Labels are keyed by worktree id so the main working copy
+  (never stored in `worktrees[]`) can have one too; closing a worktree drops its
+  label. Volatile git status is computed at runtime, never persisted. Atomic write.
 - `~/.config/agentree/claude-hooks.json` (the hooks agents load) and
   `~/.config/agentree/agents/` (their per-pane reports) are runtime only; stale
   reports are cleaned up against live tmux panes.
@@ -361,7 +367,7 @@ each other.
 
 ## Tests
 
-`bun test` — 253 tests, ~30s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 268 tests, ~30s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -424,6 +430,8 @@ throwaway PTY probes instead.
 
 ### 2026-09-23
 
+- Rename worktrees (`R` / right-click): a sidebar label, stored in state.json;
+  branch and directory untouched
 - #30 `f863910` Clicking the sidebar gives it the keyboard (was `Ctrl+g` only);
   a single click on a worktree shows it, a double-click types in it
 - #29 `8b8b943` Add-worktree modal no longer offers a PR that already has a

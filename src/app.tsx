@@ -17,7 +17,7 @@ import {
   queryKeys,
 } from "./queries";
 import { useTheme, cycleTheme } from "./theme";
-import type { AgentStatus, Project, Worktree } from "./data/model";
+import { displayName, type AgentStatus, type Project, type Worktree } from "./data/model";
 import { removeWorktree } from "./services/git";
 import { killSession, sessionName as tmuxSessionName } from "./services/tmux";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
@@ -26,7 +26,14 @@ import {
   type PreselectRepo,
   type Selection,
 } from "./components/AddWorktreeModal";
-import { reconcile, removeManagedWorktree, saveState, type State, type UiState } from "./store";
+import {
+  reconcile,
+  removeManagedWorktree,
+  saveState,
+  setWorktreeLabel,
+  type State,
+  type UiState,
+} from "./store";
 import {
   DEFAULT_PR_PANEL_WIDTH,
   DEFAULT_SIDEBAR_WIDTH,
@@ -42,13 +49,14 @@ import { PrPanel, type PrPanelHandle } from "./components/PrPanel";
 import { openExternal } from "./services/open";
 import type { PrInfo } from "./data/model";
 import { ConfirmModal } from "./components/ConfirmModal";
+import { RenameModal } from "./components/RenameModal";
 
 function MainPane({ row }: { row: Row | undefined }) {
   const theme = useTheme();
   const label = !row
     ? "agentree"
     : row.kind === "worktree"
-      ? row.worktree.name
+      ? displayName(row.worktree)
       : row.project.name;
   const subtitle =
     row?.kind === "worktree"
@@ -102,6 +110,10 @@ export function rowKey(row: Row): string {
 const DOUBLE_CLICK_MS = 400;
 /** At most one extra PR lookup this often (agent state changes come in bursts). */
 const PR_LOOKUP_THROTTLE_MS = 15_000;
+
+function errText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 function samePr(a: PrInfo | undefined, b: PrInfo | undefined): boolean {
   if (!a || !b) return a === b;
@@ -163,15 +175,25 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     { repoId: string; worktreeId: string }[]
   >([]);
   const [focusMode, setFocusMode] = useState<"sidebar" | "terminal">("sidebar");
-  // Pending "close worktree" confirmation (d key), and a surfaced error if it fails.
+  // Pending "close worktree" confirmation (d key).
   const [confirmClose, setConfirmClose] = useState<{
     repoId: string;
     worktreeId: string;
-    name: string;
+    /** How the prompt names it: `"label" (branch)` when it has a label, else `"name"`. */
+    what: string;
     dirty: boolean;
     missing: boolean;
   } | null>(null);
-  const [closeError, setCloseError] = useState<string | null>(null);
+  // An error to show (closing a worktree failed, say) until dismissed.
+  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
+  // The worktree being renamed (R / right-click): a label for the sidebar only.
+  const [renaming, setRenaming] = useState<{
+    repoId: string;
+    worktreeId: string;
+    label: string;
+    name: string;
+    branch: string;
+  } | null>(null);
   // Sidebar width the user chose (drag / [ ] keys), remembered in state.json.
   // What's rendered is this clamped to the current screen, so shrinking the
   // window doesn't lose the preference.
@@ -207,8 +229,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   openRef.current = open;
   const confirmCloseRef = useRef(confirmClose);
   confirmCloseRef.current = confirmClose;
-  const closeErrorRef = useRef(closeError);
-  closeErrorRef.current = closeError;
+  const noticeRef = useRef(notice);
+  noticeRef.current = notice;
+  const renamingRef = useRef(renaming);
+  renamingRef.current = renaming;
   const sidebarWidthRef = useRef(sidebarWidth);
   sidebarWidthRef.current = sidebarWidth;
   const screenWidthRef = useRef(screenWidth);
@@ -518,15 +542,18 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const requestCloseWorktree = (row: Row | undefined) => {
     if (!row || row.kind !== "worktree") return;
     if (row.worktree.id === "main") {
-      setCloseError(
-        "The main working copy can't be closed this way — remove the project instead.",
-      );
+      setNotice({
+        title: "Could not close worktree",
+        message: "The main working copy can't be closed this way — remove the project instead.",
+      });
       return;
     }
     setConfirmClose({
       repoId: row.project.id,
       worktreeId: row.worktree.id,
-      name: row.worktree.name,
+      what: row.worktree.label
+        ? `"${row.worktree.label}" (${row.worktree.branch})`
+        : `"${row.worktree.name}"`,
       dirty: row.worktree.dirty,
       missing: !!row.worktree.missing,
     });
@@ -572,8 +599,48 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       const rows = buildRows(newProjects, collapsedRef.current);
       applyActiveIndex(Math.min(activeIndexRef.current, Math.max(rows.length - 1, 0)));
     } catch (err) {
-      setCloseError(err instanceof Error ? err.message : String(err));
+      setNotice({ title: "Could not close worktree", message: errText(err) });
     }
+  };
+
+  /** Ask for a new label for a worktree (the branch and directory keep their names). */
+  const requestRename = (repoId: string, worktreeId: string) => {
+    const worktree = projectsRef.current
+      .find((p) => p.id === repoId)
+      ?.worktrees.find((w) => w.id === worktreeId);
+    if (!worktree) return;
+    setFocusMode("sidebar");
+    setRenaming({
+      repoId,
+      worktreeId,
+      label: displayName(worktree),
+      name: worktree.name,
+      branch: worktree.branch,
+    });
+  };
+
+  /** Save a worktree's label (blank clears it) and show it straight away. */
+  const saveLabel = (label: string) => {
+    const target = renamingRef.current;
+    if (!target) return;
+    renamingRef.current = null;
+    setRenaming(null);
+    void setWorktreeLabel(state, target.repoId, target.worktreeId, label)
+      .then((stored) => {
+        setProjects((prev) =>
+          prev.map((p) =>
+            p.id !== target.repoId
+              ? p
+              : {
+                  ...p,
+                  worktrees: p.worktrees.map((w) =>
+                    w.id !== target.worktreeId ? w : { ...w, label: stored },
+                  ),
+                },
+          ),
+        );
+      })
+      .catch((err) => setNotice({ title: "Could not save the label", message: errText(err) }));
   };
 
   useKeyboard((key) => {
@@ -588,8 +655,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     // The modal owns the keyboard while open; App nav stays inert.
     if (modalOpenRef.current) return;
 
-    // The close-worktree confirm/error overlays own the keyboard while open.
-    if (confirmCloseRef.current || closeErrorRef.current) return;
+    // The close-worktree confirm/error and rename overlays own the keyboard while open.
+    if (confirmCloseRef.current || noticeRef.current || renamingRef.current) return;
 
     // While a terminal is focused, TerminalView owns the keyboard (input +
     // Ctrl+g to return + Alt tab chords). App nav stays inert.
@@ -633,6 +700,11 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (key.name === "o") {
       const current = currentPrRef.current;
       if (current) openExternal(current.pr.url);
+      return;
+    }
+    if (key.name === "r" && key.shift) {
+      // R: rename (label) the selected worktree.
+      if (row?.kind === "worktree") requestRename(row.project.id, row.worktree.id);
       return;
     }
     if (key.name === "r") {
@@ -727,6 +799,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
         activeKey={activeKey}
         onAddWorktree={openAddForProject}
         onClickWorktree={clickWorktree}
+        onRenameWorktree={requestRename}
         onFocus={() => setFocusMode("sidebar")}
         onSelectProject={selectProject}
         onCycleTheme={() => cycleTheme()}
@@ -784,7 +857,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       {confirmClose && (
         <ConfirmModal
           title="Close worktree"
-          message={`Delete "${confirmClose.name}" from disk? This cannot be undone.`}
+          message={`Delete ${confirmClose.what} from disk? This cannot be undone.`}
           detail={
             confirmClose.missing
               ? "Already gone on disk — this only forgets it."
@@ -796,11 +869,20 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           onCancel={() => setConfirmClose(null)}
         />
       )}
-      {closeError && (
+      {renaming && (
+        <RenameModal
+          initial={renaming.label}
+          fallback={renaming.name}
+          branch={renaming.branch}
+          onSave={saveLabel}
+          onCancel={() => setRenaming(null)}
+        />
+      )}
+      {notice && (
         <ConfirmModal
-          title="Could not close worktree"
-          message={closeError}
-          onCancel={() => setCloseError(null)}
+          title={notice.title}
+          message={notice.message}
+          onCancel={() => setNotice(null)}
         />
       )}
     </box>

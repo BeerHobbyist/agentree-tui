@@ -1,6 +1,6 @@
 import { TextAttributes, type MouseEvent } from "@opentui/core";
 import { useTheme, type Theme } from "../theme";
-import type { Worktree } from "../data/model";
+import { displayName, type Worktree } from "../data/model";
 import { checkLook } from "./PrPanel";
 
 interface WorktreeItemProps {
@@ -58,7 +58,7 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
               wrapMode="none"
               truncate
             >
-              {" " + worktree.name}
+              {" " + displayName(worktree)}
             </text>
           </box>
 

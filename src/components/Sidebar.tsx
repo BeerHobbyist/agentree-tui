@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { TextAttributes, type BoxRenderable } from "@opentui/core";
+import { MouseButton, TextAttributes, type BoxRenderable } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { DEFAULT_SIDEBAR_WIDTH } from "../layout";
@@ -20,6 +20,8 @@ interface SidebarProps {
   onAddWorktree: (projectId: string) => void;
   /** Click a worktree row → select it and show its terminal (a double-click also focuses it). */
   onClickWorktree: (repoId: string, worktreeId: string) => void;
+  /** Right-click a worktree row → rename it (its label only). */
+  onRenameWorktree?: (repoId: string, worktreeId: string) => void;
   /** Any other click on the sidebar → the sidebar takes keyboard focus. */
   onFocus?: () => void;
   /** Click a project header → select it + toggle fold. */
@@ -51,6 +53,7 @@ function ProjectGroup({
   activeKey,
   onAddWorktree,
   onClickWorktree,
+  onRenameWorktree,
   onSelectProject,
 }: {
   project: Project;
@@ -58,6 +61,7 @@ function ProjectGroup({
   activeKey: string;
   onAddWorktree: (projectId: string) => void;
   onClickWorktree: (repoId: string, worktreeId: string) => void;
+  onRenameWorktree?: (repoId: string, worktreeId: string) => void;
   onSelectProject: (projectId: string) => void;
 }) {
   const theme = useTheme();
@@ -155,7 +159,8 @@ function ProjectGroup({
                 // Handled here: a double-click hands focus to the terminal,
                 // which the sidebar's own click-to-focus mustn't undo.
                 e.stopPropagation();
-                onClickWorktree(project.id, wt.id);
+                if (e.button === MouseButton.RIGHT) onRenameWorktree?.(project.id, wt.id);
+                else onClickWorktree(project.id, wt.id);
               }}
             />
           ))}
@@ -171,6 +176,7 @@ export function Sidebar({
   activeKey,
   onAddWorktree,
   onClickWorktree,
+  onRenameWorktree,
   onSelectProject,
   onCycleTheme,
   onHelp,
@@ -217,6 +223,7 @@ export function Sidebar({
                 activeKey={activeKey}
                 onAddWorktree={onAddWorktree}
                 onClickWorktree={onClickWorktree}
+                onRenameWorktree={onRenameWorktree}
                 onSelectProject={onSelectProject}
               />
             ))
@@ -253,7 +260,7 @@ export function Sidebar({
             </text>
           </box>
           <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-            {"↑↓ move  ⏎ terminal  a +wt  d close  n new  p PR  t theme  ? help  q quit"}
+            {"↑↓ move  ⏎ terminal  a +wt  R rename  d close  n new  p PR  t theme  ? help  q quit"}
           </text>
         </box>
       </box>

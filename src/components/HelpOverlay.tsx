@@ -17,6 +17,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["␣  /  h  l", "fold / unfold project"],
       ["⏎", "open worktree terminal · fold project"],
       ["a", "add worktree to selected project"],
+      ["R", "rename worktree (its label here only)"],
       ["d", "close worktree (deletes it from disk)"],
       ["n", "add a project (pick a GitHub repo)"],
       ["t", "cycle theme"],
@@ -62,6 +63,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
     rows: [
       ["click worktree", "show its terminal (keys stay here)"],
       ["double-click worktree", "…and type in it"],
+      ["right-click worktree", "rename it (label only)"],
       ["click the sidebar", "keys go to the sidebar"],
       ["click project header", "select + fold"],
       ["click ＋", "add worktree"],

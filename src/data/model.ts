@@ -93,8 +93,10 @@ export interface OpenPr extends PrInfo {
 
 export interface Worktree {
   id: string;
-  /** Short label shown in the list, usually the branch's leaf name. */
+  /** Short name shown in the list, usually the branch's leaf name. */
   name: string;
+  /** Your own label for it, shown instead of `name` (the branch and directory keep theirs). */
+  label?: string;
   /** Full git branch. */
   branch: string;
   /** Working-tree path on disk. */
@@ -115,6 +117,11 @@ export interface Worktree {
   missing?: boolean;
   /** Open PR for this branch, if any (filled by a background lookup). */
   pr?: PrInfo;
+}
+
+/** What the UI calls a worktree: your label if you gave it one, else its name. */
+export function displayName(w: Pick<Worktree, "name" | "label">): string {
+  return w.label ?? w.name;
 }
 
 export interface Project {

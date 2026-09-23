@@ -30,6 +30,12 @@ export interface StoredRepo {
   root: string;
   defaultBranch?: string;
   worktrees: StoredWorktree[];
+  /**
+   * Your own names for worktrees, shown in the sidebar instead of the branch's
+   * leaf name, by worktree id ("main" included). Display only: the branch and
+   * the worktree on disk keep their names.
+   */
+  labels?: Record<string, string>;
 }
 
 /** App preferences that aren't about repos, e.g. layout. */
@@ -142,7 +148,52 @@ export async function removeManagedWorktree(
   const repo = findRepo(state, nameWithOwner);
   if (!repo) return;
   repo.worktrees = repo.worktrees.filter((w) => w.id !== worktreeId);
+  dropLabel(repo, worktreeId); // a new worktree reusing the id starts unlabelled
   await saveState(state);
+}
+
+/** Longest label kept; the sidebar truncates long ones anyway. */
+export const MAX_LABEL_LENGTH = 48;
+
+/**
+ * Give a worktree a display label, or clear it (`undefined` / blank) to show
+ * the branch name again. Persists. Returns the label as stored.
+ */
+export async function setWorktreeLabel(
+  state: State,
+  nameWithOwner: string,
+  worktreeId: string,
+  label: string | undefined,
+): Promise<string | undefined> {
+  const repo = findRepo(state, nameWithOwner);
+  if (!repo) return undefined;
+  const clean = normalizeLabel(label);
+  if (clean) repo.labels = { ...repo.labels, [worktreeId]: clean };
+  else dropLabel(repo, worktreeId);
+  await saveState(state);
+  return clean;
+}
+
+/** Collapse whitespace, trim and cap a label; blank → undefined. */
+export function normalizeLabel(label: string | undefined): string | undefined {
+  const clean = Array.from((label ?? "").replace(/\s+/g, " ").trim())
+    .slice(0, MAX_LABEL_LENGTH)
+    .join("")
+    .trim();
+  return clean || undefined;
+}
+
+function dropLabel(repo: StoredRepo, worktreeId: string) {
+  if (!repo.labels || !(worktreeId in repo.labels)) return;
+  const { [worktreeId]: _, ...rest } = repo.labels;
+  if (Object.keys(rest).length > 0) repo.labels = rest;
+  else delete repo.labels;
+}
+
+/** A repo's label for a worktree, if it has a well-formed one. */
+function labelFor(repo: StoredRepo, worktreeId: string): string | undefined {
+  const label = repo.labels?.[worktreeId];
+  return typeof label === "string" ? normalizeLabel(label) : undefined;
 }
 
 function toUiWorktree(
@@ -176,11 +227,15 @@ export async function reconcile(state: State): Promise<Project[]> {
 
   for (const repo of state.repos) {
     const worktrees: Worktree[] = [];
+    const label = (id: string) => {
+      const l = labelFor(repo, id);
+      return l ? { label: l } : {};
+    };
 
     if (!existsSync(repo.root)) {
       // Clone dir gone — surface everything as missing.
       for (const w of repo.worktrees) {
-        worktrees.push(toUiWorktree(w, { missing: true }));
+        worktrees.push(toUiWorktree(w, { missing: true, ...label(w.id) }));
       }
       projects.push({ id: repo.nameWithOwner, name: repo.name, root: repo.root, worktrees });
       continue;
@@ -208,7 +263,7 @@ export async function reconcile(state: State): Promise<Project[]> {
           name: main.branch ? branchLeaf(main.branch) : "main",
           branch: main.branch ?? "(detached)",
           path: repo.root,
-        }),
+        }, label("main")),
       );
     }
 
@@ -220,9 +275,9 @@ export async function reconcile(state: State): Promise<Project[]> {
       const key = resolve(w.path);
       if (byPath.has(key)) matchedPaths.add(key);
       if (byPath.has(key) && existsSync(w.path)) {
-        worktrees.push(toUiWorktree(w));
+        worktrees.push(toUiWorktree(w, label(w.id)));
       } else {
-        worktrees.push(toUiWorktree(w, { missing: true }));
+        worktrees.push(toUiWorktree(w, { missing: true, ...label(w.id) }));
       }
     }
 
