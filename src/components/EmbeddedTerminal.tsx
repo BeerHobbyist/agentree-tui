@@ -2,9 +2,8 @@
  * Registers OpenTUI's EmbeddedTerminalRenderable as the `<embedded-terminal>`
  * JSX element. Importing this module for its side effect runs `extend()`.
  *
- * We register a thin subclass (`DedupedEmbeddedTerminal`) that stops the host
- * terminal's cursor from strobing while a busy child (e.g. Claude Code) streams
- * output. See the class comment for the why.
+ * We register a subclass (`StableCursorEmbeddedTerminal`) that fixes the host
+ * cursor "flashing"/"erratic" behavior seen while a child program redraws.
  */
 import {
   EmbeddedTerminalRenderable,
@@ -14,29 +13,50 @@ import {
 } from "@opentui/core";
 import { extend, type ExtendedComponentProps } from "@opentui/react";
 
-/** `AGENTREE_CURSOR_DEDUPE=off` restores the stock (flashing) behavior for A/B. */
-const DEDUPE_ON = (process.env.AGENTREE_CURSOR_DEDUPE ?? "on") !== "off";
+/** `AGENTREE_CURSOR_SMOOTH=off` restores the stock (flashing) behavior for A/B. */
+const SMOOTH_ON = (process.env.AGENTREE_CURSOR_SMOOTH ?? "on") !== "off";
+/** How long output must be quiet before we trust the child's cursor position. */
+const SETTLE_MS = 20;
 
 /**
- * When focused, the base `renderSelf` mirrors the child's cursor to the *host*
- * terminal on every composed frame — it calls `setCursorPosition` /
- * `setCursorStyle` unconditionally, and a frame is composed on every PTY chunk.
- * A busy child (spinner) produces dozens of chunks/sec, so the host cursor is
- * repositioned and its blink style re-asserted dozens of times/sec, which reads
- * as rapid flashing (re-sending the blink style also keeps resetting the
- * terminal's blink phase).
+ * The base `renderSelf` mirrors the child's cursor onto the *host* terminal's
+ * hardware cursor on every composed frame, and a frame is composed on every PTY
+ * chunk. While a full-screen program redraws (nvim moving between lines parks the
+ * cursor at column 0 mid-redraw; Claude's spinner streams constantly), frames
+ * catch those transient positions — so the host cursor flashes to the start of
+ * the line and jitters around, or strobes.
  *
- * This override intercepts those three cursor calls for the duration of the
- * base render and drops any that repeat the previous frame's value, so the host
- * cursor is only touched when it actually moves / changes visibility / restyles.
- * It's the same dedupe OpenTUI already applies in its *main* renderer (upstream
- * PRs #287, #794) — just not in EmbeddedTerminal. Compose and everything else
- * still run via `super`, so only redundant cursor escapes are suppressed.
+ * Fix: while output is actively streaming, don't chase the cursor at all — leave
+ * the host cursor where it last settled. When output goes quiet (SETTLE_MS with
+ * no writes) assert the now-final cursor once. When it does update, dedupe so an
+ * unchanged cursor is never re-emitted (re-sending the blink style also resets
+ * the terminal's blink phase, which reads as a strobe).
+ *
+ * Compose and everything else still run via `super.renderSelf`; we only gate the
+ * three cursor calls it makes, by temporarily swapping them on the render context
+ * for the duration of the call.
  */
-class DedupedEmbeddedTerminal extends EmbeddedTerminalRenderable {
+class StableCursorEmbeddedTerminal extends EmbeddedTerminalRenderable {
+  private outputActive = false;
+  private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private lastPos = "";
   private lastStyle = "";
   private lastColor = "";
+
+  override write(data: string | Uint8Array): void {
+    // Mark output active and (re)arm the settle timer; a burst keeps pushing it
+    // out, so we only re-assert the cursor once the child stops writing.
+    if (SMOOTH_ON) {
+      this.outputActive = true;
+      if (this.settleTimer) clearTimeout(this.settleTimer);
+      this.settleTimer = setTimeout(() => {
+        this.outputActive = false;
+        this.settleTimer = null;
+        this.requestRender(); // one frame to assert the settled cursor
+      }, SETTLE_MS);
+    }
+    super.write(data);
+  }
 
   private resetCursorCache(): void {
     this.lastPos = "";
@@ -44,8 +64,8 @@ class DedupedEmbeddedTerminal extends EmbeddedTerminalRenderable {
     this.lastColor = "";
   }
 
-  // Focus changes re-assert the cursor outside renderSelf (blur hides it), so
-  // invalidate the cache to force the next frame to re-emit the real state.
+  // Focus transitions re-assert/hide the cursor outside renderSelf, so drop the
+  // cache to force the next frame to re-emit the real state.
   override focus(): void {
     this.resetCursorCache();
     super.focus();
@@ -56,7 +76,7 @@ class DedupedEmbeddedTerminal extends EmbeddedTerminalRenderable {
   }
 
   protected override renderSelf(buffer: OptimizedBuffer): void {
-    if (!DEDUPE_ON || !this.focused) {
+    if (!SMOOTH_ON || !this.focused) {
       super.renderSelf(buffer);
       return;
     }
@@ -65,24 +85,34 @@ class DedupedEmbeddedTerminal extends EmbeddedTerminalRenderable {
     const origStyle = ctx.setCursorStyle;
     const origColor = ctx.setCursorColor;
 
-    ctx.setCursorPosition = (x: number, y: number, visible: boolean) => {
-      const k = `${x},${y},${visible}`;
-      if (k === this.lastPos) return;
-      this.lastPos = k;
-      origPos.call(ctx, x, y, visible);
-    };
-    ctx.setCursorStyle = (o: CursorStyleOptions) => {
-      const k = `${o?.style ?? ""}|${o?.blinking ?? ""}`;
-      if (k === this.lastStyle) return;
-      this.lastStyle = k;
-      origStyle.call(ctx, o);
-    };
-    ctx.setCursorColor = (c: RGBA) => {
-      const k = String((c as { buffer?: ArrayLike<number> })?.buffer ?? c);
-      if (k === this.lastColor) return;
-      this.lastColor = k;
-      origColor.call(ctx, c);
-    };
+    if (this.outputActive) {
+      // Mid-redraw: freeze the host cursor entirely — don't chase transient
+      // positions. It'll be asserted when output settles.
+      const noop = () => {};
+      ctx.setCursorPosition = noop;
+      ctx.setCursorStyle = noop;
+      ctx.setCursorColor = noop;
+    } else {
+      // Settled: assert, but skip anything identical to the last emission.
+      ctx.setCursorPosition = (x: number, y: number, visible: boolean) => {
+        const k = `${x},${y},${visible}`;
+        if (k === this.lastPos) return;
+        this.lastPos = k;
+        origPos.call(ctx, x, y, visible);
+      };
+      ctx.setCursorStyle = (o: CursorStyleOptions) => {
+        const k = `${o?.style ?? ""}|${o?.blinking ?? ""}`;
+        if (k === this.lastStyle) return;
+        this.lastStyle = k;
+        origStyle.call(ctx, o);
+      };
+      ctx.setCursorColor = (c: RGBA) => {
+        const k = String((c as { buffer?: ArrayLike<number> })?.buffer ?? c);
+        if (k === this.lastColor) return;
+        this.lastColor = k;
+        origColor.call(ctx, c);
+      };
+    }
 
     try {
       super.renderSelf(buffer);
@@ -92,9 +122,17 @@ class DedupedEmbeddedTerminal extends EmbeddedTerminalRenderable {
       ctx.setCursorColor = origColor;
     }
   }
+
+  protected override destroySelf(): void {
+    if (this.settleTimer) {
+      clearTimeout(this.settleTimer);
+      this.settleTimer = null;
+    }
+    super.destroySelf();
+  }
 }
 
-extend({ "embedded-terminal": DedupedEmbeddedTerminal });
+extend({ "embedded-terminal": StableCursorEmbeddedTerminal });
 
 declare module "@opentui/react" {
   interface OpenTUIComponents {
@@ -106,4 +144,4 @@ export type EmbeddedTerminalProps = ExtendedComponentProps<
   typeof EmbeddedTerminalRenderable
 >;
 
-export { EmbeddedTerminalRenderable, DedupedEmbeddedTerminal };
+export { EmbeddedTerminalRenderable, StableCursorEmbeddedTerminal };

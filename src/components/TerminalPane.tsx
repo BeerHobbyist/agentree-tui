@@ -443,9 +443,13 @@ function TerminalView({
       />
       {/* No fixed cols/rows: the constructor would pin the layout width to
           `cols`. Let it fill the pane; onResize drives sizing. */}
+      {/* selectable=false: don't let OpenTUI draw its own cell-selection overlay
+          over the terminal — dragging should reach the program inside (nvim does
+          its own visual selection), not paint the emulator grid. */}
       <embedded-terminal
         ref={ref}
         maxScrollback={5000}
+        selectable={false}
         onData={onData}
         onTerminalResize={onTerminalResize}
         onMouse={handleMouse}
