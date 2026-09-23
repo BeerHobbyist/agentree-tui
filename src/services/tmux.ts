@@ -264,6 +264,23 @@ export async function newWindowCmd(
   await run(tx("new-window", "-t", session, "-c", cwd, "-n", name, command));
 }
 
+/** Longest tab name accepted from the rename prompt. */
+export const MAX_TAB_NAME_LENGTH = 32;
+
+/**
+ * Name a window (tab). tmux then stops renaming it after the program running
+ * in it (it turns the window's `automatic-rename` off).
+ */
+export async function renameWindow(session: string, index: number, name: string): Promise<void> {
+  // `--`: a name starting with "-" is a name, not a flag.
+  await run(tx("rename-window", "-t", `${session}:${index}`, "--", name));
+}
+
+/** Give a window's name back to tmux: it follows the running program again. */
+export async function autoNameWindow(session: string, index: number): Promise<void> {
+  await run(tx("set-window-option", "-t", `${session}:${index}`, "automatic-rename", "on"));
+}
+
 export async function selectWindow(
   session: string,
   index: number,

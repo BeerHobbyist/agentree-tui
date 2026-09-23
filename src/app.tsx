@@ -29,6 +29,7 @@ import {
 import {
   reconcile,
   removeManagedWorktree,
+  MAX_LABEL_LENGTH,
   saveState,
   setWorktreeLabel,
   type State,
@@ -625,7 +626,9 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (!target) return;
     renamingRef.current = null;
     setRenaming(null);
-    void setWorktreeLabel(state, target.repoId, target.worktreeId, label)
+    // Saving it as the branch's own name just clears the label.
+    const next = label === target.name ? undefined : label;
+    void setWorktreeLabel(state, target.repoId, target.worktreeId, next)
       .then((stored) => {
         setProjects((prev) =>
           prev.map((p) =>
@@ -872,8 +875,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       {renaming && (
         <RenameModal
           initial={renaming.label}
-          fallback={renaming.name}
-          branch={renaming.branch}
+          heading={`Label for ${renaming.branch}`}
+          placeholder={renaming.name}
+          note="Only the label changes — the branch and folder keep their names. Empty goes back to the branch name."
+          maxLength={MAX_LABEL_LENGTH}
           onSave={saveLabel}
           onCancel={() => setRenaming(null)}
         />

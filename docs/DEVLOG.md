@@ -34,6 +34,8 @@ Working, at MVP+ level:
   terminal's own blinking cursor.
 - **Tabs + pane splitting** — tmux windows (tabs) and panes (splits) composited
   inside the one embedded terminal; app-styled tab/tool bar; keyboard + mouse.
+  Tabs can be **renamed** (`⌥r` / right-click; empty = tmux names it after its
+  program again).
 - **Ctrl+C reaches the shell**; app quit via `q` / Ctrl+C while the sidebar is focused.
 
 ## Architecture
@@ -131,18 +133,18 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` (or a click on the sidebar) back to sidebar ·
   `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`) move between **split panes** · `⌥,`/`⌥.` prev/next
-  **tab** · `⌥1`–`9` jump tab · `⌥t` new tab · `⌥a` open agent (new tab) · `⌥d`
-  open diff (hunk) · `⌥p` PR panel · `⌥w` close pane · `⌥W` close tab · `⌥\`
-  split horizontal · `⌥-` split vertical · `Ctrl+C` → shell · tmux-native
-  `Ctrl+b …` works.
+  **tab** · `⌥1`–`9` jump tab · `⌥t` new tab · `⌥r` rename tab · `⌥a` open
+  agent (new tab) · `⌥d` open diff (hunk) · `⌥p` PR panel · `⌥w` close pane ·
+  `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical · `Ctrl+C` →
+  shell · tmux-native `Ctrl+b …` works.
 - **Mouse** (everything is clickable): focus follows the click — anywhere on the
   sidebar gives it the keyboard, inside a terminal gives that terminal the
   keyboard. Sidebar rows: worktree → select and show its terminal (keys stay in
   the sidebar), double-click (400ms) → type in it, right-click → rename; header →
   select+fold. `＋` add worktree, footer theme + `?` help; **drag the sidebar's
   right edge** to resize (double-click resets); the add-worktree modal
-  repo/action rows; tab bar (tab, `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕`
-  close pane, `‹` back). Inside a terminal tmux has `mouse on`: clicks, drags
+  repo/action rows; tab bar (tab, right-click → rename, `×` close tab, `＋`
+  menu, `⬌`/`⬍` split, `✕` close pane, `‹` back). Inside a terminal tmux has `mouse on`: clicks, drags
   and the wheel reach the program (nvim, pagers), and clicking a split pane
   selects it (this replaced the old coordinate → `list-panes` hit-testing).
   Click anywhere to close help.
@@ -356,6 +358,13 @@ each other.
 - **Mouse-down bubbles to every ancestor**: the sidebar root's `onMouseDown`
   (click → sidebar focus) sees each row's mouse-down too, so a row that hands
   focus elsewhere (double-click → terminal) must `stopPropagation()`.
+- **OpenTUI's `truncate` misdraws in a flex-shrunk box**: at narrow widths it
+  can overdraw its neighbour or leave short text blank. Where the width isn't
+  known up front (tab names), cut the text in JS instead (`tabLabel`, 20 chars).
+- **A prompt over a focused terminal must consume its keys**: global
+  `useKeyboard` handlers run before the focused emulator, so `RenameModal`
+  calls `preventDefault()` + `stopPropagation()` on every key and paste —
+  otherwise what you type also reaches the shell underneath.
 - **Unmounting a terminal kills its tmux client** (the session lives on in the
   server): closing the PTY alone let a client that was still starting go on and
   start a server nobody was attached to.
@@ -367,7 +376,7 @@ each other.
 
 ## Tests
 
-`bun test` — 268 tests, ~30s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 274 tests, ~40s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -396,21 +405,23 @@ help, a focused terminal swallows it.
 The sandbox also runs an inert agent command (`AGENTREE_AGENT_CMD=sh`) — tests
 that open a terminal used to start the real `claude` — and its cleanup stops the
 test's own tmux server and removes the socket file tmux leaves behind.
-Terminal-focused keyboard chords still can't be driven (once the emulator is
-focused, mock keys go straight into it), so terminal behaviour is checked with
-throwaway PTY probes instead.
+Terminal-focused chords *can* be driven: mock keys reach the app's global key
+handlers before the focused emulator, as real input does (checked with Ctrl+g
+and ⌥r; this file used to say otherwise). The tab-rename tests do it, and read
+tmux's own `list-windows` for the result.
 
 ## Deferred / follow-ups
 
-- Test coverage for the terminal pane (tmux tabs/panes, diff picker) — needs a
-  way to drive keys past a focused emulator.
+- Test coverage for the rest of the terminal pane (panes, the ＋ menu, the diff
+  picker) — its keys can be driven now (see **Tests**).
 - Restore/list live sessions on startup; layout-restore JSON (reboot survival).
 - Agent status: a `claude` typed by hand in a shell pane doesn't load the hooks,
   and "needs action" lags a permission prompt by Claude's ~6s notification delay.
 - Upstream: OpenTUI's `EmbeddedTerminal` re-mirrors the cursor every frame (its
   main renderer already dedupes — anomalyco/opentui #287, #794). Not filed yet;
   our subclass works around it.
-- Tab rename UI (tmux `Ctrl+b ,` works); drag-to-reorder tabs.
+- Drag-to-reorder tabs; the tab bar doesn't scroll, so with many long-named
+  tabs the ones on the right (maybe the current one) are out of view.
 - Persistence layer stays on tmux (only JS lib with true persistence needs Node;
   `dtach` is a lighter binary alternative if ever wanted).
 
@@ -430,8 +441,10 @@ throwaway PTY probes instead.
 
 ### 2026-09-23
 
-- Rename worktrees (`R` / right-click): a sidebar label, stored in state.json;
-  branch and directory untouched
+- Rename terminal tabs (`⌥r` / right-click): tmux `rename-window`; empty turns
+  `automatic-rename` back on
+- #31 `653706d` Rename worktrees (`R` / right-click): a sidebar label, stored
+  in state.json; branch and directory untouched
 - #30 `f863910` Clicking the sidebar gives it the keyboard (was `Ctrl+g` only);
   a single click on a worktree shows it, a double-click types in it
 - #29 `8b8b943` Add-worktree modal no longer offers a PR that already has a

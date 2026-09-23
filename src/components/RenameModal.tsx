@@ -2,26 +2,40 @@ import { useRef, useState } from "react";
 import { TextAttributes, type ParsedKey } from "@opentui/core";
 import { useKeyboard, usePaste } from "@opentui/react";
 import { useTheme } from "../theme";
-import { MAX_LABEL_LENGTH } from "../store";
 
 interface RenameModalProps {
-  /** The label it has now (prefilled), or its name when it has none. */
+  /** What it's called now (prefilled). */
   initial: string;
-  /** What it's called without a label — the branch's leaf name. */
-  fallback: string;
-  /** The full branch, shown for reference. */
-  branch: string;
-  /** Save this label; blank (or the fallback) clears it. */
-  onSave: (label: string) => void;
+  /** The line above the input, e.g. "Label for feature/x". */
+  heading: string;
+  /** Shown dimmed in an empty input: what saving it empty gives you. */
+  placeholder: string;
+  /** A sentence under the input about what renaming does and doesn't touch. */
+  note: string;
+  /** Longest name accepted (in characters). */
+  maxLength: number;
+  /** Save this name, trimmed; the caller decides what empty means. */
+  onSave: (name: string) => void;
   onCancel: () => void;
 }
 
 /**
- * Give a worktree a label for the sidebar. Only the label changes: the branch
- * and the worktree's directory keep their names. ⏎ saves, esc / click outside
- * cancels, Ctrl+U clears the line; pasting works.
+ * A one-line rename prompt (worktree labels, terminal tabs). ⏎ saves, esc /
+ * click outside cancels, Ctrl+U clears the line; pasting works.
+ *
+ * It owns the keyboard while open: every key and paste is consumed, so none
+ * leaks to a focused terminal underneath (global key handlers run before the
+ * focused renderable).
  */
-export function RenameModal({ initial, fallback, branch, onSave, onCancel }: RenameModalProps) {
+export function RenameModal({
+  initial,
+  heading,
+  placeholder,
+  note,
+  maxLength,
+  onSave,
+  onCancel,
+}: RenameModalProps) {
   const theme = useTheme();
   const [value, setValue] = useState(initial);
   // Keys can arrive faster than React re-renders (a paste, key repeat).
@@ -31,13 +45,14 @@ export function RenameModal({ initial, fallback, branch, onSave, onCancel }: Ren
     setValue(next);
   };
   const append = (text: string) =>
-    apply(Array.from(valueRef.current + text).slice(0, MAX_LABEL_LENGTH).join(""));
+    apply(Array.from(valueRef.current + text).slice(0, maxLength).join(""));
 
   useKeyboard((key) => {
+    key.preventDefault();
+    key.stopPropagation();
     const current = valueRef.current;
     if (key.name === "return") {
-      const label = current.trim();
-      onSave(label === fallback ? "" : label);
+      onSave(current.trim());
     } else if (key.name === "escape") {
       onCancel();
     } else if (key.name === "backspace") {
@@ -53,6 +68,8 @@ export function RenameModal({ initial, fallback, branch, onSave, onCancel }: Ren
   // A bracketed paste arrives as one event, not as keys. Line breaks and tabs
   // become spaces; other control characters are dropped.
   usePaste((event) => {
+    event.preventDefault();
+    event.stopPropagation();
     const text = new TextDecoder()
       .decode(event.bytes)
       .replace(/[\r\n\t]+/g, " ")
@@ -89,7 +106,7 @@ export function RenameModal({ initial, fallback, branch, onSave, onCancel }: Ren
         onMouseDown={(e) => e.stopPropagation()}
       >
         <text fg={theme.fgMuted} wrapMode="none" truncate>
-          {`Label for ${branch}`}
+          {heading}
         </text>
         <box flexDirection="row" alignItems="center" marginTop={1}>
           <text fg={theme.accent} flexShrink={0}>
@@ -101,7 +118,7 @@ export function RenameModal({ initial, fallback, branch, onSave, onCancel }: Ren
             </text>
           ) : (
             <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={1} wrapMode="none" truncate>
-              {fallback}
+              {placeholder}
             </text>
           )}
           <text fg={theme.accent} flexShrink={0}>
@@ -109,7 +126,7 @@ export function RenameModal({ initial, fallback, branch, onSave, onCancel }: Ren
           </text>
         </box>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
-          {"Only the label changes — the branch and folder keep their names. Empty goes back to the branch name."}
+          {note}
         </text>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
           {"⏎ save · esc cancel · ^u clear"}
