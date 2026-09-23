@@ -51,6 +51,18 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 (The brief's "tmux as compositor / no VT engine" idea was dropped once we chose
 `EmbeddedTerminal`.)
 
+**Data layer: TanStack Query.** Everything the app reads — PR details and
+badges, git status, agent status, the modal's repo list and open PRs, tmux
+windows, whether tmux/hunk are installed — is a query defined in
+`src/queries.ts` (key, fetcher, stale time, poll interval), cached in one
+`QueryClient` per app (`src/queryClient.ts`: fresh 30s, dropped 10 min after
+nothing shows it, one retry). Coming back to something already loaded shows it
+at once; stale data refreshes in the background; a failed refresh keeps the last
+good answer. Events invalidate keys instead of kicking loops (an agent changing
+state → git status + PR lookups; a PR badge changing → that PR's details; a tmux
+action → that session's windows). Imperative actions (clone, create worktree,
+kill session) stay plain calls.
+
 Agent status runs beside this: agents agentree starts load Claude Code hooks
 (`--settings`) that write one-line reports under `~/.config/agentree/agents/`;
 the app polls those and cross-checks tmux (see **Agent status**).
@@ -80,6 +92,9 @@ the app polls those and cross-checks tmux (see **Agent status**).
   (list/new/select/next/prev/split/killPane), `listPaneActivity`, `sessionName`.
 - `src/services/agents.ts` — agent status: the Claude hooks settings file,
   `agentLaunchCommand`, reading and correcting per-pane reports (`readAgentStatuses`).
+- `src/queries.ts` — every query (keys, fetchers, timings); `src/queryClient.ts`
+  — the cache and its defaults.
+- `src/services/limit.ts` — `createLimiter(n)`: at most 4 `gh`/`git` processes at once.
 - `src/services/pr.ts` — PR details for the panel (`fetchPrDetails`: `gh pr view
   --json` + the REST inline-comments endpoint) and pure normalizers
   (`checkState`, `summarizeChecks`, `mergeStatus`, `relativeTime`, …).
@@ -233,15 +248,18 @@ ready, conflicts, behind, blocked and why, draft, merged/closed), **Reviews**
 (decision, each reviewer's latest verdict, pending requests), **Checks**
 (counts; each check failing-first, click to open its log), **Labels**,
 **Description**, **Comments** (conversation, review summaries and inline code
-comments with `file:line`, newest first; click to open). It re-fetches every
-30s and on `r`; the sections scroll (wheel, PgUp/PgDn). Toggle with `p` / ⌥p /
+comments with `file:line`, newest first; click to open). Details are cached per PR
+(TanStack Query): switching back to a PR seen in the last 30s fetches nothing;
+after that the cached copy shows at once while it refreshes. It re-fetches every
+30s while on screen and on `r`; the sections scroll (wheel, PgUp/PgDn). Toggle with `p` / ⌥p /
 its ✕ / the tab bar's `⇡#N` button; drag its left edge to resize. Both are
 remembered (`ui.prPanelHidden`, `ui.prPanelWidth`). `fitPanels` narrows the
 sidebar to make room and hides the panel on a screen too narrow for it.
 
-The sidebar's PR lookup (`prForBranch`) now also asks for `statusCheckRollup`
-to colour the `⇡#N` badge, and is re-run every 60s, when an agent changes state
-(throttled), and on `r` — it used to run once and be cached for the session.
+The sidebar's PR lookup (`prForBranch`) also asks for `statusCheckRollup` to
+colour the `⇡#N` badge, and is re-run every 60s, when an agent changes state
+(throttled), and on `r`. A failed lookup throws (it used to answer "no PR"), so
+the cache keeps the last good badge through a network hiccup.
 
 ## Help
 
@@ -302,10 +320,11 @@ each other.
   terminfo's `Se` resets the cursor to a steady block; `#{window_activity}`
   updates on every output (1s resolution); `new-session -e` env reaches later
   windows too.
-- **Module caches vs in-flight work**: `clearPrCache()` bumps a generation so a
-  lookup started before the clear can't write stale data back, and the app's
-  background loops check an `alive` ref so a disposed app stops issuing `gh`
-  calls. (Both surfaced as cross-test leaks.)
+- **TanStack Query under Bun**: with no `window` it assumes a *server* — refetch
+  timers off, `gcTime` Infinity, no retries. `environmentManager.setIsServer(()
+  => false)` (in `src/queryClient.ts`) is the documented fix for such runtimes.
+  One `QueryClient` per `App` instance (tests inject their own via `renderApp({
+  queryClient })`) — module-level caches used to leak between tests.
 - **Unmounting a terminal kills its tmux client** (the session lives on in the
   server): closing the PTY alone let a client that was still starting go on and
   start a server nobody was attached to.
@@ -377,7 +396,8 @@ throwaway PTY probes instead.
 
 ### 2026-09-23
 
-- PR panel (right side: merge, reviews, checks, comments; `p` `o` `r`, ⌥p)
+- TanStack Query for all data fetching (PR details cached across worktree switches)
+- #27 PR panel (right side: merge, reviews, checks, comments; `p` `o` `r`, ⌥p)
 - #26 `7ef52b9` Live agent status (Claude Code hooks + tmux) and an accurate,
   live changed-files count; help overlay scrolls; test sandbox hardening
 - #25 `e214420` Resizable sidebar (drag the divider, `[` `]` `=`, remembered)

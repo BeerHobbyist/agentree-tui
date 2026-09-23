@@ -1,7 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { TextAttributes, type ParsedKey } from "@opentui/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { openPrsQuery, reposQuery } from "../queries";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { OpenPr, Project, RepoSummary } from "../data/model";
@@ -11,13 +13,7 @@ import {
   sanitizeBranchForPath,
   worktreePath,
 } from "../config";
-import {
-  clone,
-  fetchRepoPage,
-  getCachedRepos,
-  listOpenPrs,
-  setRepoCache,
-} from "../services/gh";
+import { clone } from "../services/gh";
 import {
   addWorktree,
   fetchPrBranch,
@@ -84,20 +80,58 @@ export function AddWorktreeModal({
   onApplied,
 }: AddWorktreeModalProps) {
   const theme = useTheme();
-  const [phase, setPhase] = useState<Phase>(
-    preselect ? "actions" : "repoLoading",
+  const queryClient = useQueryClient();
+  // Straight to the list when the repos are already cached (no loading flash).
+  const [phase, setPhase] = useState<Phase>(() =>
+    preselect
+      ? "actions"
+      : queryClient.getQueryData(reposQuery().queryKey)
+        ? "repoList"
+        : "repoLoading",
   );
-  const [repos, setRepos] = useState<RepoSummary[]>([]);
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
   const [repo, setRepo] = useState<RepoSummary | null>(null);
   const [root, setRoot] = useState<string>("");
   const [existing, setExisting] = useState<ExistingWorktree[]>([]);
-  const [prs, setPrs] = useState<OpenPr[]>([]);
+
   const [pendingPr, setPendingPr] = useState<OpenPr | null>(null);
   const [branch, setBranch] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  const [loadingMore, setLoadingMore] = useState(false);
+
+  // Every repo `gh` can see: page 1 on screen as soon as it arrives, the rest
+  // fetched in the background. Cached (src/queries.ts), so reopening the modal
+  // is instant and a stale list refreshes behind the one on screen.
+  const reposQ = useInfiniteQuery({ ...reposQuery(), enabled: !preselect });
+  const repos = useMemo(
+    () => reposQ.data?.pages.flatMap((p) => p.repos) ?? [],
+    [reposQ.data],
+  );
+  useEffect(() => {
+    if (reposQ.hasNextPage && !reposQ.isFetchingNextPage && !reposQ.isFetchNextPageError) {
+      void reposQ.fetchNextPage();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reposQ.hasNextPage, reposQ.isFetchingNextPage, reposQ.isFetchNextPageError]);
+  const loadingMore =
+    reposQ.isFetchingNextPage || (reposQ.hasNextPage && !reposQ.isFetchNextPageError);
+  // Leave the loading screen once page 1 (or an error) is in.
+  useEffect(() => {
+    if (phase !== "repoLoading") return;
+    if (reposQ.data) {
+      setIndex(0);
+      setQuery("");
+      setPhase("repoList");
+    } else if (reposQ.isError) {
+      setErrorMsg(errText(reposQ.error));
+      setPhase("repoError");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, reposQ.data, reposQ.isError]);
+
+  // The chosen repo's open PRs — an extra option, so best-effort.
+  const prsQ = useQuery({ ...openPrsQuery(repo?.nameWithOwner ?? ""), enabled: !!repo });
+  const prs: OpenPr[] = prsQ.data ?? [];
 
   const mounted = useRef(true);
   useEffect(() => {
@@ -154,54 +188,6 @@ export function AddWorktreeModal({
     setBranch(next);
   };
 
-  const loadRepos = (force = false) => {
-    // Instant when we already have the full list cached.
-    const cached = getCachedRepos();
-    if (cached && !force) {
-      setRepos(cached);
-      setIndex(0);
-      setQuery("");
-      setPhase("repoList");
-      setLoadingMore(false);
-      return;
-    }
-
-    // Otherwise stream pages: show page 1 fast, append the rest in background.
-    setPhase("repoLoading");
-    setLoadingMore(true);
-    (async () => {
-      let acc: RepoSummary[] = [];
-      let page = 1;
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        let res;
-        try {
-          res = await fetchRepoPage(page);
-        } catch (err) {
-          if (!mounted.current) return;
-          if (page === 1) {
-            setErrorMsg(errText(err));
-            setPhase("repoError");
-          }
-          break;
-        }
-        if (!mounted.current) return;
-        acc = acc.concat(res.repos);
-        setRepos(acc);
-        if (page === 1) {
-          setIndex(0);
-          setQuery("");
-          setPhase("repoList");
-        }
-        if (!res.hasMore) break;
-        page++;
-      }
-      if (!mounted.current) return;
-      setLoadingMore(false);
-      setRepoCache(acc);
-    })();
-  };
-
   useEffect(() => {
     if (preselect) {
       setRepo({
@@ -213,9 +199,7 @@ export function AddWorktreeModal({
         url: "",
       });
       setRoot(preselect.root);
-      openActions(preselect.root, preselect.nameWithOwner);
-    } else {
-      loadRepos();
+      openActions(preselect.root);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -254,13 +238,13 @@ export function AddWorktreeModal({
     setRoot(repoRoot);
 
     if (existsSync(repoRoot)) {
-      openActions(repoRoot, r.nameWithOwner);
+      openActions(repoRoot);
     } else {
       setPhase("cloning");
       clone(r.nameWithOwner, repoRoot).then(
         () => {
           if (!mounted.current) return;
-          openActions(repoRoot, r.nameWithOwner);
+          openActions(repoRoot);
         },
         (err) => {
           if (!mounted.current) return;
@@ -271,9 +255,8 @@ export function AddWorktreeModal({
     }
   };
 
-  const openActions = (repoRoot: string, nameWithOwner: string) => {
+  const openActions = (repoRoot: string) => {
     ignoreWorktreesDir(repoRoot);
-    setPrs([]);
     buildExisting(repoRoot).then(
       (list) => {
         if (!mounted.current) return;
@@ -287,11 +270,6 @@ export function AddWorktreeModal({
         setPhase("cloneError");
       },
     );
-    // Best-effort: open PRs are an extra option, not required to use the modal.
-    listOpenPrs(nameWithOwner).then((list) => {
-      if (!mounted.current) return;
-      setPrs(list);
-    });
   };
 
   /** Persist + reconcile + hand the fresh projects and selection back to App. */
@@ -437,7 +415,10 @@ export function AddWorktreeModal({
 
     switch (s.phase) {
       case "repoError": {
-        if (name === "r") loadRepos(true);
+        if (name === "r") {
+          setPhase("repoLoading");
+          void reposQ.refetch();
+        }
         return;
       }
       case "repoList": {

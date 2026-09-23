@@ -6,10 +6,8 @@ import type { Worktree } from "../data/model";
 import {
   applyTheme,
   attachCommand,
-  isAvailable,
   killPane,
   killWindow,
-  listWindows,
   newWindow,
   newWindowCmd,
   nextWindow,
@@ -20,12 +18,15 @@ import {
   splitWindow,
   type WindowInfo,
 } from "../services/tmux";
-import { baseRef } from "../services/git";
+import { diffCommand, type DiffTarget } from "../services/hunk";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  isAvailable as hunkAvailable,
-  diffCommand,
-  type DiffTarget,
-} from "../services/hunk";
+  baseRefQuery,
+  hunkAvailableQuery,
+  queryKeys,
+  tmuxAvailableQuery,
+  tmuxWindowsQuery,
+} from "../queries";
 import { useTerminalSession } from "../hooks/useTerminalSession";
 import { agentLaunchCommand, agentSessionEnv } from "../services/agents";
 import { TabBar } from "./TabBar";
@@ -90,16 +91,8 @@ function Centered({
 
 export function TerminalPane(props: TerminalPaneProps) {
   const theme = useTheme();
-  const [tmuxOk, setTmuxOk] = useState<boolean | null>(null);
-  useEffect(() => {
-    let alive = true;
-    isAvailable().then((ok) => {
-      if (alive) setTmuxOk(ok);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
+  // Checked once for the whole app (every worktree's terminal shares the answer).
+  const tmuxOk = useQuery(tmuxAvailableQuery()).data ?? null;
 
   if (tmuxOk === null) {
     return (
@@ -180,19 +173,19 @@ function TerminalView({
     }).catch(() => {});
   }, [theme, status]);
 
-  // Poll the session's windows (tabs) so the bar reflects tmux state — our own
-  // actions plus native Ctrl+b changes and programs exiting.
-  const [windows, setWindows] = useState<WindowInfo[]>([]);
-  const refreshWindows = () => {
-    listWindows(session).then((w) => setWindows(w)).catch(() => {});
-  };
-  useEffect(() => {
-    if (status !== "running") return;
-    refreshWindows();
-    const id = setInterval(refreshWindows, 1000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, status]);
+  // The session's windows (tabs), so the bar reflects tmux state — our own
+  // actions plus native Ctrl+b changes and programs exiting. Polled only while
+  // this terminal is on screen (hidden ones stay mounted); the last answer is
+  // kept across a refetch so the bar never blanks.
+  const queryClient = useQueryClient();
+  const windowsQuery = useQuery({
+    ...tmuxWindowsQuery(session),
+    enabled: status === "running" && visible,
+    placeholderData: keepPreviousData,
+  });
+  const windows: WindowInfo[] = windowsQuery.data ?? [];
+  const refreshWindows = () =>
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tmuxWindows(session) });
 
   // A session always needs at least one window with at least one pane; closing
   // the last pane of the last tab would kill the tmux session out from under
@@ -205,7 +198,7 @@ function TerminalView({
     fn()
       .catch(() => {})
       .finally(() => {
-        setTimeout(refreshWindows, 60);
+        refreshWindows();
         onRequestFocus();
       });
   };
@@ -219,24 +212,15 @@ function TerminalView({
 
   // The view stays mounted across worktree switches (see TerminalPane), so
   // session-scoped UI state must be reset by hand instead of by remounting.
-  // `windows` is deliberately left alone here — clearing it would blank the
-  // tab bar on every switch before the async refresh below repopulates it,
-  // which reads as a glitch. It's naturally replaced once refreshWindows()
-  // resolves for the new session.
+  // (`windows` keeps its previous answer until the new session's arrives —
+  // blanking the tab bar on a switch reads as a glitch.)
   useEffect(() => {
     setOverlay("none");
     setMenuIndex(0);
     setRefInput("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
-  const [hunkOk, setHunkOk] = useState<boolean | null>(null);
-  useEffect(() => {
-    let alive = true;
-    hunkAvailable().then((ok) => alive && setHunkOk(ok));
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const hunkOk = useQuery(hunkAvailableQuery()).data ?? null;
 
   const openMenu = () => {
     setOverlay("menu");
@@ -253,7 +237,10 @@ function TerminalView({
   const openDiff = (target: DiffTarget, arg?: string) => {
     act(async () => {
       const resolved =
-        arg ?? (target === "base" ? await baseRef(worktree.path) : undefined);
+        arg ??
+        (target === "base"
+          ? await queryClient.fetchQuery(baseRefQuery(worktree.path))
+          : undefined);
       await newWindowCmd(
         session,
         worktree.path,

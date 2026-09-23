@@ -53,18 +53,6 @@ export async function fetchRepoPage(page: number): Promise<RepoPage> {
   };
 }
 
-// Full accumulated list, cached so reopening the modal is instant.
-let repoCache: RepoSummary[] | null = null;
-export function getCachedRepos(): RepoSummary[] | null {
-  return repoCache;
-}
-export function setRepoCache(repos: RepoSummary[]): void {
-  repoCache = repos;
-}
-export function clearRepoCache(): void {
-  repoCache = null;
-}
-
 /** Clone a repo (owner/name) into `dest`. Throws with stderr on failure. */
 export async function clone(nameWithOwner: string, dest: string): Promise<void> {
   await runOrThrow(["gh", "repo", "clone", nameWithOwner, dest]);
@@ -76,68 +64,43 @@ export async function isAuthenticated(): Promise<boolean> {
   return code === 0;
 }
 
-// Cache PR lookups per repo+branch for the session (network calls are slow).
-const prCache = new Map<string, PrInfo | null>();
-/** Bumped by clearPrCache, so a lookup started before a clear can't write stale data back. */
-let prCacheGeneration = 0;
-
-/** Drop every cached PR lookup (tests, and a future manual refresh). */
-export function clearPrCache(): void {
-  prCache.clear();
-  prCacheGeneration++;
-}
-
-/** The open PR whose head is `branch`, or null. Cached; `force` refetches. */
-export async function prForBranch(
-  nameWithOwner: string,
-  branch: string,
-  force = false,
-): Promise<PrInfo | null> {
-  const key = `${nameWithOwner}#${branch}`;
-  if (!force && prCache.has(key)) return prCache.get(key)!;
-  const generation = prCacheGeneration;
-  let result: PrInfo | null = null;
-  try {
-    const { code, stdout } = await run([
-      "gh",
-      "pr",
-      "list",
-      "-R",
-      nameWithOwner,
-      "--head",
-      branch,
-      "--state",
-      "open",
-      "--limit",
-      "1",
-      "--json",
-      "number,title,url,isDraft,statusCheckRollup",
-    ]);
-    if (code === 0) {
-      const arr = JSON.parse(stdout) as {
-        number: number;
-        title: string;
-        url: string;
-        isDraft: boolean;
-        statusCheckRollup?: RawCheck[] | null;
-      }[];
-      const pr = arr[0];
-      if (pr) {
-        const checks = summarizeChecks((pr.statusCheckRollup ?? []).map(checkState));
-        result = {
-          number: pr.number,
-          title: pr.title ?? "",
-          url: pr.url ?? "",
-          draft: !!pr.isDraft,
-          ...(checks ? { checks } : {}),
-        };
-      }
-    }
-  } catch {
-    result = null;
-  }
-  if (generation === prCacheGeneration) prCache.set(key, result);
-  return result;
+/**
+ * The open PR whose head is `branch`, or null when there is none. A failed
+ * lookup throws rather than answering "no PR", so a cache holding the last good
+ * answer (src/queries.ts) keeps showing it through a network hiccup.
+ */
+export async function prForBranch(nameWithOwner: string, branch: string): Promise<PrInfo | null> {
+  const out = await runOrThrow([
+    "gh",
+    "pr",
+    "list",
+    "-R",
+    nameWithOwner,
+    "--head",
+    branch,
+    "--state",
+    "open",
+    "--limit",
+    "1",
+    "--json",
+    "number,title,url,isDraft,statusCheckRollup",
+  ]);
+  const [pr] = JSON.parse(out) as {
+    number: number;
+    title: string;
+    url: string;
+    isDraft: boolean;
+    statusCheckRollup?: RawCheck[] | null;
+  }[];
+  if (!pr) return null;
+  const checks = summarizeChecks((pr.statusCheckRollup ?? []).map(checkState));
+  return {
+    number: pr.number,
+    title: pr.title ?? "",
+    url: pr.url ?? "",
+    draft: !!pr.isDraft,
+    ...(checks ? { checks } : {}),
+  };
 }
 
 /** All open PRs for a repo, most-recently-updated first. Best-effort: [] on failure. */
