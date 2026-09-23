@@ -125,6 +125,34 @@ re-attaches to the running shell/agent instead of relaunching it
 The ＋ menu / `⌥a` (`openAgent` in `TerminalPane.tsx`) opens the same command
 in a fresh tab, the same way `⌥d` opens hunk.
 
+## Agent status
+
+The sidebar shows what each worktree's agent is doing — ◆ needs action,
+◐ working, ✓ done (finished while you weren't looking; clears once you view
+that worktree), ○ idle — from `src/services/agents.ts`:
+
+- Agents started by agentree run as `claude --settings
+  ~/.config/agentree/claude-hooks.json` (`agentLaunchCommand`). That file only
+  adds Claude Code hooks (`SessionStart` → idle, `UserPromptSubmit` /
+  `Pre`/`PostToolUse` → working, blocking `Notification`s → needs action,
+  `Stop` → done, `SessionEnd` → gone). Each hook overwrites
+  `~/.config/agentree/agents/<session>.<pane>` with `<state> <epoch>`, using
+  `AGENTREE_AGENT_DIR` / `AGENTREE_SESSION` that the tmux session provides
+  (`attachCommand`'s `env`) plus tmux's own `$TMUX_PANE`. Nothing is written
+  inside worktrees, and the hooks print nothing (Claude would read it).
+- The app polls those files every second and cross-checks tmux
+  (`listPaneActivity`): reports from dead panes are deleted; a "working" agent
+  silent for 10s was interrupted (Esc fires no hook); a "needs action" agent
+  that prints again was answered.
+- `AGENTREE_AGENT_CMD` overrides still get the hooks if they run `claude` (and
+  don't pass their own `--settings`); other agents run untouched and show no
+  status. Claude only sends the permission notification after ~6s, so
+  "needs action" can lag a fresh prompt by that much.
+
+Uncommitted changes are separate: `●3` on a worktree's branch line (files
+with changes, untracked included), refreshed every 5s and whenever an agent
+changes state — it used to be computed once at startup.
+
 ## Help
 
 `?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all

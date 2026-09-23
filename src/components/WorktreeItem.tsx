@@ -8,21 +8,28 @@ interface WorktreeItemProps {
   onClick?: () => void;
 }
 
-function agentBadge(agent: Worktree["agent"], theme: Theme) {
+/** How each agent status looks: a glyph for the row's first column, plus a label when it's worth your attention. */
+export function agentLook(
+  agent: Worktree["agent"],
+  theme: Theme,
+): { glyph: string; color: string; label?: string } {
   switch (agent) {
+    case "needs-action":
+      return { glyph: "◆", color: theme.agentWaiting, label: "needs action" };
     case "working":
-      return { label: "working", color: theme.agentWorking, glyph: "◐" };
-    case "waiting":
-      return { label: "waiting", color: theme.agentWaiting, glyph: "◆" };
+      return { glyph: "◐", color: theme.agentWorking, label: "working" };
+    case "done":
+      return { glyph: "✓", color: theme.added, label: "done" };
+    case "idle":
+      return { glyph: "○", color: theme.fgMuted };
     default:
-      return null;
+      return { glyph: "·", color: theme.fgFaint };
   }
 }
 
 export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
   const theme = useTheme();
-  const badge = agentBadge(worktree.agent, theme);
-  const dotColor = worktree.dirty ? theme.dirty : theme.clean;
+  const look = agentLook(worktree.agent, theme);
   const hasStats = worktree.added > 0 || worktree.removed > 0;
   const hasSync = worktree.ahead > 0 || worktree.behind > 0;
 
@@ -37,11 +44,11 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
       <box width={1} backgroundColor={active ? theme.accent : theme.panel} />
 
       <box flexDirection="column" flexGrow={1} paddingLeft={1} paddingRight={1}>
-        {/* Line 1: status dot + name .......... agent badge */}
+        {/* Line 1: agent status + name .......... PR, agent label */}
         <box flexDirection="row" alignItems="center">
           <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-            <text fg={dotColor} flexShrink={0}>
-              {worktree.dirty ? "●" : "○"}
+            <text fg={look.color} flexShrink={0}>
+              {look.glyph}
             </text>
             <text
               fg={theme.fg}
@@ -63,14 +70,14 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
             </text>
           )}
 
-          {badge && (
-            <text fg={badge.color} flexShrink={0}>
-              {" " + badge.glyph + " " + badge.label}
+          {look.label && (
+            <text fg={look.color} flexShrink={0}>
+              {" " + look.label}
             </text>
           )}
         </box>
 
-        {/* Line 2: branch .......... +added −removed ↑ahead ↓behind */}
+        {/* Line 2: branch .......... ●changed-files +added −removed ↑ahead ↓behind */}
         <box flexDirection="row" alignItems="center">
           <text
             fg={theme.fgFaint}
@@ -84,8 +91,12 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
             {worktree.branch}
           </text>
 
-          {(hasStats || hasSync) && (
+          {(worktree.changed > 0 || hasStats || hasSync) && (
             <text flexShrink={0}>
+              {/* Uncommitted changes: how many files (untracked included). */}
+              {worktree.changed > 0 && (
+                <span fg={theme.dirty}>{" ●" + worktree.changed}</span>
+              )}
               {hasStats && <span fg={theme.added}>{" +" + worktree.added}</span>}
               {hasStats && (
                 <span fg={theme.removed}>{" −" + worktree.removed}</span>

@@ -263,7 +263,7 @@ describe("reconcile", () => {
 
     const projects = await reconcile(state);
     for (const w of projects[0]!.worktrees) {
-      expect(w).toMatchObject({ dirty: false, added: 0, removed: 0, ahead: 0, behind: 0, agent: "none" });
+      expect(w).toMatchObject({ dirty: false, changed: 0, added: 0, removed: 0, ahead: 0, behind: 0, agent: "none" });
     }
     const persisted = sandbox.readState() as State;
     expect(JSON.stringify(persisted)).not.toContain("dirty");

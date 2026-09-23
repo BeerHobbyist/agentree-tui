@@ -148,6 +148,7 @@ function toUiWorktree(
     branch: w.branch,
     path: w.path,
     dirty: false,
+    changed: 0,
     added: 0,
     removed: 0,
     ahead: 0,

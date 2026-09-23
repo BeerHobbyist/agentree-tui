@@ -6,7 +6,15 @@
  * persisted.
  */
 
-export type AgentStatus = "none" | "working" | "waiting";
+/**
+ * What the agent (Claude Code) in a worktree's terminal is up to:
+ * - `none`: no agent session reporting in this worktree
+ * - `idle`: running, nothing to do (or its finished turn has been seen)
+ * - `working`: processing a prompt
+ * - `needs-action`: blocked on you — a permission prompt or a question
+ * - `done`: finished a turn you haven't looked at yet
+ */
+export type AgentStatus = "none" | "idle" | "working" | "needs-action" | "done";
 
 /** Open pull request associated with a worktree's branch. */
 export interface PrInfo {
@@ -29,8 +37,10 @@ export interface Worktree {
   branch: string;
   /** Working-tree path on disk. */
   path: string;
-  /** Uncommitted changes present. */
+  /** Uncommitted changes present (tracked or untracked). */
   dirty: boolean;
+  /** How many files have uncommitted changes (`git status --porcelain` entries). */
+  changed: number;
   /** Staged/working line stats, for the "+12 −3" badge (0 until computed). */
   added: number;
   removed: number;

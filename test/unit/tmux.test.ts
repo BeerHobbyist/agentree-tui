@@ -130,6 +130,15 @@ describe("attachCommand", () => {
     expect(cmd[6]).toBe("claude");
   });
 
+  test("gives the session its environment, new or already running", () => {
+    const cmd = attachCommand("s", "/tmp", undefined, "claude", { AGENTREE_SESSION: "s" });
+    // -e seeds a session being created (before the startup command)…
+    const fromNew = fromNewSession(cmd);
+    expect(fromNew.slice(6, 9)).toEqual(["-e", "AGENTREE_SESSION=s", "claude"]);
+    // …and set-environment covers one that already existed.
+    expect(cmd.join(" ")).toContain("; set-environment -t s AGENTREE_SESSION s");
+  });
+
   test("keeps theming after the startup command", () => {
     const cmd = attachCommand("s", "/tmp", { bg: "#000", fg: "#fff" }, "claude").join(" ");
     expect(cmd).toContain("-c /tmp claude ; set-option");
