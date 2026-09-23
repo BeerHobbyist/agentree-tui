@@ -1,4 +1,6 @@
-import { TextAttributes } from "@opentui/core";
+import { useRef } from "react";
+import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
+import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
 
 interface HelpOverlayProps {
@@ -42,12 +44,23 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
     ],
   },
   {
+    title: "Agent status",
+    rows: [
+      ["◆  needs action", "waiting on you: approve or answer"],
+      ["◐  working", "busy with your prompt"],
+      ["✓  done", "finished; clears once you look"],
+      ["○  idle", "running, nothing to do"],
+      ["●3", "3 files with uncommitted changes"],
+      ["", "for agents agentree starts (⏎, ⌥a)"],
+    ],
+  },
+  {
     title: "Mouse",
     rows: [
       ["click worktree", "open its terminal"],
       ["click project header", "select + fold"],
       ["click ＋", "add worktree"],
-      ["drag sidebar edge", "resize sidebar · double-click resets"],
+      ["drag sidebar edge", "resize · double-click to reset"],
       ["＋ menu", "new shell · new agent · new diff (hunk)"],
       ["tab bar", "click tab · × close tab · ⬌ ⬍ split · ✕ pane · ‹ back"],
       ["click a pane", "focus that split pane"],
@@ -57,6 +70,21 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
 
 export function HelpOverlay({ themeName, onClose }: HelpOverlayProps) {
   const theme = useTheme();
+  // The sections scroll when the screen is too short for them all; the app's
+  // own help handler closes on esc / ? / q and ignores the rest.
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+  useKeyboard((key) => {
+    const box = scrollRef.current;
+    if (!box) return;
+    const page = Math.max(1, box.viewport.height - 1);
+    const n = key.name;
+    if (n === "down" || n === "j") box.scrollBy(1);
+    else if (n === "up" || n === "k") box.scrollBy(-1);
+    else if (n === "pagedown" || n === "space") box.scrollBy(page);
+    else if (n === "pageup") box.scrollBy(-page);
+    else if (n === "g" && !key.shift) box.scrollTo(0);
+    else if (n === "g" && key.shift) box.scrollTo(box.scrollHeight);
+  });
   return (
     <box
       position="absolute"
@@ -71,7 +99,7 @@ export function HelpOverlay({ themeName, onClose }: HelpOverlayProps) {
       onMouseDown={onClose}
     >
       <box
-        width={64}
+        width={66}
         maxHeight="90%"
         borderStyle="rounded"
         border
@@ -85,32 +113,41 @@ export function HelpOverlay({ themeName, onClose }: HelpOverlayProps) {
         paddingLeft={2}
         paddingRight={2}
       >
-        {SECTIONS.map((section) => (
-          <box key={section.title} flexDirection="column" marginBottom={1}>
-            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-              {section.title}
-            </text>
-            {section.rows.map(([keys, desc], i) => (
-              <box key={String(i)} flexDirection="row" alignItems="center">
-                <text fg={theme.fg} flexShrink={0}>
-                  {keys.padEnd(24)}
-                </text>
-                <text
-                  fg={theme.fgMuted}
-                  flexGrow={1}
-                  flexShrink={1}
-                  minWidth={0}
-                  wrapMode="none"
-                  truncate
-                >
-                  {desc}
-                </text>
-              </box>
-            ))}
-          </box>
-        ))}
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-          {`theme: ${themeName}   ·   esc / ? / click to close`}
+        <scrollbox
+          ref={scrollRef}
+          flexGrow={1}
+          flexShrink={1}
+          minHeight={0}
+          scrollY
+          contentOptions={{ paddingRight: 1 }}
+        >
+          {SECTIONS.map((section) => (
+            <box key={section.title} flexDirection="column" flexShrink={0} marginBottom={1}>
+              <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                {section.title}
+              </text>
+              {section.rows.map(([keys, desc], i) => (
+                <box key={String(i)} flexDirection="row" alignItems="center" flexShrink={0}>
+                  <text fg={theme.fg} flexShrink={0}>
+                    {keys.padEnd(24)}
+                  </text>
+                  <text
+                    fg={theme.fgMuted}
+                    flexGrow={1}
+                    flexShrink={1}
+                    minWidth={0}
+                    wrapMode="none"
+                    truncate
+                  >
+                    {desc}
+                  </text>
+                </box>
+              ))}
+            </box>
+          ))}
+        </scrollbox>
+        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={0}>
+          {`theme: ${themeName}  ·  ↑↓ scroll  ·  esc / ? / click to close`}
         </text>
       </box>
     </box>

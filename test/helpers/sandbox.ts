@@ -113,12 +113,25 @@ export function createSandbox(): Sandbox {
   writeFileSync(gitconfig, "");
 
   const tmuxSocket = `agentree-test-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  /**
+   * Stop this test's own tmux server (a unique socket — never the shared
+   * `agentree` one), if it started one, and remove the socket file tmux leaves
+   * behind after kill-server.
+   */
+  const stopTmux = () => {
+    Bun.spawnSync(["tmux", "-L", tmuxSocket, "kill-server"], { stdout: "ignore", stderr: "ignore" });
+    const uid = process.getuid?.() ?? 0;
+    rmSync(join(process.env.TMUX_TMPDIR || "/tmp", `tmux-${uid}`, tmuxSocket), { force: true });
+  };
   const saved = { ...process.env };
 
   Object.assign(process.env, {
     AGENTREE_HOME: workspace,
     XDG_CONFIG_HOME: configHome,
     AGENTREE_TMUX_SOCKET: tmuxSocket,
+    // A terminal opened in a test (adding a worktree opens it) would otherwise
+    // start the real `claude` on the developer's machine.
+    AGENTREE_AGENT_CMD: "sh",
     PATH: `${FAKEBIN}:${process.env.PATH ?? ""}`,
     FAKE_GH_DIR: fixtures,
     FAKE_GH_REMOTES: remotes,
@@ -176,11 +189,15 @@ export function createSandbox(): Sandbox {
       }
     },
     cleanup() {
+      stopTmux();
       for (const key of Object.keys(process.env)) {
         if (!(key in saved)) delete process.env[key];
       }
       Object.assign(process.env, saved);
       rmSync(root, { recursive: true, force: true });
+      // Again, for a terminal's tmux client that connected only after the first
+      // stop and so started a fresh server.
+      stopTmux();
     },
   };
 }

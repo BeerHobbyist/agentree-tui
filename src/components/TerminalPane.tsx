@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
-import { agentCommand } from "../config";
 import type { Worktree } from "../data/model";
 import {
   applyTheme,
@@ -28,6 +27,7 @@ import {
   type DiffTarget,
 } from "../services/hunk";
 import { useTerminalSession } from "../hooks/useTerminalSession";
+import { agentLaunchCommand, agentSessionEnv } from "../services/agents";
 import { TabBar } from "./TabBar";
 import { MenuOverlay, type MenuItem } from "./MenuOverlay";
 import "./EmbeddedTerminal"; // registers <embedded-terminal>
@@ -147,7 +147,8 @@ function TerminalView({
           border: theme.border,
           borderActive: theme.accent,
         },
-        agentCommand(),
+        agentLaunchCommand(),
+        agentSessionEnv(session),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session, worktree.path],
@@ -256,7 +257,7 @@ function TerminalView({
     });
   };
   const openAgent = () => {
-    act(() => newWindowCmd(session, worktree.path, agentCommand(), "agent"));
+    act(() => newWindowCmd(session, worktree.path, agentLaunchCommand(), "agent"));
   };
   const pickOverlay = (i: number) => {
     if (overlay === "menu") {

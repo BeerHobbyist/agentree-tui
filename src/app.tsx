@@ -1,10 +1,11 @@
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { existsSync } from "node:fs";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme, cycleTheme } from "./theme";
-import type { Project, Worktree } from "./data/model";
-import { removeWorktree, status as gitStatus } from "./services/git";
+import type { AgentStatus, Project, Worktree } from "./data/model";
+import { removeWorktree, status as gitStatus, type WorktreeStatus } from "./services/git";
+import { readAgentStatuses } from "./services/agents";
 import { killSession, sessionName as tmuxSessionName } from "./services/tmux";
 import { prForBranch } from "./services/gh";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
@@ -78,6 +79,27 @@ export function rowKey(row: Row): string {
     : worktreeKey(row.project.id, row.worktree.id);
 }
 
+/** How often git status is refreshed in the background. */
+const GIT_STATUS_POLL_MS = 5000;
+/** How often agent status is read. */
+const AGENT_POLL_MS = 1000;
+
+function sameGitStatus(w: Worktree, st: WorktreeStatus): boolean {
+  return (
+    w.dirty === st.dirty &&
+    w.changed === st.changed &&
+    w.added === st.added &&
+    w.removed === st.removed &&
+    w.ahead === st.ahead &&
+    w.behind === st.behind
+  );
+}
+
+function sameRecord(a: Record<string, string>, b: Record<string, string>): boolean {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+}
+
 export interface AppProps {
   initialProjects: Project[];
   state: State;
@@ -145,13 +167,18 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   const screenWidthRef = useRef(screenWidth);
   screenWidthRef.current = screenWidth;
 
-  // Background pass: fill real git status for on-disk worktrees, non-blocking.
-  // Keyed on the set of paths so status updates don't retrigger the effect.
+  // Git status (dirty, changed files, +/−, ahead/behind) for on-disk worktrees:
+  // on start, every GIT_STATUS_POLL_MS, and right away when an agent changes
+  // state (it has probably just touched files). It used to be computed once at
+  // startup, so it drifted from reality as agents edited and committed.
   const pathSig = projects
     .flatMap((p) => p.worktrees.filter((w) => !w.missing).map((w) => w.path))
     .join("|");
-  useEffect(() => {
-    let cancelled = false;
+  const gitStatusInFlight = useRef(false);
+  const refreshGitStatus = useRef(() => {});
+  refreshGitStatus.current = () => {
+    if (gitStatusInFlight.current) return;
+    gitStatusInFlight.current = true;
     const targets = projectsRef.current.flatMap((p) =>
       p.worktrees
         .filter((w) => !w.missing)
@@ -167,24 +194,80 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
             st: await gitStatus(t.path).catch(() => null),
           })),
         );
-        if (cancelled) return;
-        setProjects((prev) =>
-          prev.map((p) => ({
+        // Only re-render when something actually changed.
+        setProjects((prev) => {
+          let changed = false;
+          const next = prev.map((p) => ({
             ...p,
             worktrees: p.worktrees.map((w) => {
               const hit = results.find(
                 (r) => r.st && r.t.repoId === p.id && r.t.id === w.id,
               );
-              return hit && hit.st ? { ...w, ...hit.st } : w;
+              if (!hit?.st || sameGitStatus(w, hit.st)) return w;
+              changed = true;
+              return { ...w, ...hit.st };
             }),
-          })),
-        );
+          }));
+          return changed ? next : prev;
+        });
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    })().finally(() => {
+      gitStatusInFlight.current = false;
+    });
+  };
+  useEffect(() => {
+    refreshGitStatus.current();
+    const id = setInterval(() => refreshGitStatus.current(), GIT_STATUS_POLL_MS);
+    return () => clearInterval(id);
   }, [pathSig]);
+
+  // Live agent status per tmux session (services/agents): what the agents'
+  // hooks report, corrected by tmux, with "done" shown as "idle" once you've
+  // had that worktree's terminal on screen.
+  const [agentStatus, setAgentStatus] = useState<Record<string, AgentStatus>>({});
+  /** When each session's terminal was last on screen (epoch seconds). */
+  const seenAt = useRef(new Map<string, number>());
+  /** Last raw report per session, to spot state changes. */
+  const lastReports = useRef(new Map<string, string>());
+  const agentPollInFlight = useRef(false);
+  const pollAgents = useRef(() => {});
+  pollAgents.current = () => {
+    if (agentPollInFlight.current) return;
+    agentPollInFlight.current = true;
+    const now = Math.floor(Date.now() / 1000);
+    readAgentStatuses(now)
+      .then((reports) => {
+        const visible = openRef.current;
+        if (visible) {
+          seenAt.current.set(tmuxSessionName(visible.repoId, visible.worktreeId), now);
+        }
+        const next: Record<string, AgentStatus> = {};
+        const raw = new Map<string, string>();
+        let transitioned = reports.size !== lastReports.current.size;
+        for (const [session, r] of reports) {
+          const key = `${r.state} ${r.since}`;
+          raw.set(session, key);
+          if (lastReports.current.get(session) !== key) transitioned = true;
+          const seen = (seenAt.current.get(session) ?? 0) >= r.since;
+          next[session] = r.state === "done" && seen ? "idle" : r.state;
+        }
+        lastReports.current = raw;
+        setAgentStatus((prev) => (sameRecord(prev, next) ? prev : next));
+        if (transitioned) refreshGitStatus.current();
+      })
+      .catch(() => {})
+      .finally(() => {
+        agentPollInFlight.current = false;
+      });
+  };
+  useEffect(() => {
+    const id = setInterval(() => pollAgents.current(), AGENT_POLL_MS);
+    return () => clearInterval(id);
+  }, []);
+  // Opening a worktree marks its "done" as seen now, not on the next tick.
+  useEffect(() => {
+    pollAgents.current();
+  }, [open]);
 
   // Background pass: look up open PRs for each worktree's branch (cached in gh.ts).
   const prSig = projects
@@ -514,6 +597,19 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
     }
   });
 
+  // What the sidebar shows: projects with each worktree's live agent status.
+  const viewProjects = useMemo(
+    () =>
+      projects.map((p) => ({
+        ...p,
+        worktrees: p.worktrees.map((w) => {
+          const agent = agentStatus[tmuxSessionName(p.id, w.id)] ?? "none";
+          return agent === w.agent ? w : { ...w, agent };
+        }),
+      })),
+    [projects, agentStatus],
+  );
+
   const rows = buildRows(projects, collapsed);
   const active = rows[Math.min(activeIndex, rows.length - 1)];
   const activeKey = active ? rowKey(active) : "";
@@ -538,7 +634,7 @@ export function App({ initialProjects, state, onQuit }: AppProps) {
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.bg}>
       <Sidebar
-        projects={projects}
+        projects={viewProjects}
         collapsed={collapsed}
         activeKey={activeKey}
         onAddWorktree={openAddForProject}

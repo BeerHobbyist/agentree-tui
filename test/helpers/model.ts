@@ -8,6 +8,7 @@ export function worktree(id: string, extra: Partial<Worktree> = {}): Worktree {
     branch: id,
     path: `/tmp/${id}`,
     dirty: false,
+    changed: 0,
     added: 0,
     removed: 0,
     ahead: 0,

@@ -4,7 +4,11 @@ import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { DEFAULT_SIDEBAR_WIDTH } from "../layout";
 import { ResizeHandle } from "./ResizeHandle";
-import { WorktreeItem } from "./WorktreeItem";
+import { WorktreeItem, agentLook } from "./WorktreeItem";
+import type { AgentStatus } from "../data/model";
+
+/** Most urgent first — what a folded project shows for its worktrees. */
+const URGENCY: AgentStatus[] = ["needs-action", "working", "done"];
 
 interface SidebarProps {
   projects: Project[];
@@ -57,6 +61,8 @@ function ProjectGroup({
   const theme = useTheme();
   const headerActive = activeKey === projectKey(project.id);
   const dirtyCount = project.worktrees.filter((w) => w.dirty).length;
+  const urgent = URGENCY.find((s) => project.worktrees.some((w) => w.agent === s));
+  const urgentLook = urgent ? agentLook(urgent, theme) : undefined;
 
   return (
     <box flexDirection="column" marginBottom={1}>
@@ -89,6 +95,12 @@ function ProjectGroup({
           >
             {project.name}
           </text>
+          {/* Folded: surface what's inside — an agent needing you first. */}
+          {collapsed && urgentLook && (
+            <text fg={urgentLook.color} flexShrink={0}>
+              {urgentLook.glyph + " "}
+            </text>
+          )}
           {collapsed && dirtyCount > 0 && (
             <text fg={theme.dirty} flexShrink={0}>
               {"● "}
@@ -162,10 +174,11 @@ export function Sidebar({
 }: SidebarProps) {
   const theme = useTheme();
   const rootRef = useRef<BoxRenderable>(null);
-  const dirtyCount = projects.reduce(
-    (n, p) => n + p.worktrees.filter((w) => w.dirty).length,
-    0,
-  );
+  const worktrees = projects.flatMap((p) => p.worktrees);
+  const agentCounts = URGENCY.map((state) => ({
+    look: agentLook(state, theme),
+    count: worktrees.filter((w) => w.agent === state).length,
+  })).filter((c) => c.count > 0);
 
   return (
     <box
@@ -209,9 +222,17 @@ export function Sidebar({
           paddingRight={2}
         >
           <box flexDirection="row" alignItems="center">
-            <text fg={theme.dirty}>{"●"}</text>
-            <text fg={theme.fgMuted} flexGrow={1}>
-              {" " + dirtyCount + " dirty"}
+            {/* Agents across all projects: ◆ needs action · ◐ working · ✓ done. */}
+            <text flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
+              {agentCounts.length === 0 ? (
+                <span fg={theme.fgMuted}>{"○ no agent activity"}</span>
+              ) : (
+                agentCounts.map((c, i) => (
+                  <span key={c.look.glyph} fg={c.look.color}>
+                    {(i > 0 ? "  " : "") + c.look.glyph + " " + c.count}
+                  </span>
+                ))
+              )}
             </text>
             {/* Clickable footer controls (also keys t / ?). */}
             <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onCycleTheme}>

@@ -150,6 +150,8 @@ export async function localBranchExists(
 
 export interface WorktreeStatus {
   dirty: boolean;
+  /** Files with uncommitted changes, untracked included. */
+  changed: number;
   added: number;
   removed: number;
   ahead: number;
@@ -160,6 +162,7 @@ export interface WorktreeStatus {
 export async function status(path: string): Promise<WorktreeStatus> {
   const result: WorktreeStatus = {
     dirty: false,
+    changed: 0,
     added: 0,
     removed: 0,
     ahead: 0,
@@ -168,7 +171,8 @@ export async function status(path: string): Promise<WorktreeStatus> {
 
   const porcelain = await run(["git", "status", "--porcelain"], { cwd: path });
   if (porcelain.code === 0) {
-    result.dirty = porcelain.stdout.trim().length > 0;
+    result.changed = porcelain.stdout.split("\n").filter((l) => l.trim()).length;
+    result.dirty = result.changed > 0;
   }
 
   const numstat = await run(["git", "diff", "--numstat", "HEAD"], { cwd: path });

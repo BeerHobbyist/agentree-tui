@@ -159,15 +159,46 @@ export function attachCommand(
   cwd: string,
   style?: TermStyle,
   startupCommand?: string,
+  env: Record<string, string> = {},
 ): string[] {
   // new-session in the list makes tmux start the server if needed, so the
   // pre-attach options can run first even on a fresh server.
   const cmd = tx(...preAttachOptions(), ";", "new-session", "-A", "-s", session, "-c", cwd);
+  // -e seeds a new session's environment (every window/pane inherits it);
+  // set-environment below covers a session that already existed.
+  for (const [k, v] of Object.entries(env)) cmd.push("-e", `${k}=${v}`);
   if (startupCommand) cmd.push(startupCommand);
   if (style) cmd.push(";", ...themeOptions(style));
   else cmd.push(";", "set-option", "-g", "status", "off");
   cmd.push(";", ...behaviorOptions());
+  for (const [k, v] of Object.entries(env)) {
+    cmd.push(";", "set-environment", "-t", session, k, v);
+  }
   return cmd;
+}
+
+/**
+ * Every live pane on our server, keyed `"<session>.<pane number>"`, with when
+ * its window last printed anything (epoch seconds). Empty when no server is
+ * running; null if tmux couldn't be asked at all.
+ */
+export async function listPaneActivity(): Promise<Map<string, number> | null> {
+  let res: { code: number; stdout: string; stderr: string };
+  try {
+    res = await run(tx("list-panes", "-a", "-F", "#{session_name}\t#{pane_id}\t#{window_activity}"));
+  } catch {
+    return null;
+  }
+  if (res.code !== 0) {
+    return /no server running|error connecting|no sessions/i.test(res.stderr) ? new Map() : null;
+  }
+  const panes = new Map<string, number>();
+  for (const line of res.stdout.split("\n")) {
+    const [session, paneId, activity] = line.split("\t");
+    if (!session || !paneId) continue;
+    panes.set(`${session}.${paneId.replace(/^%/, "")}`, parseInt(activity || "0", 10) || 0);
+  }
+  return panes;
 }
 
 /** Whether a session already exists (used for a "live" indicator). */

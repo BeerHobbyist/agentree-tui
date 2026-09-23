@@ -122,6 +122,7 @@ describe("status", () => {
   test("is clean for an untouched worktree", async () => {
     expect(await status(repo)).toEqual({
       dirty: false,
+      changed: 0,
       added: 0,
       removed: 0,
       ahead: 0,
@@ -144,6 +145,15 @@ describe("status", () => {
     expect((await status(repo)).dirty).toBe(true);
   });
 
+  test("counts changed files, untracked included", async () => {
+    writeFile(repo, "counted.txt", "a\n");
+    await commitAll(repo, "one");
+    writeFileSync(join(repo, "counted.txt"), "b\n"); // modified
+    writeFile(repo, "new-1.txt", "x\n"); // untracked
+    writeFile(repo, "new-2.txt", "y\n"); // untracked
+    expect((await status(repo)).changed).toBe(3);
+  });
+
   test("reports ahead and behind against the upstream", async () => {
     await withUpstream(repo, { ahead: 2, behind: 1 });
     const st = await status(repo);
@@ -154,6 +164,7 @@ describe("status", () => {
   test("degrades to zeros instead of throwing outside a repo", async () => {
     expect(await status(sandbox.workspace)).toEqual({
       dirty: false,
+      changed: 0,
       added: 0,
       removed: 0,
       ahead: 0,
