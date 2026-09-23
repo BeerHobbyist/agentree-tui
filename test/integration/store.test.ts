@@ -7,8 +7,11 @@ import {
   findRepo,
   loadState,
   reconcile,
+  MAX_LABEL_LENGTH,
+  normalizeLabel,
   removeManagedWorktree,
   saveState,
+  setWorktreeLabel,
   upsertRepo,
   type State,
 } from "../../src/store";
@@ -267,5 +270,87 @@ describe("reconcile", () => {
     }
     const persisted = sandbox.readState() as State;
     expect(JSON.stringify(persisted)).not.toContain("dirty");
+  });
+});
+
+describe("worktree labels", () => {
+  test("a label shows instead of the name; the branch, path and id stay as they were", async () => {
+    const root = await fixtureRepo([{ branch: "feature/login" }]);
+    const state = loadState();
+    upsertRepo(state, meta(root));
+    const before = (await reconcile(state))[0]!.worktrees.find((w) => w.branch === "feature/login")!;
+
+    await setWorktreeLabel(state, "acme/widget", before.id, "Login screen");
+    const after = (await reconcile(loadState()))[0]!.worktrees.find((w) => w.id === before.id)!;
+    expect(after).toMatchObject({
+      id: before.id,
+      name: before.name,
+      branch: "feature/login",
+      path: before.path,
+      label: "Login screen",
+    });
+    expect(await git(["branch", "--list", "feature/login"], root)).toContain("feature/login");
+  });
+
+  test("the main working copy can be labelled too", async () => {
+    const root = await fixtureRepo();
+    const state = loadState();
+    upsertRepo(state, meta(root));
+    await saveState(state);
+    await setWorktreeLabel(state, "acme/widget", "main", "Trunk");
+    const main = (await reconcile(loadState()))[0]!.worktrees.find((w) => w.id === "main")!;
+    expect(main).toMatchObject({ label: "Trunk", branch: "main" });
+  });
+
+  test("a missing worktree keeps its label", async () => {
+    const root = await fixtureRepo([{ branch: "feature/x" }]);
+    const state = loadState();
+    upsertRepo(state, meta(root));
+    const wt = (await reconcile(state))[0]!.worktrees.find((w) => w.branch === "feature/x")!;
+    await setWorktreeLabel(state, "acme/widget", wt.id, "Spike");
+    rmSync(wt.path, { recursive: true, force: true });
+    const after = (await reconcile(state))[0]!.worktrees.find((w) => w.id === wt.id)!;
+    expect(after).toMatchObject({ missing: true, label: "Spike" });
+  });
+
+  test("clearing a label (blank) goes back to the name and leaves no trace in state", async () => {
+    const state = loadState();
+    upsertRepo(state, meta("/tmp/widget"));
+    await setWorktreeLabel(state, "acme/widget", "x", "Spike");
+    expect(findRepo(loadState(), "acme/widget")!.labels).toEqual({ x: "Spike" });
+    await setWorktreeLabel(state, "acme/widget", "x", "   ");
+    expect(findRepo(loadState(), "acme/widget")!.labels).toBeUndefined();
+  });
+
+  test("closing a worktree forgets its label, so a new one with that id starts clean", async () => {
+    const root = await fixtureRepo();
+    const state = loadState();
+    await addManagedWorktree(state, meta(root), {
+      id: "x",
+      branch: "feature/x",
+      name: "x",
+      path: join(root, ".worktrees", "x"),
+      createdAt: "",
+    });
+    await setWorktreeLabel(state, "acme/widget", "x", "Spike");
+    await setWorktreeLabel(state, "acme/widget", "main", "Trunk");
+    await removeManagedWorktree(state, "acme/widget", "x");
+    expect(findRepo(loadState(), "acme/widget")!.labels).toEqual({ main: "Trunk" });
+  });
+
+  test("a hand-edited, malformed label is ignored rather than shown", async () => {
+    const root = await fixtureRepo();
+    const state = loadState();
+    upsertRepo(state, meta(root));
+    (findRepo(state, "acme/widget")! as { labels?: unknown }).labels = { main: 42 };
+    const main = (await reconcile(state))[0]!.worktrees.find((w) => w.id === "main")!;
+    expect(main.label).toBeUndefined();
+  });
+
+  test("labels are trimmed, whitespace collapsed, and capped", () => {
+    expect(normalizeLabel("  Login \t screen \n")).toBe("Login screen");
+    expect(normalizeLabel("")).toBeUndefined();
+    expect(normalizeLabel(undefined)).toBeUndefined();
+    expect(Array.from(normalizeLabel("ż".repeat(100))!)).toHaveLength(MAX_LABEL_LENGTH);
   });
 });
