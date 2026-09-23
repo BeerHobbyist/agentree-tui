@@ -361,6 +361,11 @@ each other.
 - **OpenTUI's `truncate` misdraws in a flex-shrunk box**: at narrow widths it
   can overdraw its neighbour or leave short text blank. Where the width isn't
   known up front (tab names), cut the text in JS instead (`tabLabel`, 20 chars).
+- **The PTY child needs the emulator's `TERM`**, not the host's: Bun's
+  `terminal.name` doesn't set it, so tmux inherited `xterm-kitty` (a terminal
+  we aren't) or, in CI, `dumb` — and refused to attach ("terminal does not
+  support clear"). No test needed a working client until the tab-rename ones.
+  `useTerminalSession` passes `TERM=xterm-256color`.
 - **A prompt over a focused terminal must consume its keys**: global
   `useKeyboard` handlers run before the focused emulator, so `RenameModal`
   calls `preventDefault()` + `stopPropagation()` on every key and paste —
