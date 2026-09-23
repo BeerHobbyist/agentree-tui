@@ -98,6 +98,8 @@ export function rowKey(row: Row): string {
     : worktreeKey(row.project.id, row.worktree.id);
 }
 
+/** Two clicks on the same worktree row within this count as a double-click. */
+const DOUBLE_CLICK_MS = 400;
 /** At most one extra PR lookup this often (agent state changes come in bursts). */
 const PR_LOOKUP_THROTTLE_MS = 15_000;
 
@@ -472,6 +474,40 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (idx >= 0) applyActiveIndex(idx);
   };
 
+  /**
+   * Select a worktree and show its terminal, keeping the keyboard in the
+   * sidebar (a click on its row). A worktree that's gone on disk is only selected.
+   */
+  const showWorktree = (repoId: string, worktreeId: string) => {
+    const worktree = projectsRef.current
+      .find((p) => p.id === repoId)
+      ?.worktrees.find((w) => w.id === worktreeId);
+    if (worktree && !worktree.missing) {
+      markOpened(repoId, worktreeId);
+      setOpen({ repoId, worktreeId });
+    }
+    setFocusMode("sidebar");
+    const rows = buildRows(projectsRef.current, collapsedRef.current);
+    const idx = rows.findIndex(
+      (r) => r.kind === "worktree" && r.project.id === repoId && r.worktree.id === worktreeId,
+    );
+    if (idx >= 0) applyActiveIndex(idx);
+  };
+
+  /** A worktree row was clicked: select + show it; a second click on it soon after types in it. */
+  const lastRowClick = useRef({ key: "", at: 0 });
+  const clickWorktree = (repoId: string, worktreeId: string) => {
+    const key = `${repoId}:${worktreeId}`;
+    const now = Date.now();
+    const double = lastRowClick.current.key === key && now - lastRowClick.current.at < DOUBLE_CLICK_MS;
+    lastRowClick.current = double ? { key: "", at: 0 } : { key, at: now };
+    const missing = projectsRef.current
+      .find((p) => p.id === repoId)
+      ?.worktrees.find((w) => w.id === worktreeId)?.missing;
+    if (double && !missing) openWorktreeTerminal(repoId, worktreeId);
+    else showWorktree(repoId, worktreeId);
+  };
+
   /** Click a project header: return focus to the sidebar and toggle its fold. */
   const selectProject = (projectId: string) => {
     setFocusMode("sidebar");
@@ -690,7 +726,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
         collapsed={collapsed}
         activeKey={activeKey}
         onAddWorktree={openAddForProject}
-        onOpenWorktree={openWorktreeTerminal}
+        onClickWorktree={clickWorktree}
+        onFocus={() => setFocusMode("sidebar")}
         onSelectProject={selectProject}
         onCycleTheme={() => cycleTheme()}
         onHelp={() => setHelpOpen(true)}

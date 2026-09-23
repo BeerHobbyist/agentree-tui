@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core";
+import { TextAttributes, type MouseEvent } from "@opentui/core";
 import { useTheme, type Theme } from "../theme";
 import type { Worktree } from "../data/model";
 import { checkLook } from "./PrPanel";
@@ -6,7 +6,7 @@ import { checkLook } from "./PrPanel";
 interface WorktreeItemProps {
   worktree: Worktree;
   active: boolean;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent) => void;
 }
 
 /** How each agent status looks: a glyph for the row's first column, plus a label when it's worth your attention. */

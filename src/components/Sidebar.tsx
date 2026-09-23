@@ -18,8 +18,10 @@ interface SidebarProps {
   activeKey: string;
   /** Open the add-worktree flow with this project preselected. */
   onAddWorktree: (projectId: string) => void;
-  /** Click a worktree row → open its terminal. */
-  onOpenWorktree: (repoId: string, worktreeId: string) => void;
+  /** Click a worktree row → select it and show its terminal (a double-click also focuses it). */
+  onClickWorktree: (repoId: string, worktreeId: string) => void;
+  /** Any other click on the sidebar → the sidebar takes keyboard focus. */
+  onFocus?: () => void;
   /** Click a project header → select it + toggle fold. */
   onSelectProject: (projectId: string) => void;
   /** Cycle to the next theme. */
@@ -48,14 +50,14 @@ function ProjectGroup({
   collapsed,
   activeKey,
   onAddWorktree,
-  onOpenWorktree,
+  onClickWorktree,
   onSelectProject,
 }: {
   project: Project;
   collapsed: boolean;
   activeKey: string;
   onAddWorktree: (projectId: string) => void;
-  onOpenWorktree: (repoId: string, worktreeId: string) => void;
+  onClickWorktree: (repoId: string, worktreeId: string) => void;
   onSelectProject: (projectId: string) => void;
 }) {
   const theme = useTheme();
@@ -149,7 +151,12 @@ function ProjectGroup({
               key={wt.id}
               worktree={wt}
               active={worktreeKey(project.id, wt.id) === activeKey}
-              onClick={() => onOpenWorktree(project.id, wt.id)}
+              onClick={(e) => {
+                // Handled here: a double-click hands focus to the terminal,
+                // which the sidebar's own click-to-focus mustn't undo.
+                e.stopPropagation();
+                onClickWorktree(project.id, wt.id);
+              }}
             />
           ))}
         </box>
@@ -163,7 +170,7 @@ export function Sidebar({
   collapsed,
   activeKey,
   onAddWorktree,
-  onOpenWorktree,
+  onClickWorktree,
   onSelectProject,
   onCycleTheme,
   onHelp,
@@ -171,6 +178,7 @@ export function Sidebar({
   onResize,
   onResizeEnd,
   onResetWidth,
+  onFocus,
 }: SidebarProps) {
   const theme = useTheme();
   const rootRef = useRef<BoxRenderable>(null);
@@ -187,6 +195,8 @@ export function Sidebar({
       flexShrink={0}
       flexDirection="row"
       backgroundColor={theme.panel}
+      // Focus follows the click: anywhere on the sidebar gives it the keyboard.
+      onMouseDown={() => onFocus?.()}
     >
       <box flexDirection="column" flexGrow={1} minWidth={0}>
         {/* Project groups */}
@@ -206,7 +216,7 @@ export function Sidebar({
                 collapsed={collapsed.has(project.id)}
                 activeKey={activeKey}
                 onAddWorktree={onAddWorktree}
-                onOpenWorktree={onOpenWorktree}
+                onClickWorktree={onClickWorktree}
                 onSelectProject={onSelectProject}
               />
             ))

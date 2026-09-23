@@ -60,7 +60,9 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Mouse",
     rows: [
-      ["click worktree", "open its terminal"],
+      ["click worktree", "show its terminal (keys stay here)"],
+      ["double-click worktree", "…and type in it"],
+      ["click the sidebar", "keys go to the sidebar"],
       ["click project header", "select + fold"],
       ["click ＋", "add worktree"],
       ["drag sidebar edge", "resize · double-click to reset"],
