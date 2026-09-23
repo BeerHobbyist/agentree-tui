@@ -40,6 +40,7 @@ export interface RawPr {
   author?: RawAuthor | null;
   baseRefName: string;
   headRefName: string;
+  headRefOid?: string;
   additions: number;
   deletions: number;
   changedFiles: number;
@@ -76,6 +77,7 @@ export const PR_VIEW_FIELDS = [
   "author",
   "baseRefName",
   "headRefName",
+  "headRefOid",
   "additions",
   "deletions",
   "changedFiles",
@@ -252,6 +254,7 @@ export function toPrDetails(pr: RawPr, inline: RawInlineComment[] = []): PrDetai
     author: pr.author?.login ?? "",
     base: pr.baseRefName ?? "",
     head: pr.headRefName ?? "",
+    headSha: pr.headRefOid ?? "",
     additions: pr.additions ?? 0,
     deletions: pr.deletions ?? 0,
     changedFiles: pr.changedFiles ?? 0,
@@ -340,4 +343,95 @@ export async function fetchPrDetails(nameWithOwner: string, number: number): Pro
     }
   }
   return toPrDetails(JSON.parse(view.stdout) as RawPr, inlineComments);
+}
+
+// --- merging ---
+
+/** How a PR gets into its base: GitHub's three merge buttons. */
+export type MergeMethod = "squash" | "merge" | "rebase";
+
+export const MERGE_METHODS: {
+  method: MergeMethod;
+  label: string;
+  /** "#42 will ___ into main": for auto-merge. */
+  verb: string;
+  /** The confirm question for merging now. */
+  ask: (pr: string, into: string) => string;
+}[] = [
+  { method: "squash", label: "Squash and merge", verb: "squash-merge", ask: (pr, into) => `Squash and merge ${pr} into ${into}?` },
+  { method: "merge", label: "Create a merge commit", verb: "merge", ask: (pr, into) => `Merge ${pr} into ${into} with a merge commit?` },
+  { method: "rebase", label: "Rebase and merge", verb: "rebase-merge", ask: (pr, into) => `Rebase and merge ${pr} into ${into}?` },
+];
+
+/** What a repo's settings allow when merging. */
+export interface MergeSettings {
+  methods: MergeMethod[];
+  /** "Allow auto-merge" is on: a blocked PR can be set to merge once it's ready. */
+  autoMerge: boolean;
+}
+
+/**
+ * Read a repo's merge settings from `GET /repos/{repo}`. GitHub only includes
+ * the `allow_*` fields for people with push access; when they're missing,
+ * every method is offered and GitHub has the final say.
+ */
+export function toMergeSettings(raw: Record<string, unknown>): MergeSettings {
+  const allowed = (key: string) => raw[key] !== false;
+  const methods = MERGE_METHODS.map((m) => m.method).filter((m) =>
+    allowed(m === "merge" ? "allow_merge_commit" : `allow_${m}_merge`),
+  );
+  return { methods, autoMerge: raw.allow_auto_merge === true };
+}
+
+export async function fetchMergeSettings(nameWithOwner: string): Promise<MergeSettings> {
+  const { code, stdout, stderr } = await run(["gh", "api", `repos/${nameWithOwner}`]);
+  if (code !== 0) throw new Error(stderr.trim().split("\n").pop() || `gh api exited ${code}`);
+  return toMergeSettings(JSON.parse(stdout) as Record<string, unknown>);
+}
+
+/**
+ * Whether a PR can be merged from here: `now` (merge straight away), `auto`
+ * (enable auto-merge, for a PR that's blocked but otherwise fine), or neither —
+ * with `reason` saying why.
+ */
+export function mergeOptions(
+  d: PrDetails,
+  settings: MergeSettings,
+): { now: boolean; auto: boolean; reason?: string } {
+  const status = mergeStatus(d).label;
+  if (d.state !== "open") return { now: false, auto: false, reason: status };
+  if (d.mergeable === "CONFLICTING" || d.mergeStateStatus === "DIRTY") {
+    return { now: false, auto: false, reason: status };
+  }
+  switch (d.mergeStateStatus) {
+    case "BLOCKED":
+    case "BEHIND":
+      return settings.autoMerge
+        ? { now: false, auto: true, reason: status }
+        : { now: false, auto: false, reason: `${status} — and auto-merge is off for this repo` };
+    default:
+      // CLEAN, HAS_HOOKS, UNSTABLE (only non-required checks failed), and
+      // UNKNOWN (GitHub hasn't worked it out yet): let GitHub decide.
+      return { now: true, auto: false };
+  }
+}
+
+/**
+ * Merge a PR (or, with `auto`, set it to merge once it's ready) on GitHub.
+ * Pinned to `headSha` when known, so a push you haven't seen yet isn't merged.
+ * Doesn't delete branches — the repo's own "delete head branch" setting applies,
+ * and the worktree keeps its local branch. Resolves to gh's message.
+ */
+export async function mergePr(
+  nameWithOwner: string,
+  number: number,
+  method: MergeMethod,
+  opts: { auto?: boolean; headSha?: string } = {},
+): Promise<string> {
+  const args = ["gh", "pr", "merge", String(number), "-R", nameWithOwner, `--${method}`];
+  if (opts.auto) args.push("--auto");
+  if (opts.headSha) args.push("--match-head-commit", opts.headSha);
+  const { code, stdout, stderr } = await run(args);
+  if (code !== 0) throw new Error(stderr.trim().split("\n").pop() || `gh pr merge exited ${code}`);
+  return (stdout.trim() || stderr.trim()).split("\n").pop() ?? "";
 }

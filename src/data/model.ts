@@ -68,6 +68,8 @@ export interface PrDetails {
   author: string;
   base: string;
   head: string;
+  /** The head commit's SHA (empty if unknown) — merging is pinned to it. */
+  headSha: string;
   additions: number;
   deletions: number;
   changedFiles: number;

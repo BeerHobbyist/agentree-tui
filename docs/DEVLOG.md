@@ -20,7 +20,8 @@ Working, at MVP+ level:
   branch's leaf name — the branch and directory keep their names.
 - **PR panel** — on the right, for the worktree on screen when it has an open
   PR: merge status, reviews, checks, labels, description and comments; `p` / ⌥p
-  toggles, `o` opens on GitHub, `r` refreshes.
+  toggles, `o` opens on GitHub, `r` refreshes, **`m` merges** (pick a method the
+  repo allows, then confirm; a blocked PR can be set to auto-merge).
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
   persisted; `＋` on a header or `a` preselects the project. The repo's open
@@ -126,7 +127,7 @@ the app polls those and cross-checks tmux (see **Agent status**).
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
   `R` rename worktree (label only) · `d` close (delete) worktree · `n` add
   project · `[`/`]` narrower/wider sidebar · `=` reset width · `p` PR panel ·
-  `o` open PR · `r` refresh PR · PgUp/PgDn scroll PR panel · `t` cycle theme ·
+  `o` open PR · `r` refresh PR · `m` merge PR · PgUp/PgDn scroll PR panel · `t` cycle theme ·
   `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` (or a click on the sidebar) back to sidebar ·
@@ -272,6 +273,19 @@ its ✕ / the tab bar's `⇡#N` button; drag its left edge to resize. Both are
 remembered (`ui.prPanelHidden`, `ui.prPanelWidth`). `fitPanels` narrows the
 sidebar to make room and hides the panel on a screen too narrow for it.
 
+**Merging** (`m`, or the panel's `▸ Merge…`): `MergeModal` offers the methods
+the repo allows (`gh api repos/{repo}` → `allow_*_merge`; GitHub leaves those
+out without push access, and then all three are offered and GitHub decides) —
+the one used last first (`ui.mergeMethod`). `mergeOptions` decides: ready,
+unstable or unknown → merge now; blocked or behind → "when ready" (`--auto`) if
+the repo allows auto-merge; conflicts, drafts and finished PRs → says why.
+Nothing runs before a separate confirm step. `gh pr merge -R … --<method>
+--match-head-commit <sha>`: pinned to the head commit on screen, so a push you
+haven't seen fails the merge instead of riding along. Never `--delete-branch` —
+the worktree still has the branch checked out, and the repo's own "delete head
+branch" setting handles the remote. Afterwards the PR's details and every
+branch's PR lookup are invalidated, so the badge goes.
+
 The sidebar's PR lookup (`prForBranch`) also asks for `statusCheckRollup` to
 colour the `⇡#N` badge, and is re-run every 60s, when an agent changes state
 (throttled), and on `r`. A failed lookup throws (it used to answer "no PR"), so
@@ -367,7 +381,7 @@ each other.
 
 ## Tests
 
-`bun test` — 268 tests, ~30s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 290 tests, ~30s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -430,6 +444,8 @@ throwaway PTY probes instead.
 
 ### 2026-09-23
 
+- Merge PRs from the PR panel (`m`): repo's allowed methods, confirm step,
+  auto-merge for blocked PRs, pinned to the head commit
 - Rename worktrees (`R` / right-click): a sidebar label, stored in state.json;
   branch and directory untouched
 - #30 `f863910` Clicking the sidebar gives it the keyboard (was `Ctrl+g` only);

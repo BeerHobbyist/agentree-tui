@@ -4,7 +4,8 @@
 # Dispatches on the subcommand, serves fixtures from $FAKE_GH_DIR, clones from
 # the local fixture remotes in $FAKE_GH_REMOTES, and appends every invocation
 # to $FAKE_GH_LOG so tests can assert on the argv. $FAKE_GH_FAIL is a
-# comma-separated list of subcommands that should fail (api, clone, pr, auth).
+# comma-separated list of subcommands that should fail (api, clone, pr, auth,
+# and merge for `pr merge` alone).
 
 if [ -n "$FAKE_GH_LOG" ]; then
   printf '%s\n' "$*" >> "$FAKE_GH_LOG"
@@ -32,6 +33,12 @@ case "$sub" in
     if fails api; then
       echo "HTTP 401: Bad credentials (https://api.github.com/user/repos)" >&2
       exit 1
+    fi
+    # A repo's settings (merge methods): repos/<owner>/<repo>
+    if printf '%s' "$1" | grep -Eq '^repos/[^/]+/[^/?]+$'; then
+      file="$FAKE_GH_DIR/repo-settings.json"
+      if [ -f "$file" ]; then cat "$file"; else echo '{}'; fi
+      exit 0
     fi
     # Inline review comments: repos/<owner>/<repo>/pulls/<n>/comments
     n=$(printf '%s' "$1" | sed -n 's|^repos/[^/]*/[^/]*/pulls/\([0-9][0-9]*\)/comments.*|\1|p')
@@ -73,6 +80,18 @@ case "$sub" in
     if fails pr; then
       echo "fake gh: pr failed" >&2
       exit 1
+    fi
+    # `pr merge <n> …`: merging from the PR panel.
+    if [ "$1" = "merge" ]; then
+      if fails merge; then
+        echo "GraphQL: Pull request is not mergeable (mergePullRequest)" >&2
+        exit 1
+      fi
+      case " $* " in
+        *" --auto "*) echo "✓ Pull request #$2 will be automatically merged when all requirements are met" ;;
+        *) echo "✓ Merged pull request #$2" ;;
+      esac
+      exit 0
     fi
     # `pr view <n>`: the PR panel's details.
     if [ "$1" = "view" ]; then

@@ -19,7 +19,7 @@ import { fetchRepoPage, listOpenPrs, prForBranch } from "./services/gh";
 import { baseRef, status as gitStatus } from "./services/git";
 import { isAvailable as hunkAvailable } from "./services/hunk";
 import { createLimiter } from "./services/limit";
-import { fetchPrDetails } from "./services/pr";
+import { fetchMergeSettings, fetchPrDetails } from "./services/pr";
 import { isAvailable as tmuxAvailable, listWindows } from "./services/tmux";
 
 /** How often the PR on screen is re-fetched. */
@@ -40,6 +40,7 @@ const limited = createLimiter(4);
 
 export const queryKeys = {
   prDetails: (repo: string, number: number) => ["pr-details", repo, number] as const,
+  mergeSettings: (repo: string) => ["merge-settings", repo] as const,
   prForBranch: (repo: string, branch: string) => ["pr-for-branch", repo, branch] as const,
   allPrForBranch: ["pr-for-branch"] as const,
   gitStatus: (path: string) => ["git-status", path] as const,
@@ -59,6 +60,14 @@ export const prDetailsQuery = (repo: string, number: number) =>
     queryKey: queryKeys.prDetails(repo, number),
     queryFn: () => fetchPrDetails(repo, number),
     refetchInterval: PR_DETAILS_REFRESH_MS,
+  });
+
+/** Which merge methods a repo allows, and whether auto-merge is on — settings rarely change. */
+export const mergeSettingsQuery = (repo: string) =>
+  queryOptions({
+    queryKey: queryKeys.mergeSettings(repo),
+    queryFn: () => fetchMergeSettings(repo),
+    staleTime: 10 * 60_000,
   });
 
 /** A worktree branch's open PR (the sidebar badge), or null. */

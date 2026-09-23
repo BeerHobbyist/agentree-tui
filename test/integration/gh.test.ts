@@ -11,7 +11,7 @@ import {
   isAuthenticated,
   prForBranch,
 } from "../../src/services/gh";
-import { fetchPrDetails } from "../../src/services/pr";
+import { fetchMergeSettings, fetchPrDetails, mergePr } from "../../src/services/pr";
 import { createSandbox, repoSummary, type Sandbox } from "../helpers/sandbox";
 import { makeRemote } from "../helpers/repo";
 
@@ -197,5 +197,41 @@ describe("fetchPrDetails", () => {
 
   test("a PR that can't be loaded is an error with gh's message", async () => {
     await expect(fetchPrDetails("acme/widget", 99)).rejects.toThrow("no pull requests found for #99");
+  });
+});
+
+describe("mergePr", () => {
+  test("merges with the chosen method, pinned to the head commit it was shown", async () => {
+    await mergePr("acme/widget", 42, "squash", { headSha: "abc123" });
+    expect(sandbox.ghCalls()).toContain("pr merge 42 -R acme/widget --squash --match-head-commit abc123");
+  });
+
+  test("auto-merge adds --auto; no head commit known → not pinned", async () => {
+    const message = await mergePr("acme/widget", 7, "rebase", { auto: true });
+    expect(sandbox.ghCalls()).toContain("pr merge 7 -R acme/widget --rebase --auto");
+    expect(message).toContain("automatically merged");
+  });
+
+  test("never deletes branches (the worktree still has it checked out)", async () => {
+    await mergePr("acme/widget", 42, "merge");
+    expect(sandbox.ghCalls().join("\n")).not.toContain("--delete-branch");
+  });
+
+  test("a refusal from GitHub is an error with gh's message", async () => {
+    sandbox.failGh("merge");
+    await expect(mergePr("acme/widget", 42, "squash")).rejects.toThrow("not mergeable");
+  });
+});
+
+describe("fetchMergeSettings", () => {
+  test("reads the repo's allowed methods and auto-merge", async () => {
+    sandbox.setRepoSettings({ allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: false, allow_auto_merge: true });
+    expect(await fetchMergeSettings("acme/widget")).toEqual({ methods: ["squash"], autoMerge: true });
+    expect(sandbox.ghCalls()).toContain("api repos/acme/widget");
+  });
+
+  test("a failed lookup is an error, not \"everything allowed\"", async () => {
+    sandbox.failGh("api");
+    await expect(fetchMergeSettings("acme/widget")).rejects.toThrow();
   });
 });
