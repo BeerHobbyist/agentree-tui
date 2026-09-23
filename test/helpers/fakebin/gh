@@ -33,6 +33,13 @@ case "$sub" in
       echo "HTTP 401: Bad credentials (https://api.github.com/user/repos)" >&2
       exit 1
     fi
+    # Inline review comments: repos/<owner>/<repo>/pulls/<n>/comments
+    n=$(printf '%s' "$1" | sed -n 's|^repos/[^/]*/[^/]*/pulls/\([0-9][0-9]*\)/comments.*|\1|p')
+    if [ -n "$n" ]; then
+      file="$FAKE_GH_DIR/pr-comments-$n.json"
+      if [ -f "$file" ]; then cat "$file"; else echo '[]'; fi
+      exit 0
+    fi
     page=$(printf '%s' "$1" | sed -n 's/.*[?&]page=\([0-9][0-9]*\).*/\1/p')
     [ -n "$page" ] || page=1
     file="$FAKE_GH_DIR/repos-page-$page.json"
@@ -67,11 +74,26 @@ case "$sub" in
       echo "fake gh: pr failed" >&2
       exit 1
     fi
-    # `--head <branch>` is the per-branch badge lookup; without it, the modal
-    # is listing every open PR.
+    # `pr view <n>`: the PR panel's details.
+    if [ "$1" = "view" ]; then
+      file="$FAKE_GH_DIR/pr-view-$2.json"
+      if [ -f "$file" ]; then
+        cat "$file"
+        exit 0
+      fi
+      echo "no pull requests found for #$2" >&2
+      exit 1
+    fi
+    # `--head <branch>` is the per-branch badge lookup (a branch-specific
+    # fixture wins over the catch-all); without it, the modal is listing every
+    # open PR.
     file="$FAKE_GH_DIR/open-prs.json"
     case " $* " in
-      *" --head "*) file="$FAKE_GH_DIR/prs.json" ;;
+      *" --head "*)
+        head=$(printf '%s\n' "$*" | sed -n 's/.*--head \([^ ]*\).*/\1/p' | tr '/' '_')
+        file="$FAKE_GH_DIR/prs.json"
+        [ -f "$FAKE_GH_DIR/prs-head-$head.json" ] && file="$FAKE_GH_DIR/prs-head-$head.json"
+        ;;
     esac
     if [ -f "$file" ]; then
       cat "$file"

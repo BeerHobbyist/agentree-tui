@@ -1,0 +1,5 @@
+#!/bin/sh
+# Fake URL opener for the test suite (AGENTREE_OPEN_CMD): records instead of
+# launching a browser.
+[ -n "$FAKE_OPEN_LOG" ] && printf '%s\n' "$*" >> "$FAKE_OPEN_LOG"
+exit 0

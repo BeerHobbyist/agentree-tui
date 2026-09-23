@@ -20,3 +20,29 @@ export function clampSidebarWidth(width: number, screenWidth: number): number {
   const max = Math.max(MIN_SIDEBAR_WIDTH, screenWidth - MIN_CONTENT_WIDTH);
   return Math.min(Math.max(Math.round(width), MIN_SIDEBAR_WIDTH), max);
 }
+
+/** Width the PR panel starts at. */
+export const DEFAULT_PR_PANEL_WIDTH = 46;
+/** Narrowest the PR panel gets; below this it hides instead. */
+export const MIN_PR_PANEL_WIDTH = 34;
+
+/**
+ * Fit the sidebar and the PR panel around the content pane. The sidebar leaves
+ * room for the panel when it's wanted; the content pane always keeps
+ * MIN_CONTENT_WIDTH; a panel that can't get its minimum is hidden (width 0).
+ */
+export function fitPanels(
+  screenWidth: number,
+  sidebarWidth: number,
+  panelWidth: number,
+  panelWanted: boolean,
+): { sidebar: number; panel: number } {
+  const sidebar = clampSidebarWidth(
+    sidebarWidth,
+    screenWidth - (panelWanted ? MIN_PR_PANEL_WIDTH : 0),
+  );
+  if (!panelWanted) return { sidebar, panel: 0 };
+  const room = screenWidth - sidebar - MIN_CONTENT_WIDTH;
+  if (room < MIN_PR_PANEL_WIDTH) return { sidebar, panel: 0 };
+  return { sidebar, panel: Math.min(Math.max(Math.round(panelWidth), MIN_PR_PANEL_WIDTH), room) };
+}

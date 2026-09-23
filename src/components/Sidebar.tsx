@@ -243,7 +243,7 @@ export function Sidebar({
             </text>
           </box>
           <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-            {"↑↓ move  ⏎ terminal  a +wt  d close  n new  t theme  ? help  q quit"}
+            {"↑↓ move  ⏎ terminal  a +wt  d close  n new  p PR  t theme  ? help  q quit"}
           </text>
         </box>
       </box>

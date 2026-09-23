@@ -1,6 +1,8 @@
 import { TextAttributes } from "@opentui/core";
 import { useTheme } from "../theme";
+import type { PrInfo } from "../data/model";
 import type { WindowInfo } from "../services/tmux";
+import { checkLook } from "./PrPanel";
 
 interface TabBarProps {
   windows: WindowInfo[];
@@ -12,6 +14,10 @@ interface TabBarProps {
   onExit: () => void;
   /** False when this is the only pane in the only tab — closing it would kill the session. */
   canClosePane: boolean;
+  /** The worktree's open PR: shows a button that toggles the PR panel. */
+  pr?: PrInfo;
+  prPanelShown?: boolean;
+  onTogglePr?: () => void;
 }
 
 /**
@@ -28,6 +34,9 @@ export function TabBar({
   onClosePane,
   onExit,
   canClosePane,
+  pr,
+  prPanelShown = false,
+  onTogglePr,
 }: TabBarProps) {
   const theme = useTheme();
   return (
@@ -91,6 +100,17 @@ export function TabBar({
       >
         {"  ✕"}
       </text>
+      {/* PR button: ⇡#N, coloured by its checks; lit while the panel is open. */}
+      {pr && (
+        <text
+          fg={checkLook(pr.checks, theme).color}
+          bg={prPanelShown ? theme.activeBg : undefined}
+          flexShrink={0}
+          onMouseDown={onTogglePr}
+        >
+          {`  ⇡#${pr.number}${pr.checks ? " " + checkLook(pr.checks, theme).glyph : ""} `}
+        </text>
+      )}
       <text
         fg={theme.fgFaint}
         attributes={TextAttributes.DIM}
@@ -99,7 +119,7 @@ export function TabBar({
         wrapMode="none"
         truncate
       >
-        {"  ⌥t tab · ⌥a agent · ⌥d diff · ⌥w pane · ⌥hjkl pane · ^g sidebar"}
+        {"  ⌥t tab · ⌥a agent · ⌥d diff · ⌥p PR · ⌥w pane · ⌥hjkl pane · ^g sidebar"}
       </text>
     </box>
   );

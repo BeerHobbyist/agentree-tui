@@ -1,6 +1,7 @@
 import { TextAttributes } from "@opentui/core";
 import { useTheme, type Theme } from "../theme";
 import type { Worktree } from "../data/model";
+import { checkLook } from "./PrPanel";
 
 interface WorktreeItemProps {
   worktree: Worktree;
@@ -61,9 +62,16 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
             </text>
           </box>
 
+          {/* Open PR, coloured by its checks (red failing, yellow running). */}
           {worktree.pr && (
             <text
-              fg={worktree.pr.draft ? theme.fgMuted : theme.added}
+              fg={
+                worktree.pr.checks
+                  ? checkLook(worktree.pr.checks, theme).color
+                  : worktree.pr.draft
+                    ? theme.fgMuted
+                    : theme.added
+              }
               flexShrink={0}
             >
               {` ⇡#${worktree.pr.number}${worktree.pr.draft ? "◌" : ""}`}

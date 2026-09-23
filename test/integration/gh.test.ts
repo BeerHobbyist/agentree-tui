@@ -15,6 +15,7 @@ import {
   prForBranch,
   setRepoCache,
 } from "../../src/services/gh";
+import { fetchPrDetails } from "../../src/services/pr";
 import { createSandbox, repoSummary, type Sandbox } from "../helpers/sandbox";
 import { makeRemote } from "../helpers/repo";
 
@@ -109,6 +110,35 @@ describe("prForBranch", () => {
     expect(await prForBranch("acme/widget", "feature/x")).toBeNull();
   });
 
+  test("summarises the PR's checks for the badge", async () => {
+    sandbox.setBranchPr({
+      number: 7,
+      title: "t",
+      headRefName: "feature/x",
+      checks: [
+        { __typename: "CheckRun", status: "COMPLETED", conclusion: "SUCCESS" },
+        { __typename: "CheckRun", status: "COMPLETED", conclusion: "FAILURE" },
+      ],
+    });
+    expect((await prForBranch("acme/widget", "feature/x"))?.checks).toBe("fail");
+    expect(sandbox.ghCalls().at(-1)).toContain("statusCheckRollup");
+  });
+
+  test("a lookup still in flight when the cache is cleared doesn't write it back", async () => {
+    sandbox.setBranchPr({ number: 7, title: "t", headRefName: "feature/x" });
+    const inFlight = prForBranch("acme/widget", "feature/x");
+    clearPrCache();
+    expect((await inFlight)?.number).toBe(7); // the caller still gets its answer…
+    sandbox.setBranchPr(null);
+    expect(await prForBranch("acme/widget", "feature/x")).toBeNull(); // …but it wasn't cached
+  });
+
+  test("a branch-specific PR is only found for that branch", async () => {
+    sandbox.setBranchPr({ number: 7, title: "t", headRefName: "feature/x" }, "feature/x");
+    expect((await prForBranch("acme/widget", "feature/x"))?.number).toBe(7);
+    expect(await prForBranch("acme/widget", "feature/y")).toBeNull();
+  });
+
   test("caches per repo and branch, including the misses", async () => {
     await prForBranch("acme/widget", "feature/x");
     await prForBranch("acme/widget", "feature/x");
@@ -161,5 +191,56 @@ describe("clone", () => {
     expect(clone("acme/widget", join(sandbox.workspace, "widget"))).rejects.toThrow(
       /repository not found/,
     );
+  });
+});
+
+describe("fetchPrDetails", () => {
+  const view = {
+    number: 42,
+    title: "Add login",
+    url: "https://github.com/acme/widget/pull/42",
+    state: "OPEN",
+    isDraft: false,
+    author: { login: "ignacy" },
+    baseRefName: "main",
+    headRefName: "feature/login",
+    additions: 10,
+    deletions: 2,
+    changedFiles: 3,
+    updatedAt: "2026-09-23T10:00:00Z",
+    mergeable: "MERGEABLE",
+    mergeStateStatus: "CLEAN",
+    reviewDecision: "APPROVED",
+    latestReviews: [{ author: { login: "alice" }, state: "APPROVED" }],
+    comments: [{ author: { login: "alice" }, body: "LGTM", createdAt: "2026-09-23T09:00:00Z" }],
+    statusCheckRollup: [{ __typename: "CheckRun", name: "ci", status: "COMPLETED", conclusion: "SUCCESS" }],
+    labels: [{ name: "feature" }],
+    body: "Adds login.",
+  };
+
+  test("combines gh pr view with the PR's inline review comments", async () => {
+    sandbox.setPrView(42, view);
+    sandbox.setPrComments(42, [
+      { user: { login: "bob" }, body: "nit", created_at: "2026-09-23T09:30:00Z", path: "src/a.ts", line: 3 },
+    ]);
+    const d = await fetchPrDetails("acme/widget", 42);
+    expect(d).toMatchObject({ number: 42, state: "open", author: "ignacy", reviewDecision: "approved" });
+    expect(d.checks).toEqual([{ name: "ci", state: "pass" }]);
+    expect(d.comments.map((c) => `${c.kind}:${c.author}`)).toEqual(["inline:bob", "comment:alice"]);
+
+    const calls = sandbox.ghCalls();
+    expect(calls.some((c) => c.startsWith("pr view 42 -R acme/widget --json"))).toBe(true);
+    expect(calls.some((c) => c.startsWith("api repos/acme/widget/pulls/42/comments"))).toBe(true);
+  });
+
+  test("still loads the PR when the inline comments can't be fetched", async () => {
+    sandbox.setPrView(42, view);
+    sandbox.failGh("api");
+    const d = await fetchPrDetails("acme/widget", 42);
+    expect(d.comments.map((c) => c.kind)).toEqual(["comment"]);
+  });
+
+  test("a PR that can't be loaded is an error with gh's message", async () => {
+    await expect(fetchPrDetails("acme/widget", 99)).rejects.toThrow("no pull requests found for #99");
   });
 });

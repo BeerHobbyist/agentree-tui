@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   MIN_CONTENT_WIDTH,
+  MIN_PR_PANEL_WIDTH,
   MIN_SIDEBAR_WIDTH,
   clampSidebarWidth,
+  fitPanels,
 } from "../../src/layout";
 
 describe("clampSidebarWidth", () => {
@@ -24,5 +26,30 @@ describe("clampSidebarWidth", () => {
 
   test("rounds fractional widths to whole columns", () => {
     expect(clampSidebarWidth(40.6, 120)).toBe(41);
+  });
+});
+
+describe("fitPanels", () => {
+  test("without the PR panel, the sidebar is clamped as usual", () => {
+    expect(fitPanels(140, 38, 46, false)).toEqual({ sidebar: 38, panel: 0 });
+  });
+
+  test("both fit side by side on a wide screen", () => {
+    expect(fitPanels(140, 38, 46, true)).toEqual({ sidebar: 38, panel: 46 });
+  });
+
+  test("the sidebar makes room for the panel's minimum", () => {
+    const { sidebar, panel } = fitPanels(100, 60, 46, true);
+    expect(panel).toBeGreaterThanOrEqual(MIN_PR_PANEL_WIDTH);
+    expect(100 - sidebar - panel).toBeGreaterThanOrEqual(MIN_CONTENT_WIDTH);
+  });
+
+  test("a panel dragged too wide still leaves the content its minimum", () => {
+    const { sidebar, panel } = fitPanels(140, 38, 200, true);
+    expect(140 - sidebar - panel).toBe(MIN_CONTENT_WIDTH);
+  });
+
+  test("on a screen too narrow for all three, the panel hides", () => {
+    expect(fitPanels(80, 38, 46, true).panel).toBe(0);
   });
 });

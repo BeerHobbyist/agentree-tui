@@ -60,6 +60,10 @@ interface TerminalPaneProps {
   onRequestFocus: () => void;
   /** Called to hand focus back to the sidebar (back button / Ctrl+g). */
   onExit: () => void;
+  /** Whether the PR panel is showing (the tab bar's PR button reflects it). */
+  prPanelShown?: boolean;
+  /** Show / hide the PR panel (⌥p, or the tab bar's PR button). */
+  onTogglePrPanel?: () => void;
 }
 
 function Centered({
@@ -128,6 +132,8 @@ function TerminalView({
   focused,
   onRequestFocus,
   onExit,
+  prPanelShown = false,
+  onTogglePrPanel,
 }: TerminalPaneProps) {
   const theme = useTheme();
   const session = useMemo(
@@ -367,6 +373,11 @@ function TerminalView({
       openDiffPicker();
       return;
     }
+    if (n === "p") {
+      eat();
+      onTogglePrPanel?.();
+      return;
+    }
     // Directional keys move between split panes (vim hjkl + arrows).
     if (n === "h" || n === "left") {
       eat();
@@ -441,6 +452,9 @@ function TerminalView({
         }}
         onExit={onExit}
         canClosePane={canClosePane}
+        pr={worktree.pr}
+        prPanelShown={prPanelShown}
+        onTogglePr={onTogglePrPanel}
       />
       {/* No fixed cols/rows: the constructor would pin the layout width to
           `cols`. Let it fill the pane; onResize drives sizing. */}

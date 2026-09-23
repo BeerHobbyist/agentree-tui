@@ -14,8 +14,11 @@ Working, at MVP+ level:
 - **Sidebar** — projects as foldable groups, worktrees indented under a guide rule
   with live **agent status** (◆ needs action · ◐ working · ✓ done · ○ idle), an
   uncommitted-changes count (`●3`), +/− and ahead/behind, and an open-PR badge
-  `⇡#N` via `gh`; keyboard + mouse nav. **Resizable** (drag its edge or `[` / `]`),
-  width remembered.
+  `⇡#N` via `gh` coloured by CI; keyboard + mouse nav. **Resizable** (drag its
+  edge or `[` / `]`), width remembered.
+- **PR panel** — on the right, for the worktree on screen when it has an open
+  PR: merge status, reviews, checks, labels, description and comments; `p` / ⌥p
+  toggles, `o` opens on GitHub, `r` refreshes.
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
   persisted; `＋` on a header or `a` preselects the project. The repo's open
@@ -77,9 +80,15 @@ the app polls those and cross-checks tmux (see **Agent status**).
   (list/new/select/next/prev/split/killPane), `listPaneActivity`, `sessionName`.
 - `src/services/agents.ts` — agent status: the Claude hooks settings file,
   `agentLaunchCommand`, reading and correcting per-pane reports (`readAgentStatuses`).
-- `src/layout.ts` — sidebar width rules (`clampSidebarWidth`, min/default/step).
-- `src/components/` — `Sidebar`, `WorktreeItem`, `ResizeHandle` (sidebar
-  divider), `AddWorktreeModal`, `ConfirmModal`, `EmbeddedTerminal` (registers a
+- `src/services/pr.ts` — PR details for the panel (`fetchPrDetails`: `gh pr view
+  --json` + the REST inline-comments endpoint) and pure normalizers
+  (`checkState`, `summarizeChecks`, `mergeStatus`, `relativeTime`, …).
+- `src/services/open.ts` — `openExternal(url)`; `AGENTREE_OPEN_CMD` overrides the
+  opener (tests use a fake that records).
+- `src/layout.ts` — sidebar width rules (`clampSidebarWidth`, min/default/step)
+  and `fitPanels` (sidebar + PR panel around the content pane).
+- `src/components/` — `Sidebar`, `WorktreeItem`, `ResizeHandle` (sidebar / PR
+  panel divider), `PrPanel`, `AddWorktreeModal`, `ConfirmModal`, `EmbeddedTerminal` (registers a
   `StableCursorEmbeddedTerminal` subclass — see **Terminal fidelity**),
   `TerminalPane`, `TabBar`, `HelpOverlay`, `MenuOverlay` (＋ menu / diff picker).
 - `src/hooks/useTerminalSession.ts` — Bun PTY lifecycle wired to the emulator.
@@ -89,11 +98,13 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - **Sidebar**: `↑↓`/`j k` move · `g`/`G` first/last · `space` or `h`/`l` fold ·
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
   `d` close (delete) worktree · `n` add project · `[`/`]` narrower/wider sidebar ·
-  `=` reset width · `t` cycle theme · `?` help · `q` or `Ctrl+C` quit.
+  `=` reset width · `p` PR panel · `o` open PR · `r` refresh PR · PgUp/PgDn
+  scroll PR panel · `t` cycle theme · `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`)
   move between **split panes** · `⌥,`/`⌥.` prev/next **tab** · `⌥1`–`9` jump tab ·
-  `⌥t` new tab · `⌥a` open agent (new tab) · `⌥d` open diff (hunk) · `⌥w` close
+  `⌥t` new tab · `⌥a` open agent (new tab) · `⌥d` open diff (hunk) · `⌥p` PR
+  panel · `⌥w` close
   pane · `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical ·
   `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
 - **Mouse** (everything is clickable): sidebar rows (worktree → open, header →
@@ -212,6 +223,26 @@ without losing the chosen width, and saved as `ui.sidebarWidth` in state.json
 OpenTUI only captures on the first drag event, by which time the pointer is
 usually over the terminal, which would take the drag and hand it to nvim.
 
+## PR panel
+
+`src/components/PrPanel.tsx`, on the right of the content pane, for the
+worktree on screen (the open terminal's, else the selected row's) when it has
+an open PR. Sections: header (number, state, title — click to open —,
+author, `base ← head`, +/−, files, last update), **Merge** (`mergeStatus`:
+ready, conflicts, behind, blocked and why, draft, merged/closed), **Reviews**
+(decision, each reviewer's latest verdict, pending requests), **Checks**
+(counts; each check failing-first, click to open its log), **Labels**,
+**Description**, **Comments** (conversation, review summaries and inline code
+comments with `file:line`, newest first; click to open). It re-fetches every
+30s and on `r`; the sections scroll (wheel, PgUp/PgDn). Toggle with `p` / ⌥p /
+its ✕ / the tab bar's `⇡#N` button; drag its left edge to resize. Both are
+remembered (`ui.prPanelHidden`, `ui.prPanelWidth`). `fitPanels` narrows the
+sidebar to make room and hides the panel on a screen too narrow for it.
+
+The sidebar's PR lookup (`prForBranch`) now also asks for `statusCheckRollup`
+to colour the `⇡#N` badge, and is re-run every 60s, when an agent changes state
+(throttled), and on `r` — it used to run once and be cached for the session.
+
 ## Help
 
 `?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all
@@ -224,7 +255,7 @@ each other.
 
 - `~/.config/agentree/state.json`: `{ version, workspaceRoot, repos[] { nameWithOwner,
   name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt } },
-  ui? { sidebarWidth? } }`. Volatile git status is computed at runtime, never
+  ui? { sidebarWidth?, prPanelHidden?, prPanelWidth? } }`. Volatile git status is computed at runtime, never
   persisted. Atomic write.
 - `~/.config/agentree/claude-hooks.json` (the hooks agents load) and
   `~/.config/agentree/agents/` (their per-pane reports) are runtime only; stale
@@ -271,6 +302,13 @@ each other.
   terminfo's `Se` resets the cursor to a steady block; `#{window_activity}`
   updates on every output (1s resolution); `new-session -e` env reaches later
   windows too.
+- **Module caches vs in-flight work**: `clearPrCache()` bumps a generation so a
+  lookup started before the clear can't write stale data back, and the app's
+  background loops check an `alive` ref so a disposed app stops issuing `gh`
+  calls. (Both surfaced as cross-test leaks.)
+- **Unmounting a terminal kills its tmux client** (the session lives on in the
+  server): closing the PTY alone let a client that was still starting go on and
+  start a server nobody was attached to.
 - **Claude Code hooks** (verified on 2.1.280): `UserPromptSubmit`/`SessionStart`
   stdout is fed into the conversation, so hooks must be silent; the
   `permission_prompt` notification fires ~6s after the dialog; `Stop` doesn't
@@ -339,6 +377,7 @@ throwaway PTY probes instead.
 
 ### 2026-09-23
 
+- PR panel (right side: merge, reviews, checks, comments; `p` `o` `r`, ⌥p)
 - #26 `7ef52b9` Live agent status (Claude Code hooks + tmux) and an accurate,
   live changed-files count; help overlay scrolls; test sandbox hardening
 - #25 `e214420` Resizable sidebar (drag the divider, `[` `]` `=`, remembered)

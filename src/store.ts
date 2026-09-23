@@ -36,6 +36,10 @@ export interface StoredRepo {
 export interface UiState {
   /** Sidebar width the user dragged/resized to; omitted = default. */
   sidebarWidth?: number;
+  /** The PR panel was switched off (`p`); omitted = shown. */
+  prPanelHidden?: boolean;
+  /** PR panel width the user dragged to; omitted = default. */
+  prPanelWidth?: number;
 }
 
 export interface State {
@@ -48,11 +52,14 @@ export interface State {
 /** Keep only well-formed ui fields from a parsed state file. */
 function sanitizeUi(raw: unknown): UiState | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const { sidebarWidth } = raw as { sidebarWidth?: unknown };
-  if (typeof sidebarWidth === "number" && Number.isFinite(sidebarWidth) && sidebarWidth > 0) {
-    return { sidebarWidth: Math.round(sidebarWidth) };
-  }
-  return undefined;
+  const { sidebarWidth, prPanelHidden, prPanelWidth } = raw as Record<string, unknown>;
+  const width = (v: unknown) =>
+    typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : undefined;
+  const ui: UiState = {};
+  if (width(sidebarWidth)) ui.sidebarWidth = width(sidebarWidth);
+  if (width(prPanelWidth)) ui.prPanelWidth = width(prPanelWidth);
+  if (prPanelHidden === true) ui.prPanelHidden = true;
+  return Object.keys(ui).length > 0 ? ui : undefined;
 }
 
 function emptyState(): State {
