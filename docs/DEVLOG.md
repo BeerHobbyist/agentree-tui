@@ -1,6 +1,6 @@
 # agentree-tui — Dev Log & State
 
-_Last updated: 2026-09-21 · Repo: github.com/BeerHobbyist/agentree-tui (private)_
+_Last updated: 2026-09-23 · Repo: github.com/BeerHobbyist/agentree-tui (private)_
 
 A terminal-first workspace manager for parallel development across git worktrees.
 Built with **Bun + TypeScript + OpenTUI (React renderer)**. A sidebar lists your
@@ -12,15 +12,19 @@ by tmux, with tabs and pane splitting.
 Working, at MVP+ level:
 
 - **Sidebar** — projects as foldable groups, worktrees indented under a guide rule
-  with status (dirty dot, agent badge, +/− and ahead/behind, and an open-PR badge
-  `⇡#N` via `gh`), keyboard + mouse nav.
+  with live **agent status** (◆ needs action · ◐ working · ✓ done · ○ idle), an
+  uncommitted-changes count (`●3`), +/− and ahead/behind, and an open-PR badge
+  `⇡#N` via `gh`; keyboard + mouse nav. **Resizable** (drag its edge or `[` / `]`),
+  width remembered.
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
   persisted; `＋` on a header or `a` preselects the project. The repo's open
   PRs are listed alongside existing worktrees as one-key picks, fetched via
   `refs/pull/<n>/head` (works for forks) and named after the PR's branch.
 - **Embedded terminals** — OpenTUI `EmbeddedTerminal` + **Bun native PTY** + tmux
-  for persistence. One terminal per worktree; opens on `Enter`.
+  for persistence. One terminal per worktree, opened on `Enter` and kept mounted
+  afterwards so switching back is instant. Programs inside get the mouse (click,
+  drag-select, scroll in nvim/pagers) and your terminal's own blinking cursor.
 - **Tabs + pane splitting** — tmux windows (tabs) and panes (splits) composited
   inside the one embedded terminal; app-styled tab/tool bar; keyboard + mouse.
 - **Ctrl+C reaches the shell**; app quit via `q` / Ctrl+C while the sidebar is focused.
@@ -44,6 +48,10 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 (The brief's "tmux as compositor / no VT engine" idea was dropped once we chose
 `EmbeddedTerminal`.)
 
+Agent status runs beside this: agents agentree starts load Claude Code hooks
+(`--settings`) that write one-line reports under `~/.config/agentree/agents/`;
+the app polls those and cross-checks tmux (see **Agent status**).
+
 ## File map
 
 - `src/index.tsx` — entry point: load state, reconcile, mount `App`.
@@ -64,18 +72,24 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 - `src/services/git.ts` — worktree add/list/status, `localBranchExists`,
   `ignoreWorktreesDir` (adds `.worktrees/` to `.git/info/exclude`).
 - `src/services/tmux.ts` — dedicated **`-L agentree`** socket; `attachCommand`
-  (status off + global theme + optional startup command), window/pane helpers
-  (list/new/select/next/prev/split/killPane), `sessionName`.
-- `src/components/` — `Sidebar`, `WorktreeItem`, `AddWorktreeModal`,
-  `EmbeddedTerminal` (registration), `TerminalPane`, `TabBar`, `HelpOverlay`,
-  `MenuOverlay` (＋ menu / diff picker).
+  (pre-attach cursor override, status off + global theme, `mouse on`, optional
+  startup command and session `env`), window/pane helpers
+  (list/new/select/next/prev/split/killPane), `listPaneActivity`, `sessionName`.
+- `src/services/agents.ts` — agent status: the Claude hooks settings file,
+  `agentLaunchCommand`, reading and correcting per-pane reports (`readAgentStatuses`).
+- `src/layout.ts` — sidebar width rules (`clampSidebarWidth`, min/default/step).
+- `src/components/` — `Sidebar`, `WorktreeItem`, `ResizeHandle` (sidebar
+  divider), `AddWorktreeModal`, `ConfirmModal`, `EmbeddedTerminal` (registers a
+  `StableCursorEmbeddedTerminal` subclass — see **Terminal fidelity**),
+  `TerminalPane`, `TabBar`, `HelpOverlay`, `MenuOverlay` (＋ menu / diff picker).
 - `src/hooks/useTerminalSession.ts` — Bun PTY lifecycle wired to the emulator.
 
 ## Keybindings
 
 - **Sidebar**: `↑↓`/`j k` move · `g`/`G` first/last · `space` or `h`/`l` fold ·
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
-  `n` add project · `t` cycle theme · `?` help · `q` or `Ctrl+C` quit.
+  `d` close (delete) worktree · `n` add project · `[`/`]` narrower/wider sidebar ·
+  `=` reset width · `t` cycle theme · `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
 - **Terminal (focused)**: `Ctrl+g` back to sidebar · `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`)
   move between **split panes** · `⌥,`/`⌥.` prev/next **tab** · `⌥1`–`9` jump tab ·
@@ -83,12 +97,13 @@ only for **persistence** + compositing windows/panes inside that one terminal.
   pane · `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical ·
   `Ctrl+C` → shell · tmux-native `Ctrl+b …` works.
 - **Mouse** (everything is clickable): sidebar rows (worktree → open, header →
-  select+fold), `＋` add worktree, footer theme + `?` help; the add-worktree modal
+  select+fold), `＋` add worktree, footer theme + `?` help; **drag the sidebar's
+  right edge** to resize (double-click resets); the add-worktree modal
   repo/action rows; tab bar (tab, `×` close tab, `＋` menu, `⬌`/`⬍` split, `✕`
-  close pane, `‹` back); and
-  **click a split pane to focus it** (deterministic: the click maps to
-  emulator-local cells matched against `list-panes` geometry → `select-pane`; tmux
-  mouse stays off so native text selection still works); click anywhere to close help.
+  close pane, `‹` back). Inside a terminal tmux has `mouse on`: clicks, drags and
+  the wheel reach the program (nvim, pagers), and clicking a split pane selects
+  it (this replaced the old coordinate → `list-panes` hit-testing). Click anywhere
+  to close help.
 
 ## Theming
 
@@ -153,16 +168,67 @@ Uncommitted changes are separate: `●3` on a worktree's branch line (files
 with changes, untracked included), refreshed every 5s and whenever an agent
 changes state — it used to be computed once at startup.
 
+## Terminal fidelity
+
+What a program inside a worktree terminal sees should match a plain terminal.
+Most of this lives in `src/components/EmbeddedTerminal.tsx` (a subclass of
+OpenTUI's `EmbeddedTerminalRenderable`); root causes and before/after evidence
+are in `docs/terminal-rendering-glitches.md`.
+
+- **Mouse** — tmux `mouse on` (`behaviorOptions`), so tmux asks the emulator for
+  mouse and relays it to the focused pane. The pane's own handler goes on
+  `onMouse`, never `onMouseDown`: `EmbeddedTerminal` forwards mouse to the child
+  from its per-type slots, and the React reconciler assigns a passed
+  `onMouseDown` straight into that slot, silently dropping the forwarding.
+- **No selection overlay** — `selectable={false}`, so a drag reaches the program
+  instead of OpenTUI painting its own cell selection over the grid (issue #21).
+- **Stable cursor** — the base `renderSelf` mirrors the child's cursor onto the
+  host cursor on every frame, and a frame is drawn per PTY chunk, so mid-redraw
+  positions (nvim parks at column 0) and Claude's spinner made it flash and jump
+  (issue #22). The subclass freezes the host cursor while output streams and
+  asserts the settled, deduped cursor once it's been quiet for 20ms.
+  `AGENTREE_CURSOR_SMOOTH=off` restores stock behaviour for comparison.
+- **Native blinking cursor** — the emulator reports a steady block when the
+  child never asked for a shape, which pinned the real cursor to steady. The
+  subclass reads the child's DECSCUSR from the byte stream and asks the host for
+  its own default (`ESC[0 q`) until the child requests a shape; explicit shapes
+  (nvim's modes) pass through. tmux's terminfo `Se` resets to `\E[2 q` (steady),
+  so an indexed `terminal-overrides[90]` sets `Se=\E[0 q` before `new-session`
+  (`preAttachOptions`).
+- **Switching worktrees doesn't flash** — every opened worktree keeps its
+  terminal mounted (hidden with `display:none`) instead of re-attaching tmux,
+  which always clears and redraws.
+- **Orphan releases** — the terminal drops a mouse release whose press started
+  elsewhere (e.g. letting go of the sidebar divider over it).
+
+## Resizable sidebar
+
+Drag the divider on the sidebar's right edge (`ResizeHandle`), or use `[` / `]`
+(4 columns) and `=` to reset; double-clicking the divider resets too. The width
+is clamped by `clampSidebarWidth` (`src/layout.ts`: minimum 28 so the status row
+fits, and the content pane always keeps 30), re-clamped when the window resizes
+without losing the chosen width, and saved as `ui.sidebarWidth` in state.json
+(omitted at the default). The divider captures the pointer on mouse-down:
+OpenTUI only captures on the first drag event, by which time the pointer is
+usually over the terminal, which would take the drag and hand it to nvim.
+
 ## Help
 
 `?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all
-sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click closes.
+sidebar / terminal / mouse shortcuts, an agent-status legend, and the active
+theme; `esc` / `?` / click closes. The sections scroll (`↑↓`/`j k`, PgUp/PgDn,
+`g`/`G`, wheel): they had outgrown a 30-row screen and started drawing over
+each other.
 
 ## Persistence
 
 - `~/.config/agentree/state.json`: `{ version, workspaceRoot, repos[] { nameWithOwner,
-  name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt } } }`.
-  Volatile git status is computed at runtime, never persisted. Atomic write.
+  name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt } },
+  ui? { sidebarWidth? } }`. Volatile git status is computed at runtime, never
+  persisted. Atomic write.
+- `~/.config/agentree/claude-hooks.json` (the hooks agents load) and
+  `~/.config/agentree/agents/` (their per-pane reports) are runtime only; stale
+  reports are cleaned up against live tmux panes.
 - tmux sessions on the `-L agentree` socket keep processes alive across app
   restarts. `reconcile()` self-heals state against `git worktree list`.
 
@@ -191,16 +257,35 @@ sidebar / terminal / mouse shortcuts + the active theme; `esc` / `?` / click clo
   tab bar. Killing the last pane closes the window (tab).
 - **gh**: `gh repo list` is owner-only (~38); use `gh api --paginate user/repos`
   for all accessible repos (~548). Load incrementally + cache; rank the filter.
+- **OpenTUI React event props go straight into the renderable's listener slot**
+  (`setProperty` default: `instance[key] = value`). For a renderable that
+  installs its own handlers (`EmbeddedTerminal`'s mouse forwarding) a same-named
+  prop replaces them — put app logic on the generic `onMouse`.
+- **Pointer capture**: OpenTUI captures on the first *drag* event, whatever is
+  under the pointer then. To own a drag, call the renderer's (untyped)
+  `setCapturedRenderable` on mouse-down. The final release is also dispatched to
+  whatever is under the pointer, and a captured renderable is left out of the
+  hit grid until the next frame.
+- **tmux 3.7**: `kill-server` leaves the socket file behind; `terminal-overrides`
+  is read when a client attaches (set it earlier in the same command list);
+  terminfo's `Se` resets the cursor to a steady block; `#{window_activity}`
+  updates on every output (1s resolution); `new-session -e` env reaches later
+  windows too.
+- **Claude Code hooks** (verified on 2.1.280): `UserPromptSubmit`/`SessionStart`
+  stdout is fed into the conversation, so hooks must be silent; the
+  `permission_prompt` notification fires ~6s after the dialog; `Stop` doesn't
+  fire on Esc and nothing fires on deny. Claude's spinner keeps output flowing
+  while it works (gaps ≤1s, even during a long tool run).
 
 ## Tests
 
-`bun test` — 124 tests, ~5s. The CI workflow (install, typecheck, test, compile
-build on every PR and every push to main) is staged at `.github/ci-workflow.yml`
-and still has to be moved to `.github/workflows/ci.yml` to take effect — writing
-that path needs the `workflow` scope. Unit (pure helpers), integration (real git in a temp
-dir, a fake `gh` on PATH), and E2E that drive the whole `App` headlessly through
-OpenTUI's test renderer with mock keys and frame capture. Details and the
-helper API: `docs/TESTING.md`.
+`bun test` — 201 tests, ~15s (`bun run test` and CI use a 30s per-test timeout;
+plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
+typecheck, test, compile build) runs on every PR and every push to main. Unit
+(pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
+real tmux server on a throwaway socket), and E2E that drive the whole `App`
+headlessly through OpenTUI's test renderer with mock keys, mock mouse and frame
+capture. Details and the helper API: `docs/TESTING.md`.
 
 Three input bugs the E2E found on its first run, all fixed:
 - **Burst coalescing** — the key handlers read state through refs React only
@@ -217,12 +302,23 @@ the entry point), the tmux socket is `AGENTREE_TMUX_SOCKET`-overridable,
 `proc.run()` passes `process.env` explicitly (so a test's `PATH` shim applies),
 and `clearPrCache()` / `resetTheme()` exist to reset module-level state.
 
+The sandbox also runs an inert agent command (`AGENTREE_AGENT_CMD=sh`) — tests
+that open a terminal used to start the real `claude` — and its cleanup stops the
+test's own tmux server and removes the socket file tmux leaves behind.
+Terminal-focused keyboard chords still can't be driven (once the emulator is
+focused, mock keys go straight into it), so terminal behaviour is checked with
+throwaway PTY probes instead.
+
 ## Deferred / follow-ups
 
-- Test coverage for the terminal pane (tmux tabs/panes, diff picker, mouse→pane).
-- Multiple-terminal keep-alive for instant worktree switching; restore/list live
-  sessions on startup; agent-waiting detection via `screen()` scraping.
-- `+/−` diffstat badge (currently 0); layout-restore JSON (reboot survival).
+- Test coverage for the terminal pane (tmux tabs/panes, diff picker) — needs a
+  way to drive keys past a focused emulator.
+- Restore/list live sessions on startup; layout-restore JSON (reboot survival).
+- Agent status: a `claude` typed by hand in a shell pane doesn't load the hooks,
+  and "needs action" lags a permission prompt by Claude's ~6s notification delay.
+- Upstream: OpenTUI's `EmbeddedTerminal` re-mirrors the cursor every frame (its
+  main renderer already dedupes — anomalyco/opentui #287, #794). Not filed yet;
+  our subclass works around it.
 - Tab rename UI (tmux `Ctrl+b ,` works); drag-to-reorder tabs.
 - Persistence layer stays on tmux (only JS lib with true persistence needs Node;
   `dtach` is a lighter binary alternative if ever wanted).
@@ -239,7 +335,24 @@ and `clearPrCache()` / `resetTheme()` exist to reset module-level state.
   the user's real sessions. Now isolated via `-L agentree`; never `kill-server`
   a shared socket — kill specific sessions only.
 
-## Commit history (this session)
+## Commit history
+
+### 2026-09-23
+
+- #26 `7ef52b9` Live agent status (Claude Code hooks + tmux) and an accurate,
+  live changed-files count; help overlay scrolls; test sandbox hardening
+- #25 `e214420` Resizable sidebar (drag the divider, `[` `]` `=`, remembered)
+- #24 `74a3c42` Native blinking cursor (DECSCUSR passthrough, tmux `Se` override)
+- #23 `d1402a4` No selection overlay over nvim; cursor frozen while output
+  streams (issues #21, #22)
+- #20 `52df35a` Mouse reaches programs inside the terminal (tmux `mouse on`, `onMouse`)
+- #19 `4cff1c9` Cursor dedupe (superseded by #23) + `docs/terminal-rendering-glitches.md`
+
+2026-09-22 (PRs #1–#18: test suite + CI, open-PR picker, startup agent, `d` to
+close a worktree, keep-alive terminals, flash fixes) isn't itemised here — see
+`git log`.
+
+### Earlier
 
 - GitHub PR badge on worktrees (`gh pr list --head <branch>`, background + cached)
 - `93cd46e` Add "specific ref / commit" diff option to the hunk picker
