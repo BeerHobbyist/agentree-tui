@@ -466,6 +466,20 @@ names another. Tabs are tmux windows, so the app's tab bar follows.
   into the binary; `agentree skill install` copies it to Claude's skills
   (`$CLAUDE_CONFIG_DIR` or `~/.claude/skills/agentree/`), `uninstall` removes it.
 
+## Hints
+
+Key hints stay short; every key is in the help overlay (`?`). The tab bar shows
+only `^g sidebar` (the way back — it used to list ten ⌥ chords, which pushed
+the tabs and even the `＋` button out of view). The sidebar footer's hint line
+is one line for the selected row (`footerHint`, at most 33 columns — the
+default sidebar's room): `⏎ open · a new · d close · ? keys` on a worktree,
+`a add dir · d remove · ? keys` on an SSH host, `n add repo · s add host` with
+nothing yet — `Tab next agent` first when one needs you. It was three wrapped
+lines of every sidebar key.
+
+The tab bar also can't shrink any more (`flexShrink={0}`): on a screen under
+~20 rows the terminal below used to take its row, and the tabs vanished.
+
 ## Help
 
 `?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all
@@ -570,7 +584,7 @@ each other.
 
 ## Tests
 
-`bun test` — 399 tests, ~65s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 404 tests, ~65s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -652,13 +666,17 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
-- Agent CLI: `agentree tab new|read|send|list|select|rename|close`, `diff`,
-  `notify`, `status` — on PATH in every agentree terminal, announced to claude
-  by a SessionStart hook; plus a Claude Code skill (`agentree skill install`)
-- Status for every agent: `H` puts the hooks in Claude's user settings (asks
-  first; merged, reversible) so a hand-typed claude reports too; SSH hosts
-  report over ssh. Notifications when an agent needs you elsewhere; `Tab` /
-  `⌥n` / a footer count jump to it
+- #42 `8ec5aef` Agent CLI: `agentree tab new|read|send|list|select|rename|close`,
+  `diff`, `notify`, `status` — on PATH in every agentree terminal, announced to
+  claude by a SessionStart hook; plus a Claude Code skill (`agentree skill
+  install`)
+- #41 `ac21cdf` Hints: the tab bar keeps just `^g sidebar`; the sidebar footer is
+  one line of keys for the selected row; the tab bar no longer vanishes on
+  short screens
+- #40 `f783701` Status for every agent: `H` puts the hooks in Claude's user
+  settings (asks first; merged, reversible) so a hand-typed claude reports too;
+  SSH hosts report over ssh. Notifications when an agent needs you elsewhere;
+  `Tab` / `⌥n` / a footer count jump to it
 - #39 `5eacad6` Diff viewers: hunk, diffnav, delta, difftastic, nvim diffview
   or plain git — the first installed, or the one picked with `v` in the diff
   picker (remembered); empty diffs say so; pagers can't quit on a short diff

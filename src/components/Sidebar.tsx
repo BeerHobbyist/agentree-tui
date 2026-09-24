@@ -51,6 +51,27 @@ export function worktreeKey(projectId: string, worktreeId: string): string {
   return projectId + ":" + worktreeId;
 }
 
+/**
+ * The footer's one line of keys: what you can do with the selected row, not a
+ * list of everything (that's `?`). An agent needing you comes first.
+ */
+export function footerHint(projects: Project[], activeKey: string, agentWaiting: boolean): string {
+  if (projects.length === 0) return "n add repo · s add host · ? keys";
+  for (const p of projects) {
+    if (activeKey === projectKey(p.id)) {
+      if (agentWaiting) return "Tab next agent · ? keys";
+      return p.ssh ? "a add dir · d remove · ? keys" : "⏎ fold · a new worktree · ? keys";
+    }
+    const w = p.worktrees.find((w) => activeKey === worktreeKey(p.id, w.id));
+    if (!w) continue;
+    if (agentWaiting) return "Tab next agent · ⏎ open · ? keys";
+    if (p.ssh) return "⏎ open · d remove · ? keys";
+    if (w.id === "main") return "⏎ open · a new worktree · ? keys";
+    return "⏎ open · a new · d close · ? keys";
+  }
+  return agentWaiting ? "Tab next agent · ? keys" : "? keys";
+}
+
 function ProjectGroup({
   project,
   collapsed,
@@ -278,8 +299,8 @@ export function Sidebar({
               {" ? "}
             </text>
           </box>
-          <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-            {"↑↓ move  ⏎ terminal  a +wt  R rename  d close  n new  s ssh  p PR  b hide  t theme  ? help  q quit"}
+          <text fg={theme.fgFaint} attributes={TextAttributes.DIM} wrapMode="none" truncate>
+            {footerHint(projects, activeKey, agentCounts.some((c) => c.state !== "working"))}
           </text>
         </box>
       </box>
