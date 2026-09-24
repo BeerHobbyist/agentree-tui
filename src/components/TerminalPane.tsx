@@ -3,24 +3,7 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { Worktree } from "../data/model";
-import {
-  applyTheme,
-  attachCommand,
-  autoNameWindow,
-  killPane,
-  killWindow,
-  newWindow,
-  newWindowCmd,
-  nextWindow,
-  prevWindow,
-  renameWindow,
-  selectPane,
-  selectWindow,
-  sessionName,
-  splitWindow,
-  MAX_TAB_NAME_LENGTH,
-  type WindowInfo,
-} from "../services/tmux";
+import { attachCommand, sessionName, tmuxOn, MAX_TAB_NAME_LENGTH, type WindowInfo } from "../services/tmux";
 import { diffCommand, type DiffTarget } from "../services/hunk";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -32,6 +15,7 @@ import {
 } from "../queries";
 import { useTerminalSession } from "../hooks/useTerminalSession";
 import { agentLaunchCommand, agentSessionEnv } from "../services/agents";
+import { remoteAgentCommand } from "../config";
 import { TabBar } from "./TabBar";
 import { MenuOverlay, type MenuItem } from "./MenuOverlay";
 import { RenameModal } from "./RenameModal";
@@ -42,6 +26,8 @@ const MENU_ITEMS: MenuItem[] = [
   { label: "✻ New agent", hint: "⌥a" },
   { label: "◨ New diff (hunk)", hint: "⌥d" },
 ];
+/** An SSH directory has no git features, so no diff viewer. */
+const REMOTE_MENU_ITEMS = MENU_ITEMS.slice(0, 2);
 const DIFF_ITEMS: MenuItem[] = [
   { label: "Working changes", hint: "uncommitted" },
   { label: "Staged", hint: "index" },
@@ -137,6 +123,10 @@ function TerminalView({
     () => sessionName(repoId, worktree.id),
     [repoId, worktree.id],
   );
+  // An SSH project's directory: tmux (and everything in it) runs on the host.
+  const host = worktree.host;
+  const tmux = useMemo(() => tmuxOn(host), [host]);
+  const menuItems = host ? REMOTE_MENU_ITEMS : MENU_ITEMS;
   // Initial attach applies the theme once; theme changes are re-applied live
   // via applyTheme below (not by rebuilding the command, which would re-spawn).
   const command = useMemo(
@@ -150,11 +140,14 @@ function TerminalView({
           border: theme.border,
           borderActive: theme.accent,
         },
-        agentLaunchCommand(),
-        agentSessionEnv(session),
+        // A remote directory starts a plain shell: the agent's status hooks
+        // live on this machine.
+        host ? undefined : agentLaunchCommand(),
+        host ? {} : agentSessionEnv(session),
+        host,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session, worktree.path],
+    [session, worktree.path, host],
   );
   const { ref, onData, onTerminalResize, status, error } =
     useTerminalSession(command);
@@ -169,13 +162,13 @@ function TerminalView({
   // Live re-theme: re-apply tmux styling (global) when the theme changes.
   useEffect(() => {
     if (status !== "running") return;
-    applyTheme({
+    tmux.applyTheme({
       bg: theme.bg,
       fg: theme.fg,
       border: theme.border,
       borderActive: theme.accent,
     }).catch(() => {});
-  }, [theme, status]);
+  }, [theme, status, tmux]);
 
   // The session's windows (tabs), so the bar reflects tmux state — our own
   // actions plus native Ctrl+b changes and programs exiting. Polled only while
@@ -183,7 +176,7 @@ function TerminalView({
   // kept across a refetch so the bar never blanks.
   const queryClient = useQueryClient();
   const windowsQuery = useQuery({
-    ...tmuxWindowsQuery(session),
+    ...tmuxWindowsQuery(session, host),
     enabled: status === "running" && visible,
     placeholderData: keepPreviousData,
   });
@@ -233,6 +226,7 @@ function TerminalView({
     setMenuIndex(0);
   };
   const openDiffPicker = () => {
+    if (host) return; // no git over ssh
     setOverlay("diff");
     setMenuIndex(0);
   };
@@ -247,7 +241,7 @@ function TerminalView({
         (target === "base"
           ? await queryClient.fetchQuery(baseRefQuery(worktree.path))
           : undefined);
-      await newWindowCmd(
+      await tmux.newWindowCmd(
         session,
         worktree.path,
         diffCommand(target, resolved),
@@ -256,12 +250,13 @@ function TerminalView({
     });
   };
   const openAgent = () => {
-    act(() => newWindowCmd(session, worktree.path, agentLaunchCommand(), "agent"));
+    const command = host ? remoteAgentCommand() : agentLaunchCommand();
+    act(() => tmux.newWindowCmd(session, worktree.path, command, "agent"));
   };
   const pickOverlay = (i: number) => {
     if (overlay === "menu") {
       if (i === 0) {
-        act(() => newWindow(session, worktree.path));
+        act(() => tmux.newWindow(session, worktree.path));
         closeOverlay();
       } else if (i === 1) {
         openAgent();
@@ -294,7 +289,7 @@ function TerminalView({
     const tab = renameTab;
     closeOverlay();
     if (!tab) return;
-    act(() => (name ? renameWindow(session, tab.index, name) : autoNameWindow(session, tab.index)));
+    act(() => (name ? tmux.renameWindow(session, tab.index, name) : tmux.autoNameWindow(session, tab.index)));
   };
   const submitRef = () => {
     const ref = refInput.trim();
@@ -350,7 +345,7 @@ function TerminalView({
 
     // An overlay (＋ menu / diff picker) owns the keyboard while open.
     if (overlay !== "none") {
-      const len = overlay === "menu" ? MENU_ITEMS.length : DIFF_ITEMS.length;
+      const len = overlay === "menu" ? menuItems.length : DIFF_ITEMS.length;
       if (n === "escape") {
         eat();
         closeOverlay();
@@ -396,41 +391,41 @@ function TerminalView({
     // Directional keys move between split panes (vim hjkl + arrows).
     if (n === "h" || n === "left") {
       eat();
-      act(() => selectPane(session, "L"));
+      act(() => tmux.selectPane(session, "L"));
     } else if (n === "l" || n === "right") {
       eat();
-      act(() => selectPane(session, "R"));
+      act(() => tmux.selectPane(session, "R"));
     } else if (n === "k" || n === "up") {
       eat();
-      act(() => selectPane(session, "U"));
+      act(() => tmux.selectPane(session, "U"));
     } else if (n === "j" || n === "down") {
       eat();
-      act(() => selectPane(session, "D"));
+      act(() => tmux.selectPane(session, "D"));
     } else if (n === ",") {
       eat();
-      act(() => prevWindow(session));
+      act(() => tmux.prevWindow(session));
     } else if (n === ".") {
       eat();
-      act(() => nextWindow(session));
+      act(() => tmux.nextWindow(session));
     } else if (n === "t") {
       eat();
-      act(() => newWindow(session, worktree.path));
+      act(() => tmux.newWindow(session, worktree.path));
     } else if (n === "w" && !key.shift) {
       eat();
-      if (canClosePane) act(() => killPane(session));
+      if (canClosePane) act(() => tmux.killPane(session));
     } else if (n === "W" || (n === "w" && key.shift)) {
       eat();
-      if (windows.length > 1) act(() => killWindow(session)); // current tab
+      if (windows.length > 1) act(() => tmux.killWindow(session)); // current tab
     } else if (n === "\\") {
       eat();
-      act(() => splitWindow(session, "h", worktree.path));
+      act(() => tmux.splitWindow(session, "h", worktree.path));
     } else if (n === "-") {
       eat();
-      act(() => splitWindow(session, "v", worktree.path));
+      act(() => tmux.splitWindow(session, "v", worktree.path));
     } else if (key.number && /^[1-9]$/.test(n)) {
       eat();
       const w = windows[parseInt(n, 10) - 1];
-      if (w) act(() => selectWindow(session, w.index));
+      if (w) act(() => tmux.selectWindow(session, w.index));
     }
   });
 
@@ -454,17 +449,17 @@ function TerminalView({
     >
       <TabBar
         windows={windows}
-        onSelect={(i) => act(() => selectWindow(session, i))}
+        onSelect={(i) => act(() => tmux.selectWindow(session, i))}
         onRenameTab={openRename}
         onNewTab={openMenu}
         onCloseTab={(i) => {
           if (windows.length <= 1) return;
-          act(() => killWindow(session, i));
+          act(() => tmux.killWindow(session, i));
         }}
-        onSplit={(dir) => act(() => splitWindow(session, dir, worktree.path))}
+        onSplit={(dir) => act(() => tmux.splitWindow(session, dir, worktree.path))}
         onClosePane={() => {
           if (!canClosePane) return;
-          act(() => killPane(session));
+          act(() => tmux.killPane(session));
         }}
         onExit={onExit}
         canClosePane={canClosePane}
@@ -491,7 +486,7 @@ function TerminalView({
       {overlay === "menu" && (
         <MenuOverlay
           title="New tab"
-          items={MENU_ITEMS}
+          items={menuItems}
           index={menuIndex}
           onPick={pickOverlay}
           onClose={closeOverlay}

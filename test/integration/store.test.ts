@@ -8,7 +8,11 @@ import {
   loadState,
   reconcile,
   MAX_LABEL_LENGTH,
+  addRemoteDir,
+  findHost,
   normalizeLabel,
+  removeHost,
+  removeRemoteDir,
   removeManagedWorktree,
   saveState,
   setWorktreeLabel,
@@ -366,5 +370,61 @@ describe("worktree labels", () => {
     expect(normalizeLabel("")).toBeUndefined();
     expect(normalizeLabel(undefined)).toBeUndefined();
     expect(Array.from(normalizeLabel("ż".repeat(100))!)).toHaveLength(MAX_LABEL_LENGTH);
+  });
+});
+
+describe("SSH hosts", () => {
+  const home = "/home/dev";
+
+  test("a directory on a new host adds the host; reconcile lists it after the repos", async () => {
+    const root = await fixtureRepo();
+    const state = loadState();
+    upsertRepo(state, meta(root));
+    await addRemoteDir(state, "dev-box", { path: "/home/dev/code/api", home });
+
+    const projects = await reconcile(loadState());
+    expect(projects.map((p) => p.id)).toEqual(["acme/widget", "ssh:dev-box"]);
+    const ssh = projects[1]!;
+    expect(ssh).toMatchObject({ name: "dev-box", ssh: { host: "dev-box" } });
+    expect(ssh.worktrees).toEqual([
+      expect.objectContaining({ id: "api", name: "api", path: "/home/dev/code/api", subtitle: "~/code/api", host: "dev-box" }),
+    ]);
+  });
+
+  test("ids are distinct, the home directory shows as ~, and a directory isn't added twice", async () => {
+    const state = loadState();
+    const a = await addRemoteDir(state, "dev-box", { path: "/home/dev/a/api", home });
+    const b = await addRemoteDir(state, "dev-box", { path: "/home/dev/b/api", home });
+    const h = await addRemoteDir(state, "dev-box", { path: "/home/dev", home });
+    const again = await addRemoteDir(state, "dev-box", { path: "/home/dev/a/api", home });
+    expect([a, b, again]).toEqual(["api", "api-1", "api"]);
+    expect(findHost(loadState(), "dev-box")!.dirs.map((d) => d.id)).toEqual(["api", "api-1", h]);
+    const projects = await reconcile(loadState());
+    expect(projects[0]!.worktrees.map((w) => w.name)).toEqual(["api", "api", "~"]);
+  });
+
+  test("forgetting a directory drops its label; forgetting the last host leaves no trace", async () => {
+    const state = loadState();
+    await addRemoteDir(state, "dev-box", { path: "/srv/app", home });
+    await setWorktreeLabel(state, "ssh:dev-box", "app", "Prod app");
+    expect((await reconcile(loadState()))[0]!.worktrees[0]!.label).toBe("Prod app");
+
+    await removeRemoteDir(state, "dev-box", "app");
+    expect(findHost(loadState(), "dev-box")).toMatchObject({ dirs: [] });
+    expect(findHost(loadState(), "dev-box")!.labels).toBeUndefined();
+    await removeHost(state, "dev-box");
+    expect(sandbox.readState()!.hosts).toBeUndefined();
+  });
+
+  test("malformed hosts in a hand-edited state file are dropped", () => {
+    mkdirSync(join(sandbox.configHome, "agentree"), { recursive: true });
+    const hosts = [
+      { host: "ok", dirs: [{ id: "x", path: "/x" }, { id: 3 }] },
+      { host: "" },
+      { nope: true },
+      "dev-box",
+    ];
+    writeFileSync(sandbox.stateFile, JSON.stringify({ version: 1, repos: [], hosts }));
+    expect(loadState().hosts as unknown).toEqual([{ host: "ok", dirs: [{ id: "x", path: "/x" }] }]);
   });
 });

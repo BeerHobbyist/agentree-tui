@@ -15,6 +15,7 @@ import { dirname, resolve } from "node:path";
 import { stateFilePath, workspaceRoot, branchLeaf } from "./config";
 import { ignoreWorktreesDir, listWorktrees } from "./services/git";
 import type { Project, Worktree } from "./data/model";
+import { displayPath } from "./services/ssh";
 
 export interface StoredWorktree {
   id: string;
@@ -38,6 +39,25 @@ export interface StoredRepo {
   labels?: Record<string, string>;
 }
 
+/** A directory on an SSH host, opened as a terminal there. */
+export interface StoredRemoteDir {
+  id: string;
+  /** Absolute path on the host. */
+  path: string;
+  createdAt: string;
+}
+
+/** An SSH project: a host and the directories on it you open terminals in. */
+export interface StoredHost {
+  /** What `ssh` connects to: a ~/.ssh/config alias, `user@host`, or `ssh://…`. */
+  host: string;
+  /** The remote $HOME, to show paths under it as `~/…`. */
+  home?: string;
+  dirs: StoredRemoteDir[];
+  /** Your labels for its directories, by id (see StoredRepo.labels). */
+  labels?: Record<string, string>;
+}
+
 /** App preferences that aren't about repos, e.g. layout. */
 export interface UiState {
   /** Sidebar width the user dragged/resized to; omitted = default. */
@@ -56,6 +76,8 @@ export interface State {
   version: 1;
   workspaceRoot: string;
   repos: StoredRepo[];
+  /** SSH projects, listed after the repos. */
+  hosts?: StoredHost[];
   ui?: UiState;
 }
 
@@ -82,6 +104,26 @@ function sanitizeUi(raw: unknown): UiState | undefined {
   return Object.keys(ui).length > 0 ? ui : undefined;
 }
 
+/** Keep only well-formed SSH hosts (and their directories) from a parsed state file. */
+function sanitizeHosts(raw: unknown): StoredHost[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const hosts: StoredHost[] = [];
+  for (const h of raw) {
+    if (!h || typeof h !== "object" || typeof h.host !== "string" || !h.host) continue;
+    const dirs = (Array.isArray(h.dirs) ? h.dirs : []).filter(
+      (d: unknown): d is StoredRemoteDir =>
+        !!d && typeof (d as StoredRemoteDir).id === "string" && typeof (d as StoredRemoteDir).path === "string",
+    );
+    hosts.push({
+      host: h.host,
+      ...(typeof h.home === "string" && { home: h.home }),
+      dirs,
+      ...(h.labels && typeof h.labels === "object" && { labels: h.labels }),
+    });
+  }
+  return hosts.length > 0 ? hosts : undefined;
+}
+
 function emptyState(): State {
   return { version: 1, workspaceRoot: workspaceRoot(), repos: [] };
 }
@@ -95,10 +137,12 @@ export function loadState(): State {
       return emptyState();
     }
     const ui = sanitizeUi(parsed.ui);
+    const hosts = sanitizeHosts(parsed.hosts);
     return {
       version: 1,
       workspaceRoot: workspaceRoot(),
       repos: parsed.repos,
+      ...(hosts && { hosts }),
       ...(ui && { ui }),
     };
   } catch {
@@ -179,11 +223,13 @@ export async function setWorktreeLabel(
   worktreeId: string,
   label: string | undefined,
 ): Promise<string | undefined> {
-  const repo = findRepo(state, nameWithOwner);
-  if (!repo) return undefined;
+  // A repo's worktree, or an SSH project's directory.
+  const host = hostOfProject(nameWithOwner);
+  const owner = host ? findHost(state, host) : findRepo(state, nameWithOwner);
+  if (!owner) return undefined;
   const clean = normalizeLabel(label);
-  if (clean) repo.labels = { ...repo.labels, [worktreeId]: clean };
-  else dropLabel(repo, worktreeId);
+  if (clean) owner.labels = { ...owner.labels, [worktreeId]: clean };
+  else dropLabel(owner, worktreeId);
   await saveState(state);
   return clean;
 }
@@ -197,17 +243,102 @@ export function normalizeLabel(label: string | undefined): string | undefined {
   return clean || undefined;
 }
 
-function dropLabel(repo: StoredRepo, worktreeId: string) {
+function dropLabel(repo: { labels?: Record<string, string> }, worktreeId: string) {
   if (!repo.labels || !(worktreeId in repo.labels)) return;
   const { [worktreeId]: _, ...rest } = repo.labels;
   if (Object.keys(rest).length > 0) repo.labels = rest;
   else delete repo.labels;
 }
 
-/** A repo's label for a worktree, if it has a well-formed one. */
-function labelFor(repo: StoredRepo, worktreeId: string): string | undefined {
+/** A repo's (or host's) label for a worktree, if it has a well-formed one. */
+function labelFor(repo: { labels?: Record<string, unknown> }, worktreeId: string): string | undefined {
   const label = repo.labels?.[worktreeId];
   return typeof label === "string" ? normalizeLabel(label) : undefined;
+}
+
+// --- SSH projects ---
+
+/** An SSH project's id: its host, prefixed so it can't clash with a repo's `owner/name`. */
+export function sshProjectId(host: string): string {
+  return `ssh:${host}`;
+}
+
+/** The host of an SSH project id, or undefined for a repo. */
+export function hostOfProject(projectId: string): string | undefined {
+  return projectId.startsWith("ssh:") ? projectId.slice(4) : undefined;
+}
+
+export function findHost(state: State, host: string): StoredHost | undefined {
+  return state.hosts?.find((h) => h.host === host);
+}
+
+/**
+ * Add a directory on `host` (checked with probeRemoteDir first), adding the
+ * host itself if it's new. A directory already listed isn't added twice.
+ * Persists; returns the directory's id.
+ */
+export async function addRemoteDir(
+  state: State,
+  host: string,
+  dir: { path: string; home?: string },
+): Promise<string> {
+  let record = findHost(state, host);
+  if (!record) {
+    record = { host, dirs: [] };
+    state.hosts = [...(state.hosts ?? []), record];
+  }
+  if (dir.home) record.home = dir.home;
+  const existing = record.dirs.find((d) => d.path === dir.path);
+  if (existing) {
+    await saveState(state);
+    return existing.id;
+  }
+  const base = remoteDirName(dir.path, record.home).replace(/[^A-Za-z0-9._-]+/g, "-") || "dir";
+  let id = base;
+  for (let n = 1; record.dirs.some((d) => d.id === id); n++) id = `${base}-${n}`;
+  record.dirs.push({ id, path: dir.path, createdAt: new Date().toISOString() });
+  await saveState(state);
+  return id;
+}
+
+/** Forget a directory on a host (nothing on the host is touched). Persists. */
+export async function removeRemoteDir(state: State, host: string, id: string): Promise<void> {
+  const record = findHost(state, host);
+  if (!record) return;
+  record.dirs = record.dirs.filter((d) => d.id !== id);
+  dropLabel(record, id);
+  await saveState(state);
+}
+
+/** Forget a host and its directories. Persists. */
+export async function removeHost(state: State, host: string): Promise<void> {
+  state.hosts = (state.hosts ?? []).filter((h) => h.host !== host);
+  if (state.hosts.length === 0) delete state.hosts;
+  await saveState(state);
+}
+
+/** A remote directory's short name: its last segment, or `~` for the home directory. */
+function remoteDirName(path: string, home?: string): string {
+  const shown = displayPath(path, home);
+  if (shown === "~" || shown === "/") return shown;
+  return shown.split("/").filter(Boolean).pop() ?? shown;
+}
+
+/** The UI project for a host: its directories, which need no reconciling with git. */
+function hostProject(record: StoredHost): Project {
+  return {
+    id: sshProjectId(record.host),
+    name: record.host,
+    root: record.host,
+    ssh: { host: record.host },
+    worktrees: record.dirs.map((d) => {
+      const label = labelFor(record, d.id);
+      return toUiWorktree(
+        { id: d.id, name: remoteDirName(d.path, record.home), branch: "", path: d.path },
+        { host: record.host, subtitle: displayPath(d.path, record.home), ...(label && { label }) },
+      );
+    }),
+  };
 }
 
 function toUiWorktree(
@@ -314,6 +445,8 @@ export async function reconcile(state: State): Promise<Project[]> {
 
     projects.push({ id: repo.nameWithOwner, name: repo.name, root: repo.root, worktrees });
   }
+
+  for (const record of state.hosts ?? []) projects.push(hostProject(record));
 
   if (changed) await saveState(state);
   return projects;

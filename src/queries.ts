@@ -20,7 +20,7 @@ import { baseRef, status as gitStatus } from "./services/git";
 import { isAvailable as hunkAvailable } from "./services/hunk";
 import { createLimiter } from "./services/limit";
 import { fetchMergeSettings, fetchPrDetails } from "./services/pr";
-import { isAvailable as tmuxAvailable, listWindows } from "./services/tmux";
+import { isAvailable as tmuxAvailable, tmuxOn } from "./services/tmux";
 
 /** How often the PR on screen is re-fetched. */
 export const PR_DETAILS_REFRESH_MS = 30_000;
@@ -139,10 +139,11 @@ export const hunkAvailableQuery = () =>
   });
 
 /** A session's windows (tabs) for the tab bar. */
-export const tmuxWindowsQuery = (session: string) =>
+/** A session's windows (tabs) — on `host` over ssh for an SSH project. */
+export const tmuxWindowsQuery = (session: string, host?: string) =>
   queryOptions({
     queryKey: queryKeys.tmuxWindows(session),
-    queryFn: () => listWindows(session),
+    queryFn: () => tmuxOn(host).listWindows(session),
     staleTime: 0,
     refetchInterval: TMUX_WINDOWS_MS,
     refetchIntervalInBackground: true,

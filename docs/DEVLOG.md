@@ -27,6 +27,9 @@ Working, at MVP+ level:
   persisted; `＋` on a header or `a` preselects the project. The repo's open
   PRs are listed alongside existing worktrees as one-key picks, fetched via
   `refs/pull/<n>/head` (works for forks) and named after the PR's branch.
+- **SSH projects** — `s` adds a host (typed, or from `~/.ssh/config`) and a
+  directory on it; `＋`/`a` add more directories. Their terminals run on the
+  host, in tmux there. Remote shells only: no git status, PRs or diff.
 - **Embedded terminals** — OpenTUI `EmbeddedTerminal` + **Bun native PTY** + tmux
   for persistence. One terminal per worktree, kept mounted once opened so
   switching back is instant. A click on a worktree shows its terminal and leaves
@@ -128,7 +131,7 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - **Sidebar**: `↑↓`/`j k` move · `g`/`G` first/last · `space` or `h`/`l` fold ·
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
   `R` rename worktree (label only) · `d` close (delete) worktree · `n` add
-  project · `[`/`]` narrower/wider sidebar · `=` reset width · `p` PR panel ·
+  project · `s` add SSH host · `[`/`]` narrower/wider sidebar · `=` reset width · `p` PR panel ·
   `o` open PR · `r` refresh PR · `m` merge PR · PgUp/PgDn scroll PR panel · `t` cycle theme ·
   `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
@@ -246,6 +249,46 @@ are in `docs/terminal-rendering-glitches.md`.
 - **Orphan releases** — the terminal drops a mouse release whose press started
   elsewhere (e.g. letting go of the sidebar divider over it).
 
+## SSH projects
+
+A host and directories on it, opened as terminals there — remote shells, no git
+features. Project id `ssh:<host>`; `state.hosts[]` holds the host, its `$HOME`
+(to show paths as `~/…`) and each directory's absolute path.
+
+- **Adding** (`SshModal`, `s`; `＋`/`a` on the host skip to the directory):
+  `probeRemoteDir` connects once in batch mode, `cd`s into the directory
+  (`~` → `"$HOME"`), prints its absolute path and `$HOME`, and checks tmux is
+  there. Missing directory, no tmux, or a prompt (password, unknown host key)
+  → says why; nothing is saved.
+- **Terminals**: `attachCommand(…, host)` → `ssh -t -- host 'exec sh -c …'`
+  running the same tmux command list as locally, on the same socket name
+  there. A remote session starts a plain shell (the agent's status hooks are a
+  file on this machine); ⌥a runs plain `claude` there; the diff viewer is
+  hidden (it needs local git).
+- **tmux over ssh**: `tmuxOn(host)` gives the tab bar's window/pane commands
+  run as `ssh host tmux -u -L <socket> …`. Every ssh call shares one master
+  connection per host (`ControlMaster=auto`, `ControlPersist=10m`), so polling
+  the tabs each second costs ~10ms, not a handshake.
+- **Removing** (`d`): a directory, or the whole host from its header. Ends
+  their tmux sessions on the host; never touches files.
+- **Git status and PR lookups skip SSH projects** (they'd run local git/gh on a
+  remote path).
+
+Checked against a real sshd (a throwaway one on 127.0.0.1, login shell zsh):
+probing, a path with a space, the session starting in it, renames with quotes,
+the shared connection. That's where these came from:
+- ssh caps `ControlPath` at 104–108 bytes (`%C` alone is 40): the socket goes
+  in `$XDG_RUNTIME_DIR`, else next to state.json, else a private `/tmp` dir —
+  whichever is short enough — or ssh goes unshared.
+- An ssh session often has no UTF-8 locale; tmux then prints non-ASCII *and
+  tabs* as `_` (the tab bar's `-F` output broke). Remote tmux always gets `-u`.
+- sshd runs the command through the user's login shell (zsh, fish…): commands
+  are wrapped in `sh -c '…'` to mean the same everywhere.
+
+Tests use a fake `ssh` whose every host is this machine (`test/helpers/fakebin/
+ssh`: skips options, `sh -c`s the command with `HOME=$FAKE_SSH_HOME`), so the
+"remote" tmux is the test's own server.
+
 ## Resizable sidebar
 
 Drag the divider on the sidebar's right edge (`ResizeHandle`), or use `[` / `]`
@@ -314,10 +357,12 @@ each other.
 
 - `~/.config/agentree/state.json`: `{ version, workspaceRoot, repos[] { nameWithOwner,
   name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt },
-  labels? { [worktreeId]: label } }, ui? { sidebarWidth?, prPanelHidden?,
-  prPanelWidth?, prPanelCollapsed?, mergeMethod? } }`. Labels are keyed by worktree id so the main working copy
-  (never stored in `worktrees[]`) can have one too; closing a worktree drops its
-  label. Volatile git status is computed at runtime, never persisted. Atomic write.
+  labels? { [worktreeId]: label } }, hosts?[] { host, home?, dirs[] { id, path,
+  createdAt }, labels? }, ui? { sidebarWidth?, prPanelHidden?, prPanelWidth?,
+  prPanelCollapsed?, mergeMethod? } }`. Labels are keyed by worktree id so the
+  main working copy (never stored in `worktrees[]`) can have one too; closing a
+  worktree drops its label. Volatile git status is computed at runtime, never
+  persisted. Atomic write.
 - `~/.config/agentree/claude-hooks.json` (the hooks agents load) and
   `~/.config/agentree/agents/` (their per-pane reports) are runtime only; stale
   reports are cleaned up against live tmux panes.
@@ -404,7 +449,7 @@ each other.
 
 ## Tests
 
-`bun test` — 301 tests, ~40s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 329 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -469,7 +514,9 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
-- PR panel: sections fold (click the header band; remembered), ruled-off
+- SSH projects (`s`): a host and directories on it, terminals running on the
+  host in tmux there; remote shells only
+- #34 PR panel: sections fold (click the header band; remembered), ruled-off
   header and footer, quoted comments, a filled `Merge…` button
 
 ### 2026-09-23

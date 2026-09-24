@@ -54,6 +54,15 @@ export function branchLeaf(branch: string): string {
  * wrapped in `caffeinate -is` on macOS so the agent keeps running through
  * sleep/lid-close.
  */
+/**
+ * The agent started by ⌥a in an SSH project's terminal: plain `claude` on the
+ * host (its status hooks are a file on this machine). AGENTREE_AGENT_CMD
+ * overrides it too.
+ */
+export function remoteAgentCommand(): string {
+  return process.env.AGENTREE_AGENT_CMD || "claude";
+}
+
 export function agentCommand(): string {
   const override = process.env.AGENTREE_AGENT_CMD;
   if (override) return override;

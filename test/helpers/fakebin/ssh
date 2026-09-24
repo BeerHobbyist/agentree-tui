@@ -1,0 +1,38 @@
+#!/bin/sh
+# Fake `ssh` for the test suite: every host is this machine.
+#
+# Skips ssh's options, takes the destination, and runs the remote command line
+# locally with `sh -c` (as sshd would, through the user's shell), with HOME set
+# to $FAKE_SSH_HOME. Remote tmux therefore runs here too — on the test's own
+# socket, since agentree passes it `-L <socket>`. Every invocation is appended
+# to $FAKE_SSH_LOG. $FAKE_SSH_FAIL makes the connection fail; $FAKE_SSH_NO_TMUX
+# makes the host look like it has no tmux installed.
+
+if [ -n "$FAKE_SSH_LOG" ]; then
+  printf '%s\n' "$*" >> "$FAKE_SSH_LOG"
+fi
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --) shift; break ;;
+    -o|-p|-l|-F|-S|-O|-J|-i|-E|-L|-R|-D|-W|-c|-m|-b|-e|-B|-I|-w|-Q) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+
+host="$1"
+shift
+
+if [ -n "$FAKE_SSH_FAIL" ]; then
+  echo "ssh: connect to host $host port 22: Connection refused" >&2
+  exit 255
+fi
+
+cmd="$*"
+if [ -n "$FAKE_SSH_NO_TMUX" ]; then
+  cmd=$(printf '%s' "$cmd" | sed 's/command -v tmux/false/')
+fi
+
+cd "${FAKE_SSH_HOME:-$HOME}" || exit 1
+HOME="${FAKE_SSH_HOME:-$HOME}" exec sh -c "$cmd"
