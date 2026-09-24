@@ -119,3 +119,20 @@ describe("clicking the sidebar", () => {
     expect(await sidebarHasKeys()).toBe(true);
   });
 });
+
+describe("on a short screen", () => {
+  test("the terminal's tab bar still shows", async () => {
+    const root = await makeRepo(join(sandbox.workspace, "widget"), { worktrees: [{ branch: "feature/x" }] });
+    const state = loadState();
+    upsertRepo(state, { nameWithOwner: "acme/widget", name: "widget", root });
+    await saveState(state);
+    await reconcile(state);
+    app = await renderApp({ width: 100, height: 14 });
+    await waitForText(app, "feature/x");
+    app.mockInput.pressKey("j");
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "x");
+    app.mockInput.pressEnter();
+    await waitForText(app, TERMINAL_SHOWN); // it used to be squeezed out below ~20 rows
+  });
+});

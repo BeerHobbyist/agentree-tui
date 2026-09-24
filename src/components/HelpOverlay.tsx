@@ -30,7 +30,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["[  /  ]", "narrower / wider sidebar"],
       ["b", "hide / show the sidebar"],
       ["=", "reset sidebar width"],
-      ["?", "toggle this help"],
+      ["?", "toggle this help (every key is here)"],
       ["q  /  Ctrl+C", "quit"],
     ],
   },
