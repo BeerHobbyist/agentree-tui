@@ -102,9 +102,19 @@ the app polls those and cross-checks tmux (see **Agent status**).
 
 ## File map
 
-- `src/index.tsx` — entry point: load state, reconcile, mount `App`.
-- `src/app.tsx` — App shell: state (projects, collapsed, activeIndex, modal,
-  open terminal, focusMode), global `useKeyboard`, quit, wiring.
+- `src/index.tsx` — entry point: a CLI command (`src/cli.ts`), or the app
+  (`src/tui.tsx`: load state, reconcile, mount `App`).
+- `src/app.tsx` — the app shell: selection, folding, which terminals are open
+  and on screen, focus; the worktree actions (open, close, forget, rename,
+  merge, jump); the sidebar's keys (a table, `sidebarKeys`, looked up by
+  `keyIds`); layout. Leans on `src/app/`:
+  - `live.ts` — `useLive`: state whose ref the key handler reads, written at
+    once (a key burst arrives before React re-renders).
+  - `overlays.tsx` — every pop-up as one stack (`useOverlays`, `OverlayLayer`):
+    the top one is on screen and owns the keys.
+  - `usePrefs.ts` — remembered layout (sidebar, PR panel, diff viewer).
+  - `useAgents.ts` — agent reports (local + SSH), tracking, seen, notifications.
+  - `useLiveProjects.ts` — git status and PR badges merged into the projects.
 - `src/theme.ts` — dark palette.
 - `src/config.ts` — workspace root (`~/agentree`, `AGENTREE_HOME`), state file
   (`~/.config/agentree/state.json`), branch→dir sanitize, `worktreePath`,
@@ -490,6 +500,24 @@ lines of every sidebar key.
 The tab bar also can't shrink any more (`flexShrink={0}`): on a screen under
 ~20 rows the terminal below used to take its row, and the tabs vanished.
 
+## The app shell (`src/app.tsx` + `src/app/`)
+
+`app.tsx` had grown to 1,238 lines: nine pop-ups each with a state, a ref for
+the key handler and a guard in it, ~20 more state+ref pairs, and a 150-line
+if-chain of keys. Now (646 lines + `src/app/`):
+
+- **Pop-ups are one stack** (`Overlay`, a union of add / ssh / help /
+  close-worktree / forget / tracking / merge / rename / notice). Opening one
+  replaces any of its kind; the top is rendered and owns the keyboard, so the
+  key handler has one check. A notice raised while something else is open goes
+  on top of it. Adding a pop-up = a union case + a `switch` arm.
+- **`useLive`** replaces the hand-kept "write the ref, then setState" pairs.
+- **Keys** are a table; `keyIds` names a key `C-c` / `R` / `r`, most specific
+  first, so an unbound Shift/Ctrl+letter still acts as the letter (as before).
+- Found on the way: `?` then `q` in one burst quit the app — the help's flag
+  only reached the key handler on the next render. The stack's ref is written
+  at once, so `q` now closes the help.
+
 ## Help
 
 `?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all
@@ -594,7 +622,7 @@ each other.
 
 ## Tests
 
-`bun test` — 404 tests, ~65s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 410 tests, ~65s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -676,6 +704,8 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
+- Rework of `app.tsx`: pop-ups as one stack, `useLive` state, keys as a table,
+  preferences / agents / live git status in their own hooks (1,238 → 646 lines)
 - #42 `8ec5aef` Agent CLI: `agentree tab new|read|send|list|select|rename|close`,
   `diff`, `notify`, `status` — on PATH in every agentree terminal, announced to
   claude by a SessionStart hook; plus a Claude Code skill (`agentree skill
