@@ -195,6 +195,8 @@ export function createSandbox(): Sandbox {
     FAKE_SSH_MASTER: sshMaster,
     FAKE_SSH_ATTEMPTS: sshAttempts,
     AGENTREE_SSH_CONFIG: sshConfig,
+    // Diff viewers "installed": plain git only, whatever this machine has.
+    AGENTREE_DIFF_VIEWERS: "git",
     // ssh's shared-connection sockets go here rather than the real runtime dir.
     XDG_RUNTIME_DIR: join(root, "run"),
     // Keep git away from the developer's identity and global config.

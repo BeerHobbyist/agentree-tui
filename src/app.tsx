@@ -56,6 +56,7 @@ import { ConfirmModal } from "./components/ConfirmModal";
 import { RenameModal } from "./components/RenameModal";
 import { MergeModal } from "./components/MergeModal";
 import { SshModal } from "./components/SshModal";
+import type { DiffViewerId } from "./services/diff";
 
 function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?: boolean }) {
   const theme = useTheme();
@@ -212,6 +213,12 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   // The PR panel on the right, for the worktree on screen when it has a PR:
   // shown unless switched off with `p`. Both that and its width are remembered.
   const [prPanelHidden, setPrPanelHidden] = useState(() => state.ui?.prPanelHidden ?? false);
+  // The diff viewer picked in the diff picker (v); remembered. Unset = auto.
+  const [diffViewer, setDiffViewer] = useState(() => state.ui?.diffViewer);
+  const chooseDiffViewer = (id: DiffViewerId) => {
+    setDiffViewer(id);
+    saveUi({ diffViewer: id });
+  };
   // The sidebar can be hidden (b) to give the terminal the whole width; remembered.
   const [sidebarHidden, setSidebarHidden] = useState(() => state.ui?.sidebarHidden ?? false);
   const [prPanelWidth, setPrPanelWidth] = useState(
@@ -974,6 +981,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
               onExit={exitToSidebar}
               prPanelShown={layout.panel > 0}
               onTogglePrPanel={togglePrPanel}
+              diffViewer={diffViewer}
+              onDiffViewer={chooseDiffViewer}
             />
           );
         })}

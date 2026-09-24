@@ -11,11 +11,11 @@ import {
   MAX_TAB_NAME_LENGTH,
   type WindowInfo,
 } from "../services/tmux";
-import { diffCommand, type DiffTarget } from "../services/hunk";
+import { diffCommand, nextViewer, resolveViewer, viewer, type DiffTarget, type DiffViewerId } from "../services/diff";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   baseRefQuery,
-  hunkAvailableQuery,
+  diffViewersQuery,
   queryKeys,
   tmuxAvailableQuery,
   tmuxWindowsQuery,
@@ -31,7 +31,7 @@ import "./EmbeddedTerminal"; // registers <embedded-terminal>
 const MENU_ITEMS: MenuItem[] = [
   { label: "＋ New shell", hint: "" },
   { label: "✻ New agent", hint: "⌥a" },
-  { label: "◨ New diff (hunk)", hint: "⌥d" },
+  { label: "◨ New diff", hint: "⌥d" },
 ];
 /** An SSH directory has no git features, so no diff viewer. */
 const REMOTE_MENU_ITEMS = MENU_ITEMS.slice(0, 2);
@@ -62,6 +62,9 @@ interface TerminalPaneProps {
   prPanelShown?: boolean;
   /** Show / hide the PR panel (⌥p, or the tab bar's PR button). */
   onTogglePrPanel?: () => void;
+  /** The diff viewer picked in the diff picker (`v`); unset = the first installed. */
+  diffViewer?: DiffViewerId;
+  onDiffViewer?: (id: DiffViewerId) => void;
 }
 
 function Centered({
@@ -127,6 +130,8 @@ function TerminalView({
   onExit,
   prPanelShown = false,
   onTogglePrPanel,
+  diffViewer,
+  onDiffViewer,
 }: TerminalPaneProps) {
   const theme = useTheme();
   const session = useMemo(
@@ -231,7 +236,9 @@ function TerminalView({
     setRefInput("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
-  const hunkOk = useQuery(hunkAvailableQuery()).data ?? null;
+  // The installed diff viewers, and the one a diff opens in.
+  const viewers = useQuery(diffViewersQuery()).data ?? [];
+  const diffIn = resolveViewer(diffViewer, viewers);
 
   const openMenu = () => {
     setOverlay("menu");
@@ -256,7 +263,7 @@ function TerminalView({
       await tmux.newWindowCmd(
         session,
         worktree.path,
-        diffCommand(target, resolved),
+        diffCommand(diffIn, target, resolved),
         "diff",
       );
     });
@@ -277,7 +284,6 @@ function TerminalView({
         openDiffPicker();
       }
     } else if (overlay === "diff") {
-      if (hunkOk === false) return; // install hint shown; no-op
       const t = DIFF_TARGETS[i];
       if (t === "ref") {
         setRefInput("");
@@ -370,6 +376,10 @@ function TerminalView({
       } else if (n === "return") {
         eat();
         pickOverlay(menuIndex);
+      } else if (n === "v" && overlay === "diff") {
+        // Next installed viewer — remembered.
+        eat();
+        onDiffViewer?.(nextViewer(diffIn.id, viewers));
       }
       return;
     }
@@ -506,14 +516,14 @@ function TerminalView({
       )}
       {overlay === "diff" && (
         <MenuOverlay
-          title="Open diff (hunk)"
+          title={`Open diff · ${diffIn.label}`}
           items={DIFF_ITEMS}
           index={menuIndex}
           onPick={pickOverlay}
           onClose={closeOverlay}
           note={
-            hunkOk === false
-              ? "hunk not found — npm i -g hunkdiff"
+            viewers.length > 1
+              ? `v switches viewer · ${viewers.map((id) => viewer(id).label).join(", ")}`
               : undefined
           }
         />
