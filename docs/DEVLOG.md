@@ -15,7 +15,8 @@ Working, at MVP+ level:
   with live **agent status** (◆ needs action · ◐ working · ✓ done · ○ idle), an
   uncommitted-changes count (`●3`), +/− and ahead/behind, and an open-PR badge
   `⇡#N` via `gh` coloured by CI; keyboard + mouse nav, and clicking it gives it
-  the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered.
+  the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered;
+  **hideable** (`b` or its `⇤`; back with `b`, Ctrl+g or the tab bar's `‹`).
   Worktrees can be **renamed** (`R` / right-click): a label shown instead of the
   branch's leaf name — the branch and directory keep their names.
 - **PR panel** — on the right, for the worktree on screen when it has an open
@@ -131,11 +132,13 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - **Sidebar**: `↑↓`/`j k` move · `g`/`G` first/last · `space` or `h`/`l` fold ·
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
   `R` rename worktree (label only) · `d` close (delete) worktree · `n` add
-  project · `s` add SSH host · `[`/`]` narrower/wider sidebar · `=` reset width · `p` PR panel ·
+  project · `s` add SSH host · `[`/`]` narrower/wider sidebar · `=` reset
+  width · `b` hide/show sidebar · `p` PR panel ·
   `o` open PR · `r` refresh PR · `m` merge PR · PgUp/PgDn scroll PR panel · `t` cycle theme ·
   `?` help · `q` or `Ctrl+C` quit.
 - **Add modal**: type to filter · `↑↓` move · `Enter` select · `Esc` back/cancel · `r` retry.
-- **Terminal (focused)**: `Ctrl+g` (or a click on the sidebar) back to sidebar ·
+- **Terminal (focused)**: `Ctrl+g` (or a click on the sidebar) back to sidebar,
+  showing it if hidden ·
   `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`) move between **split panes** · `⌥,`/`⌥.` prev/next
   **tab** · `⌥1`–`9` jump tab · `⌥t` new tab · `⌥r` rename tab · `⌥a` open
   agent (new tab) · `⌥d` open diff (hunk) · `⌥p` PR panel · `⌥w` close pane ·
@@ -300,6 +303,13 @@ without losing the chosen width, and saved as `ui.sidebarWidth` in state.json
 OpenTUI only captures on the first drag event, by which time the pointer is
 usually over the terminal, which would take the drag and hand it to nvim.
 
+**Hiding it**: `b`, or the `⇤` in its top-right corner (the row that used to be
+padding), gives the content the whole width; with a terminal on screen, the
+keys go to it. Anything that goes back to the sidebar shows it again — `b`,
+Ctrl+g, the tab bar's `‹` — so there's no separate "show" to learn. Remembered
+(`ui.sidebarHidden`); with nothing open, the placeholder says `b` shows it.
+`fitPanels(…, sidebarHidden)` gives it 0 columns, so the PR panel can use them.
+
 ## PR panel
 
 `src/components/PrPanel.tsx`, on the right of the content pane, for the
@@ -358,11 +368,11 @@ each other.
 - `~/.config/agentree/state.json`: `{ version, workspaceRoot, repos[] { nameWithOwner,
   name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt },
   labels? { [worktreeId]: label } }, hosts?[] { host, home?, dirs[] { id, path,
-  createdAt }, labels? }, ui? { sidebarWidth?, prPanelHidden?, prPanelWidth?,
-  prPanelCollapsed?, mergeMethod? } }`. Labels are keyed by worktree id so the
-  main working copy (never stored in `worktrees[]`) can have one too; closing a
-  worktree drops its label. Volatile git status is computed at runtime, never
-  persisted. Atomic write.
+  createdAt }, labels? }, ui? { sidebarWidth?, sidebarHidden?, prPanelHidden?,
+  prPanelWidth?, prPanelCollapsed?, mergeMethod? } }`. Labels are keyed by
+  worktree id so the main working copy (never stored in `worktrees[]`) can have
+  one too; closing a worktree drops its label. Volatile git status is computed
+  at runtime, never persisted. Atomic write.
 - `~/.config/agentree/claude-hooks.json` (the hooks agents load) and
   `~/.config/agentree/agents/` (their per-pane reports) are runtime only; stale
   reports are cleaned up against live tmux panes.
@@ -449,7 +459,7 @@ each other.
 
 ## Tests
 
-`bun test` — 329 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 335 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -514,8 +524,9 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
-- SSH projects (`s`): a host and directories on it, terminals running on the
-  host in tmux there; remote shells only
+- Hide the sidebar (`b` / its `⇤`; back with `b`, Ctrl+g or `‹`), remembered
+- #35 `e7b2b49` SSH projects (`s`): a host and directories on it, terminals
+  running on the host in tmux there; remote shells only
 - #34 PR panel: sections fold (click the header band; remembered), ruled-off
   header and footer, quoted comments, a filled `Merge…` button
 
