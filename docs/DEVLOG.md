@@ -665,6 +665,24 @@ handlers before the focused emulator, as real input does (checked with Ctrl+g
 and ⌥r; this file used to say otherwise). The tab-rename tests do it, and read
 tmux's own `list-windows` for the result.
 
+## Quality checks (CI)
+
+Every PR, and every push to main (`.github/workflows/`):
+- **`ci.yml` — lint · format**: `bunx biome ci` (Biome: lint + formatting;
+  `biome.jsonc` says why each rule it turns off is off). Locally: `bun run
+  lint`, `bun run format`, `bun run check` (Biome + typecheck).
+- **`ci.yml` — typecheck · test · build, on Linux and macOS** (macOS runners
+  get tmux from Homebrew). On Linux the suite runs with coverage and
+  `scripts/check-coverage.ts` totals `coverage/lcov.info` over `src/` against a
+  minimum (lines 94%, functions 88% — just under where it was). Bun's own
+  `coverageThreshold` applies per file (and wants plural keys: `lines`,
+  `functions` — the singular form is silently ignored), which would fail on
+  legitimately less-covered files like TerminalPane. `bun run coverage` locally.
+- **`pr-title.yml`**: the PR title must be a Conventional Commits title
+  (`type(scope)!: summary`, no full stop) — checked in bash with the title
+  passed through the environment, so a title can't inject shell.
+- **`claude-code-review.yml`**: the review bot.
+
 ## Deferred / follow-ups
 
 - Test coverage for the rest of the terminal pane (panes, the ＋ menu) — its
@@ -704,6 +722,8 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
+- Quality checks: Biome lint + format (whole codebase formatted once), CI on
+  macOS too, a coverage minimum, and Conventional Commits PR titles
 - Rework of `app.tsx`: pop-ups as one stack, `useLive` state, keys as a table,
   preferences / agents / live git status in their own hooks (1,238 → 646 lines)
 - #42 `8ec5aef` Agent CLI: `agentree tab new|read|send|list|select|rename|close`,

@@ -10,12 +10,15 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  check:
-    name: typecheck · test · build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+# Checks only read the repo.
+permissions:
+  contents: read
 
+jobs:
+  lint:
+    name: lint · format
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,13 +29,50 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Lint rules and formatting in one pass; fails on either (`bun run
+      # format` fixes formatting, `bun run lint` shows the rest).
+      - name: Biome
+        run: bunx biome ci
+
+  check:
+    name: typecheck · test · build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # agentree runs on both — and each has its own tmux, PTY and sh quirks.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      # The terminal tests run a real tmux server (on a throwaway socket).
+      # Ubuntu runners have it; macOS ones don't.
+      - name: Install tmux
+        if: runner.os == 'macOS'
+        run: brew install tmux
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
       - name: Typecheck
         run: bun run typecheck
 
-      # The suite shells out to real git (in temp dirs) and to a fake `gh` on
-      # PATH; no GitHub token is involved. tmux is preinstalled on the runner
-      # for the terminal tests to come.
+      # The suite shells out to real git and tmux (in temp dirs, on a throwaway
+      # socket) and to fakes for gh, ssh and the notifier; no token is involved.
+      # Coverage is measured once, on Linux, against a minimum (see
+      # scripts/check-coverage.ts).
+      - name: Test, with coverage
+        if: runner.os == 'Linux'
+        run: bun test --timeout 30000 --coverage && bun scripts/check-coverage.ts
+
       - name: Test
+        if: runner.os != 'Linux'
         run: bun test --timeout 30000
 
       - name: Build the standalone binary

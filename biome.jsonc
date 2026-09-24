@@ -2,7 +2,7 @@
   "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   // Test fakes (fakebin) are shell scripts.
-  "files": { "includes": ["src/**", "test/**", "*.json", "*.jsonc", "!**/fakebin"] },
+  "files": { "includes": ["src/**", "test/**", "scripts/**", "*.json", "*.jsonc", "!**/fakebin"] },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

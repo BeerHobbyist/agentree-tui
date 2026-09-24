@@ -11,7 +11,8 @@
     "test": "bun test --timeout 30000",
     "lint": "biome lint",
     "format": "biome format --write",
-    "check": "biome ci && tsc --noEmit"
+    "check": "biome ci && tsc --noEmit",
+    "coverage": "bun test --timeout 30000 --coverage && bun scripts/check-coverage.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
