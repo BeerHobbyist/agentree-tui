@@ -6,16 +6,19 @@ import type { Worktree } from "../data/model";
 import {
   applyTheme,
   attachCommand,
+  autoNameWindow,
   killPane,
   killWindow,
   newWindow,
   newWindowCmd,
   nextWindow,
   prevWindow,
+  renameWindow,
   selectPane,
   selectWindow,
   sessionName,
   splitWindow,
+  MAX_TAB_NAME_LENGTH,
   type WindowInfo,
 } from "../services/tmux";
 import { diffCommand, type DiffTarget } from "../services/hunk";
@@ -31,6 +34,7 @@ import { useTerminalSession } from "../hooks/useTerminalSession";
 import { agentLaunchCommand, agentSessionEnv } from "../services/agents";
 import { TabBar } from "./TabBar";
 import { MenuOverlay, type MenuItem } from "./MenuOverlay";
+import { RenameModal } from "./RenameModal";
 import "./EmbeddedTerminal"; // registers <embedded-terminal>
 
 const MENU_ITEMS: MenuItem[] = [
@@ -203,12 +207,14 @@ function TerminalView({
       });
   };
 
-  // ＋ menu / diff picker overlay.
+  // ＋ menu / diff picker / tab rename overlay.
   const [overlay, setOverlay] = useState<
-    "none" | "menu" | "diff" | "diffInput"
+    "none" | "menu" | "diff" | "diffInput" | "rename"
   >("none");
   const [menuIndex, setMenuIndex] = useState(0);
   const [refInput, setRefInput] = useState("");
+  /** The tab being renamed. */
+  const [renameTab, setRenameTab] = useState<WindowInfo | null>(null);
 
   // The view stays mounted across worktree switches (see TerminalPane), so
   // session-scoped UI state must be reset by hand instead of by remounting.
@@ -275,6 +281,21 @@ function TerminalView({
       }
     }
   };
+  /** Rename a tab (⌥r, or right-click it). Keys go to the prompt, not the shell. */
+  const openRename = (index: number) => {
+    const tab = windows.find((w) => w.index === index);
+    if (!tab) return;
+    onRequestFocus(); // so the sidebar's keys stay inert while the prompt is up
+    setRenameTab(tab);
+    setOverlay("rename");
+  };
+  /** Name the tab; empty hands its name back to tmux (it follows the running program). */
+  const saveTabName = (name: string) => {
+    const tab = renameTab;
+    closeOverlay();
+    if (!tab) return;
+    act(() => (name ? renameWindow(session, tab.index, name) : autoNameWindow(session, tab.index)));
+  };
   const submitRef = () => {
     const ref = refInput.trim();
     if (!ref) return;
@@ -301,6 +322,8 @@ function TerminalView({
   // falls through to the terminal. tmux-native Ctrl+b keys keep working.
   useKeyboard((key) => {
     if (!focused) return;
+    // The rename prompt owns the keyboard (it consumes every key itself).
+    if (overlay === "rename") return;
     const n = key.name;
     const eat = () => {
       key.preventDefault();
@@ -365,6 +388,11 @@ function TerminalView({
       onTogglePrPanel?.();
       return;
     }
+    if (n === "r") {
+      eat();
+      if (activeWindow) openRename(activeWindow.index);
+      return;
+    }
     // Directional keys move between split panes (vim hjkl + arrows).
     if (n === "h" || n === "left") {
       eat();
@@ -427,6 +455,7 @@ function TerminalView({
       <TabBar
         windows={windows}
         onSelect={(i) => act(() => selectWindow(session, i))}
+        onRenameTab={openRename}
         onNewTab={openMenu}
         onCloseTab={(i) => {
           if (windows.length <= 1) return;
@@ -480,6 +509,17 @@ function TerminalView({
               ? "hunk not found — npm i -g hunkdiff"
               : undefined
           }
+        />
+      )}
+      {overlay === "rename" && renameTab && (
+        <RenameModal
+          initial={renameTab.name}
+          heading={`Name for tab ${windows.findIndex((w) => w.index === renameTab.index) + 1}`}
+          placeholder="automatic — the program running in it"
+          note="Only the tab's name changes. Empty goes back to naming it after the program running in it."
+          maxLength={MAX_TAB_NAME_LENGTH}
+          onSave={saveTabName}
+          onCancel={closeOverlay}
         />
       )}
       {overlay === "diffInput" && (

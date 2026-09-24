@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core";
+import { MouseButton, TextAttributes } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { PrInfo } from "../data/model";
 import type { WindowInfo } from "../services/tmux";
@@ -7,6 +7,8 @@ import { checkLook } from "./PrPanel";
 interface TabBarProps {
   windows: WindowInfo[];
   onSelect: (index: number) => void;
+  /** Right-click a tab → rename it. */
+  onRenameTab?: (index: number) => void;
   onNewTab: () => void;
   onCloseTab: (index: number) => void;
   onSplit: (dir: "h" | "v") => void;
@@ -20,6 +22,15 @@ interface TabBarProps {
   onTogglePr?: () => void;
 }
 
+/** Longest tab name shown in full; longer (renamed) ones are cut short with "…". */
+const TAB_LABEL_MAX = 20;
+
+function tabLabel(name: string): string {
+  const chars = Array.from(name);
+  if (chars.length <= TAB_LABEL_MAX) return name;
+  return chars.slice(0, TAB_LABEL_MAX - 1).join("").trimEnd() + "…";
+}
+
 /**
  * App-styled bar above the embedded terminal. Tabs = tmux windows; the split /
  * close buttons drive tmux panes. All controls are mouse (onMouseDown) so they
@@ -28,6 +39,7 @@ interface TabBarProps {
 export function TabBar({
   windows,
   onSelect,
+  onRenameTab,
   onNewTab,
   onCloseTab,
   onSplit,
@@ -64,9 +76,13 @@ export function TabBar({
             <text
               fg={w.active ? theme.fg : theme.fgMuted}
               attributes={w.active ? TextAttributes.BOLD : undefined}
-              onMouseDown={() => onSelect(w.index)}
+              // One line, whatever the name: a renamed tab can have spaces.
+              wrapMode="none"
+              onMouseDown={(e) =>
+                e.button === MouseButton.RIGHT ? onRenameTab?.(w.index) : onSelect(w.index)
+              }
             >
-              {` ${w.active ? "●" : "○"} ${w.name}${w.panes > 1 ? ` ⑂${w.panes}` : ""} `}
+              {` ${w.active ? "●" : "○"} ${tabLabel(w.name)}${w.panes > 1 ? ` ⑂${w.panes}` : ""} `}
             </text>
             {/* Per-tab close button (delete this window). Hidden for the last
                 remaining tab: tmux can't have a session with zero windows, so
@@ -111,15 +127,16 @@ export function TabBar({
           {`  ⇡#${pr.number}${pr.checks ? " " + checkLook(pr.checks, theme).glyph : ""} `}
         </text>
       )}
+      {/* The key hints give way first, so tab names aren't cut short. */}
       <text
         fg={theme.fgFaint}
         attributes={TextAttributes.DIM}
-        flexShrink={1}
+        flexShrink={1000}
         minWidth={0}
         wrapMode="none"
         truncate
       >
-        {"  ⌥t tab · ⌥a agent · ⌥d diff · ⌥p PR · ⌥w pane · ⌥hjkl pane · ^g sidebar"}
+        {"  ⌥t tab · ⌥r rename · ⌥a agent · ⌥d diff · ⌥p PR · ⌥w pane · ⌥hjkl pane · ^g sidebar"}
       </text>
     </box>
   );
