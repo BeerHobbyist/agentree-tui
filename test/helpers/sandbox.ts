@@ -62,9 +62,11 @@ export interface Sandbox {
   setPrView(number: number, pr: Record<string, unknown>): void;
   /** Publish a PR's inline review comments (raw REST shape). */
   setPrComments(number: number, comments: Record<string, unknown>[]): void;
+  /** Publish what `gh api repos/<repo>` returns (merge settings; default `{}`). */
+  setRepoSettings(settings: Record<string, unknown>): void;
   /** URLs the app asked to open in a browser. */
   openedUrls(): string[];
-  /** Make the fake `gh` fail for these subcommands (api, clone, pr, auth). */
+  /** Make the fake `gh` fail for these subcommands (api, clone, pr, auth, merge). */
   failGh(...subcommands: string[]): void;
   /** Every `gh` invocation so far, one argv string per line. */
   ghCalls(): string[];
@@ -196,6 +198,9 @@ export function createSandbox(): Sandbox {
     },
     setPrComments(number, comments) {
       writeFileSync(join(fixtures, `pr-comments-${number}.json`), JSON.stringify(comments));
+    },
+    setRepoSettings(settings) {
+      writeFileSync(join(fixtures, "repo-settings.json"), JSON.stringify(settings));
     },
     openedUrls() {
       try {

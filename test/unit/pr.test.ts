@@ -3,13 +3,16 @@ import type { PrDetails } from "../../src/data/model";
 import {
   checkState,
   excerpt,
+  mergeOptions,
   mergeStatus,
   relativeTime,
   summarizeChecks,
   toChecks,
   toComments,
   toPrDetails,
+  toMergeSettings,
   toReviewers,
+  type MergeSettings,
   type RawPr,
 } from "../../src/services/pr";
 
@@ -198,5 +201,61 @@ describe("excerpt", () => {
     expect(excerpt("one\ntwo")).toBe("one\ntwo");
     expect(excerpt("1\n2\n3\n4\n5\n6", 3)).toBe("1\n2\n3 …");
     expect(excerpt("x".repeat(500), 4, 10)).toBe("xxxxxxxxxx …");
+  });
+});
+
+describe("toMergeSettings", () => {
+  test("offers only the methods the repo allows, in GitHub's order", () => {
+    expect(
+      toMergeSettings({ allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: true }).methods,
+    ).toEqual(["squash", "rebase"]);
+    expect(toMergeSettings({ allow_merge_commit: true, allow_squash_merge: false, allow_rebase_merge: false }))
+      .toEqual({ methods: ["merge"], autoMerge: false });
+  });
+
+  test("without push access GitHub leaves the fields out: offer everything, let GitHub decide", () => {
+    expect(toMergeSettings({})).toEqual({ methods: ["squash", "merge", "rebase"], autoMerge: false });
+  });
+
+  test("reads the auto-merge switch", () => {
+    expect(toMergeSettings({ allow_auto_merge: true }).autoMerge).toBe(true);
+  });
+});
+
+describe("mergeOptions", () => {
+  const pr = (over: Partial<PrDetails>): PrDetails => ({ ...toPrDetails(base), ...over });
+  const all: MergeSettings = { methods: ["squash", "merge", "rebase"], autoMerge: false };
+  const withAuto: MergeSettings = { ...all, autoMerge: true };
+
+  test("ready (or only optional checks failing, or not worked out yet): merge now", () => {
+    for (const status of ["CLEAN", "HAS_HOOKS", "UNSTABLE", "UNKNOWN"]) {
+      expect(mergeOptions(pr({ mergeStateStatus: status }), all)).toEqual({ now: true, auto: false });
+    }
+  });
+
+  test("blocked or behind: auto-merge when the repo allows it", () => {
+    const blocked = pr({ mergeStateStatus: "BLOCKED", reviewDecision: "review-required" });
+    expect(mergeOptions(blocked, withAuto)).toEqual({ now: false, auto: true, reason: "Blocked: review required" });
+    expect(mergeOptions(pr({ mergeStateStatus: "BEHIND" }), withAuto).auto).toBe(true);
+  });
+
+  test("blocked without auto-merge: nothing to offer, and it says why", () => {
+    const o = mergeOptions(pr({ mergeStateStatus: "BLOCKED" }), all);
+    expect(o.now || o.auto).toBe(false);
+    expect(o.reason).toContain("auto-merge is off");
+  });
+
+  test("conflicts, drafts and finished PRs can't be merged from here", () => {
+    for (const over of [
+      { mergeable: "CONFLICTING" },
+      { mergeStateStatus: "DIRTY" },
+      { state: "draft" as const },
+      { state: "merged" as const },
+      { state: "closed" as const },
+    ]) {
+      const o = mergeOptions(pr({ mergeStateStatus: "CLEAN", ...over }), withAuto);
+      expect(o.now || o.auto).toBe(false);
+      expect(o.reason).toBeTruthy();
+    }
   });
 });

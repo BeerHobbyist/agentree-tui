@@ -27,6 +27,8 @@ interface PrPanelProps {
   onResizeEnd: () => void;
   onResetWidth: () => void;
   onClose: () => void;
+  /** Open the merge prompt for this PR (`m`, or the Merge button). */
+  onMerge?: () => void;
   handleRef?: RefObject<PrPanelHandle | null>;
 }
 
@@ -141,6 +143,7 @@ export function PrPanel({
   onResizeEnd,
   onResetWidth,
   onClose,
+  onMerge,
   handleRef,
 }: PrPanelProps) {
   const theme = useTheme();
@@ -272,6 +275,11 @@ export function PrPanel({
           >
             <Section title="Merge">
               <Row glyph="●" color={toneColor(merge.tone, theme)} text={merge.label} />
+              {d.state === "open" && onMerge && (
+                <text fg={theme.accent} flexShrink={0} onMouseDown={onMerge}>
+                  {"▸ Merge… (m)"}
+                </text>
+              )}
             </Section>
 
             <Section
@@ -381,7 +389,7 @@ export function PrPanel({
               ? "refresh failed"
               : query.dataUpdatedAt
                 ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
-                : "") + " · o open · r refresh"}
+                : "") + (d?.state === "open" ? " · m merge" : "") + " · o open · r refresh"}
         </text>
       </box>
     </box>

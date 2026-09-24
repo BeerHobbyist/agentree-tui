@@ -22,6 +22,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["n", "add a project (pick a GitHub repo)"],
       ["t", "cycle theme"],
       ["p  /  o  /  r", "PR panel · open PR · refresh"],
+      ["m", "merge the PR (pick a method, then confirm)"],
       ["PgUp  /  PgDn", "scroll the PR panel"],
       ["[  /  ]", "narrower / wider sidebar"],
       ["=", "reset sidebar width"],

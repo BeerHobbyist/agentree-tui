@@ -51,6 +51,7 @@ import { openExternal } from "./services/open";
 import type { PrInfo } from "./data/model";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { RenameModal } from "./components/RenameModal";
+import { MergeModal } from "./components/MergeModal";
 
 function MainPane({ row }: { row: Row | undefined }) {
   const theme = useTheme();
@@ -234,6 +235,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   noticeRef.current = notice;
   const renamingRef = useRef(renaming);
   renamingRef.current = renaming;
+  // The PR being merged (m / the PR panel's Merge button).
+  const [merging, setMerging] = useState<{ repo: string; pr: PrInfo } | null>(null);
+  const mergingRef = useRef(merging);
+  mergingRef.current = merging;
   const sidebarWidthRef = useRef(sidebarWidth);
   sidebarWidthRef.current = sidebarWidth;
   const screenWidthRef = useRef(screenWidth);
@@ -646,6 +651,14 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       .catch((err) => setNotice({ title: "Could not save the label", message: errText(err) }));
   };
 
+  /** Ask to merge the PR on screen; the prompt picks a method and confirms first. */
+  const requestMerge = () => {
+    const current = currentPrRef.current;
+    if (!current) return;
+    setFocusMode("sidebar"); // keys go to the prompt, not a terminal
+    setMerging(current);
+  };
+
   useKeyboard((key) => {
     // Help overlay is top-most: esc / ? / q close it, everything else is inert.
     if (helpOpenRef.current) {
@@ -659,7 +672,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (modalOpenRef.current) return;
 
     // The close-worktree confirm/error and rename overlays own the keyboard while open.
-    if (confirmCloseRef.current || noticeRef.current || renamingRef.current) return;
+    if (confirmCloseRef.current || noticeRef.current || renamingRef.current || mergingRef.current) return;
 
     // While a terminal is focused, TerminalView owns the keyboard (input +
     // Ctrl+g to return + Alt tab chords). App nav stays inert.
@@ -703,6 +716,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (key.name === "o") {
       const current = currentPrRef.current;
       if (current) openExternal(current.pr.url);
+      return;
+    }
+    if (key.name === "m") {
+      requestMerge();
       return;
     }
     if (key.name === "r" && key.shift) {
@@ -840,6 +857,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           onResizeEnd={persistPrPanelWidth}
           onResetWidth={resetPrPanelWidth}
           onClose={togglePrPanel}
+          onMerge={requestMerge}
           handleRef={prPanelRef}
         />
       )}
@@ -870,6 +888,15 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           }
           onConfirm={() => void performCloseWorktree()}
           onCancel={() => setConfirmClose(null)}
+        />
+      )}
+      {merging && (
+        <MergeModal
+          repo={merging.repo}
+          pr={merging.pr}
+          preferred={state.ui?.mergeMethod}
+          onMerged={(method) => saveUi({ mergeMethod: method })}
+          onClose={() => setMerging(null)}
         />
       )}
       {renaming && (
