@@ -86,6 +86,11 @@ export interface Sandbox {
   dropSshConnection(): void;
   /** Login attempts on the password host (each one a failed login if refused). */
   sshLoginAttempts(): string[];
+  /**
+   * Make tmux missing on this machine (a Mac without it) while the fake ssh
+   * host keeps it: a `tmux` first on PATH that fails unless run "on the host".
+   */
+  hideLocalTmux(): void;
   cleanup(): void;
 }
 
@@ -281,6 +286,18 @@ export function createSandbox(): Sandbox {
     },
     dropSshConnection() {
       rmSync(sshMaster, { force: true });
+    },
+    hideLocalTmux() {
+      const real = Bun.which("tmux");
+      if (!real) throw new Error("hideLocalTmux: no tmux to hide");
+      const dir = join(root, "no-tmux-bin");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "tmux"),
+        `#!/bin/sh\n[ -n "$FAKE_SSH_REMOTE" ] && exec ${real} "$@"\necho "tmux: command not found" >&2\nexit 127\n`,
+        { mode: 0o755 },
+      );
+      process.env.PATH = `${dir}:${process.env.PATH ?? ""}`;
     },
     sshLoginAttempts() {
       try {

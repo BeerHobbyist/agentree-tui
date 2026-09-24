@@ -79,4 +79,5 @@ if [ -n "$FAKE_SSH_NO_TMUX" ]; then
 fi
 
 cd "${FAKE_SSH_HOME:-$HOME}" || exit 1
-HOME="${FAKE_SSH_HOME:-$HOME}" exec sh -c "$cmd"
+# Marks what runs "on the host" (see the sandbox's hideLocalTmux).
+FAKE_SSH_REMOTE=1 HOME="${FAKE_SSH_HOME:-$HOME}" exec sh -c "$cmd"

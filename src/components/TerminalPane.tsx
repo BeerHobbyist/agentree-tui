@@ -3,7 +3,14 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { Worktree } from "../data/model";
-import { attachCommand, sessionName, tmuxOn, MAX_TAB_NAME_LENGTH, type WindowInfo } from "../services/tmux";
+import {
+  attachCommand,
+  sessionName,
+  tmuxInstallHint,
+  tmuxOn,
+  MAX_TAB_NAME_LENGTH,
+  type WindowInfo,
+} from "../services/tmux";
 import { diffCommand, type DiffTarget } from "../services/hunk";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -81,22 +88,25 @@ function Centered({
 
 export function TerminalPane(props: TerminalPaneProps) {
   const theme = useTheme();
-  // Checked once for the whole app (every worktree's terminal shares the answer).
-  const tmuxOk = useQuery(tmuxAvailableQuery()).data ?? null;
+  // A local terminal is a tmux session on this machine, so it needs tmux here.
+  // An SSH directory's runs tmux on the host (checked when it was added) and
+  // only needs ssh here. Checked once for the whole app.
+  const local = !props.worktree.host;
+  const tmuxOk = useQuery({ ...tmuxAvailableQuery(), enabled: local }).data ?? null;
 
-  if (tmuxOk === null) {
+  if (local && tmuxOk === null) {
     return (
       <Centered visible={props.visible}>
         <text fg={theme.fgMuted}>{"Starting…"}</text>
       </Centered>
     );
   }
-  if (!tmuxOk) {
+  if (local && !tmuxOk) {
     return (
       <Centered visible={props.visible}>
         <text fg={theme.dirty}>{"tmux not found"}</text>
         <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-          {"Install it to use terminals:  sudo pacman -S tmux"}
+          {`Install it to use terminals:  ${tmuxInstallHint()}`}
         </text>
       </Centered>
     );

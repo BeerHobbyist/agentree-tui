@@ -47,6 +47,27 @@ export async function isAvailable(): Promise<boolean> {
 }
 
 /**
+ * How to install tmux here, for the "tmux not found" message: the package
+ * manager this system has (`which` looks one up on PATH), else a plain hint.
+ */
+export function tmuxInstallHint(
+  platform: string = process.platform,
+  which: (cmd: string) => string | null = (cmd) => Bun.which(cmd),
+): string {
+  if (platform === "darwin") return "brew install tmux";
+  const managers: [string, string][] = [
+    ["pacman", "sudo pacman -S tmux"],
+    ["apt-get", "sudo apt install tmux"],
+    ["dnf", "sudo dnf install tmux"],
+    ["zypper", "sudo zypper install tmux"],
+    ["apk", "sudo apk add tmux"],
+    ["brew", "brew install tmux"],
+  ];
+  const found = managers.find(([cmd]) => which(cmd));
+  return found ? found[1] : "install tmux with your package manager";
+}
+
+/**
  * Stable, tmux-safe session name for a worktree. tmux forbids `.` and `:` in
  * names, so we slug the identifier and append a short hash to avoid collisions.
  */
