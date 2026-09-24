@@ -52,7 +52,7 @@ export async function isAvailable(): Promise<boolean> {
  */
 export function tmuxInstallHint(
   platform: string = process.platform,
-  which: (cmd: string) => string | null = (cmd) => Bun.which(cmd),
+  which: (cmd: string) => string | null = (cmd) => Bun.which(cmd, { PATH: process.env.PATH }),
 ): string {
   if (platform === "darwin") return "brew install tmux";
   const managers: [string, string][] = [

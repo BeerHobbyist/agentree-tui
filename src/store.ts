@@ -16,6 +16,7 @@ import { stateFilePath, workspaceRoot, branchLeaf } from "./config";
 import { ignoreWorktreesDir, listWorktrees } from "./services/git";
 import type { Project, Worktree } from "./data/model";
 import { displayPath } from "./services/ssh";
+import { DIFF_VIEWERS, type DiffViewerId } from "./services/diff";
 
 export interface StoredWorktree {
   id: string;
@@ -74,6 +75,8 @@ export interface UiState {
   mergeMethod?: "squash" | "merge" | "rebase";
   /** PR panel sections folded away (by name, e.g. "description"). */
   prPanelCollapsed?: string[];
+  /** The diff viewer picked in the diff picker (`v`); omitted = the first installed. */
+  diffViewer?: DiffViewerId;
 }
 
 export interface State {
@@ -88,7 +91,7 @@ export interface State {
 /** Keep only well-formed ui fields from a parsed state file. */
 function sanitizeUi(raw: unknown): UiState | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const { sidebarWidth, sidebarHidden, prPanelHidden, prPanelWidth, mergeMethod, prPanelCollapsed } = raw as Record<
+  const { sidebarWidth, sidebarHidden, prPanelHidden, prPanelWidth, mergeMethod, prPanelCollapsed, diffViewer } = raw as Record<
     string,
     unknown
   >;
@@ -101,6 +104,9 @@ function sanitizeUi(raw: unknown): UiState | undefined {
   if (sidebarHidden === true) ui.sidebarHidden = true;
   if (mergeMethod === "squash" || mergeMethod === "merge" || mergeMethod === "rebase") {
     ui.mergeMethod = mergeMethod;
+  }
+  if (typeof diffViewer === "string" && DIFF_VIEWERS.some((v) => v.id === diffViewer)) {
+    ui.diffViewer = diffViewer as DiffViewerId;
   }
   if (Array.isArray(prPanelCollapsed)) {
     const names = prPanelCollapsed.filter((s): s is string => typeof s === "string");

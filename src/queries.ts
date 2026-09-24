@@ -17,7 +17,7 @@ import type { PrInfo } from "./data/model";
 import { readAgentStatuses, type AgentReport } from "./services/agents";
 import { fetchRepoPage, listOpenPrs, prForBranch } from "./services/gh";
 import { baseRef, status as gitStatus } from "./services/git";
-import { isAvailable as hunkAvailable } from "./services/hunk";
+import { availableViewers } from "./services/diff";
 import { createLimiter } from "./services/limit";
 import { fetchMergeSettings, fetchPrDetails } from "./services/pr";
 import { isAvailable as tmuxAvailable, tmuxOn } from "./services/tmux";
@@ -49,7 +49,7 @@ export const queryKeys = {
   repos: ["repos"] as const,
   openPrs: (repo: string) => ["open-prs", repo] as const,
   tmuxAvailable: ["tmux-available"] as const,
-  hunkAvailable: ["hunk-available"] as const,
+  diffViewers: ["diff-viewers"] as const,
   tmuxWindows: (session: string) => ["tmux-windows", session] as const,
   baseRef: (path: string) => ["base-ref", path] as const,
 };
@@ -130,10 +130,11 @@ export const tmuxAvailableQuery = () =>
     staleTime: Infinity,
     gcTime: Infinity,
   });
-export const hunkAvailableQuery = () =>
+/** Which diff viewers are installed — looked up once per app. */
+export const diffViewersQuery = () =>
   queryOptions({
-    queryKey: queryKeys.hunkAvailable,
-    queryFn: hunkAvailable,
+    queryKey: queryKeys.diffViewers,
+    queryFn: async () => availableViewers(),
     staleTime: Infinity,
     gcTime: Infinity,
   });

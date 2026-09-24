@@ -1,0 +1,94 @@
+/** Diff viewers: the commands they run, and which one is used. */
+import { describe, expect, test } from "bun:test";
+import {
+  DIFF_VIEWERS,
+  availableViewers,
+  diffArgs,
+  diffCommand,
+  nextViewer,
+  resolveViewer,
+  viewer,
+} from "../../src/services/diff";
+
+/** What `sh` makes of a command line: its arguments. */
+function words(line: string): string[] {
+  const out = Bun.spawnSync(["sh", "-c", `set -- ${line}; for a in "$@"; do printf '%s\\n' "$a"; done`]);
+  return new TextDecoder().decode(out.stdout).split("\n").slice(0, -1);
+}
+
+describe("diffArgs", () => {
+  test("each diff choice as git diff arguments", () => {
+    expect(diffArgs("working")).toEqual([]);
+    expect(diffArgs("staged")).toEqual(["--staged"]);
+    expect(diffArgs("base", "origin/main")).toEqual(["origin/main...HEAD"]);
+    expect(diffArgs("base")).toEqual(["main...HEAD"]);
+    expect(diffArgs("ref", "v1.0..v2.0")).toEqual(["v1.0..v2.0"]);
+    expect(diffArgs("ref")).toEqual(["HEAD"]);
+  });
+});
+
+describe("the viewers' commands", () => {
+  test("hunk takes the git diff arguments itself", () => {
+    expect(viewer("hunk").command(["--staged"])).toBe("hunk diff --staged");
+  });
+
+  test("git-based viewers page with a less that doesn't quit on a short diff — not the user's own pager", () => {
+    for (const id of ["git", "difftastic"] as const) {
+      const cmd = viewer(id).command(["main...HEAD"]);
+      expect(cmd).toContain("LESS=R git ");
+      expect(cmd).toContain("core.pager=less -R");
+    }
+    expect(viewer("delta").command([])).toContain("--paging=always");
+  });
+
+  test("diffnav gets the plain diff on stdin", () => {
+    expect(viewer("diffnav").command([])).toMatch(/color\.ui=never.* diff \| diffnav$/);
+  });
+
+  test("diffview speaks its own flag for staged changes", () => {
+    expect(words(viewer("diffview").command(["--staged"]))).toEqual(["nvim", "-c", "DiffviewOpen --cached"]);
+  });
+
+  test("an odd ref stays one argument", () => {
+    expect(words(viewer("hunk").command(["it's; rm -rf ~"]))).toEqual(["hunk", "diff", "it's; rm -rf ~"]);
+  });
+
+  test("every command runs under sh, with the empty-diff check first", () => {
+    for (const v of DIFF_VIEWERS) {
+      const [sh, c, script] = words(diffCommand(v, "base", "main"));
+      expect([sh, c]).toEqual(["sh", "-c"]);
+      expect(script).toContain("if git diff --quiet main...HEAD; then");
+    }
+  });
+});
+
+describe("which viewer", () => {
+  const installed = (...cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);
+
+  test("installed means all its programs are on PATH", () => {
+    const prev = process.env.AGENTREE_DIFF_VIEWERS;
+    delete process.env.AGENTREE_DIFF_VIEWERS;
+    try {
+      expect(availableViewers(installed("git", "delta"))).toEqual(["delta", "git"]);
+      // diffnav renders with delta, so it needs both.
+      expect(availableViewers(installed("git", "diffnav"))).toEqual(["git"]);
+      expect(availableViewers(installed("git", "diffnav", "delta", "nvim"))).toEqual(["diffnav", "delta", "diffview", "git"]);
+    } finally {
+      process.env.AGENTREE_DIFF_VIEWERS = prev;
+    }
+  });
+
+  test("the chosen one if installed, else the first installed automatic one, else git", () => {
+    expect(resolveViewer("delta", ["hunk", "delta", "git"]).id).toBe("delta");
+    expect(resolveViewer(undefined, ["hunk", "delta", "git"]).id).toBe("hunk");
+    expect(resolveViewer("hunk", ["delta", "git"]).id).toBe("delta"); // chosen, then uninstalled
+    expect(resolveViewer(undefined, ["diffview", "git"]).id).toBe("git"); // diffview only when chosen
+    expect(resolveViewer(undefined, []).id).toBe("git");
+  });
+
+  test("v cycles through the installed ones", () => {
+    expect(nextViewer("hunk", ["hunk", "delta", "git"])).toBe("delta");
+    expect(nextViewer("git", ["hunk", "delta", "git"])).toBe("hunk");
+    expect(nextViewer("git", ["git"])).toBe("git");
+  });
+});

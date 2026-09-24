@@ -13,15 +13,9 @@ import { dirname, join } from "node:path";
 import { stateFilePath } from "../config";
 import { run } from "./proc";
 
-/** Quote one argument for a POSIX shell (the remote end of `ssh host <command>`). */
-export function shq(arg: string): string {
-  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
-}
+import { shellJoin, shq } from "./shell";
 
-/** A shell command line from an argv, every argument quoted. */
-export function shellJoin(argv: string[]): string {
-  return argv.map(shq).join(" ");
-}
+export { shellJoin, shq };
 
 /**
  * Whether `host` is something to hand ssh as a destination: a ~/.ssh/config

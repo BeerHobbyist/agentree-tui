@@ -42,7 +42,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["⌥ t", "new tab"],
       ["⌥ r", "rename tab"],
       ["⌥ a", "open agent in a new tab"],
-      ["⌥ d", "open diff (hunk) in a new tab"],
+      ["⌥ d", "open a diff in a new tab (v there: viewer)"],
       ["⌥ p", "show / hide the PR panel"],
       ["⌥ w", "close pane"],
       ["⌥ W", "close tab (whole window)"],

@@ -64,7 +64,7 @@ only for **persistence** + compositing windows/panes inside that one terminal.
 
 **Data layer: TanStack Query.** Everything the app reads — PR details and
 badges, git status, agent status, the modal's repo list and open PRs, tmux
-windows, whether tmux/hunk are installed — is a query defined in
+windows, whether tmux is installed and which diff viewers are — is a query defined in
 `src/queries.ts` (key, fetcher, stale time, poll interval), cached in one
 `QueryClient` per app (`src/queryClient.ts`: fresh 30s, dropped 10 min after
 nothing shows it, one retry). Coming back to something already loaded shows it
@@ -99,8 +99,8 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - `src/store.ts` — sync `loadState`, atomic `saveState`, `reconcile()` vs
   `git worktree list` (adopt orphans, mark missing, surface main copy).
 - `src/services/proc.ts` — `run()`/`runOrThrow()` over `Bun.spawn`.
-- `src/services/hunk.ts` — `isAvailable`, `diffCommand(target, base?)` for the
-  hunk diff viewer.
+- `src/services/diff.ts` — diff viewers (hunk, diffnav, delta, difftastic, nvim
+  diffview, git): which are installed, and `diffCommand(viewer, target, arg?)`.
 - `src/services/gh.ts` — `fetchRepoPage` (paginated `gh api user/repos`), cache,
   `clone`, `isAuthenticated`, `prForBranch` (open PR for a branch, cached).
 - `src/services/git.ts` — worktree add/list/status, `localBranchExists`,
@@ -141,7 +141,7 @@ the app polls those and cross-checks tmux (see **Agent status**).
   showing it if hidden ·
   `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`) move between **split panes** · `⌥,`/`⌥.` prev/next
   **tab** · `⌥1`–`9` jump tab · `⌥t` new tab · `⌥r` rename tab · `⌥a` open
-  agent (new tab) · `⌥d` open diff (hunk) · `⌥p` PR panel · `⌥w` close pane ·
+  agent (new tab) · `⌥d` open a diff (`v` there: viewer) · `⌥p` PR panel · `⌥w` close pane ·
   `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical · `Ctrl+C` →
   shell · tmux-native `Ctrl+b …` works.
 - **Mouse** (everything is clickable): focus follows the click — anywhere on the
@@ -166,18 +166,40 @@ Terminals re-theme live: `TerminalView` re-applies tmux `window-style` /
 `pane-border-style` globally (`applyTheme`) on theme change. Pane borders carry
 the pane `bg` so the divider blends (no seam) — this was the "scuffed borders" fix.
 
-## Diff viewer (hunk)
+## Diff viewers
 
-The tab-bar `＋` opens a small menu (`MenuOverlay`): **New shell** / **New diff
-(hunk)**; `⌥d` opens the diff picker directly. The picker offers **Working
-changes** / **Staged** / **vs base branch**, and launches `hunk` in a new tmux
-window (tab) at the worktree cwd via `newWindowCmd` — `hunk diff` /
-`hunk diff --staged` / `hunk diff <base>...HEAD` (`git.baseRef` detects the base,
-e.g. `origin/main`). Quitting hunk (`q`) exits the command so the tab closes.
-`src/services/hunk.ts` gates on `isAvailable()`; if hunk is absent the picker
-shows "hunk not found — npm i -g hunkdiff" (install: `npm i -g hunkdiff` needs
-Node 22+, or `curl -fsSL https://hunk.dev/install.sh | sh`). hunk is a separate
-process rendering in its tmux pane — no special integration beyond a TTY.
+The tab-bar `＋` opens a small menu (`MenuOverlay`): **New shell** / **New
+agent** / **New diff**; `⌥d` opens the diff picker directly: **Working
+changes** / **Staged** / **vs base branch** (`git.baseRef` finds it, e.g.
+`origin/main`) / **Specific ref / commit…**. Each is a set of `git diff`
+arguments (`diffArgs`), which the chosen viewer turns into a command that runs
+in a new tmux tab at the worktree (`src/services/diff.ts`); quitting the
+viewer closes the tab.
+
+Viewers (`DIFF_VIEWERS`): **hunk** (`hunk diff …`), **diffnav** (`git diff |
+diffnav` — a file tree beside delta's rendering), **delta** (side by side,
+`--navigate`), **difftastic** (`diff.external=difft`), **nvim diffview**
+(`DiffviewOpen …`; only when chosen — the plugin can't be detected) and plain
+**git diff**, which is always there. The picker's title names the one in use:
+the one picked with `v` in the picker (cycles through the installed ones,
+remembered as `ui.diffViewer`), else the first installed of hunk, diffnav,
+delta, difftastic — else git. "Installed" is `Bun.which` on each program the
+viewer needs (diffnav needs delta too); `AGENTREE_DIFF_VIEWERS` overrides the
+list (tests).
+
+Gotchas, found running them for real:
+- **The tab closes when the viewer exits**, so a pager mustn't quit on a short
+  diff: git's default `LESS=FRX` has `-F` (quit if one screen). Git-paged
+  viewers get `LESS=R` and delta `--paging=always`.
+- **The user's own `core.pager` can't be trusted** — here it was delta, which
+  made "plain git" auto-page (and quit) and would mangle difftastic's output.
+  The git-based viewers set `-c core.pager=…` themselves.
+- **An empty diff** would make any viewer exit at once (the tab just flashes):
+  `git diff --quiet <args>` first, and if it's empty the tab says "No changes
+  to show" and waits for Enter.
+- tmux runs a window's command with the user's login shell (zsh, fish…), so
+  the whole thing is wrapped in `sh -c`.
+- No diff viewer for SSH directories (no git there).
 
 ## Startup agent
 
@@ -189,7 +211,7 @@ it only runs on session creation, so re-opening an already-open worktree just
 re-attaches to the running shell/agent instead of relaunching it
 (`attachCommand`'s new `startupCommand` param, `src/services/tmux.ts`).
 The ＋ menu / `⌥a` (`openAgent` in `TerminalPane.tsx`) opens the same command
-in a fresh tab, the same way `⌥d` opens hunk.
+in a fresh tab, the same way `⌥d` opens a diff.
 
 ## Agent status
 
@@ -482,7 +504,7 @@ each other.
 
 ## Tests
 
-`bun test` — 346 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 357 tests, ~50s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -527,8 +549,8 @@ tmux's own `list-windows` for the result.
 
 ## Deferred / follow-ups
 
-- Test coverage for the rest of the terminal pane (panes, the ＋ menu, the diff
-  picker) — its keys can be driven now (see **Tests**).
+- Test coverage for the rest of the terminal pane (panes, the ＋ menu) — its
+  keys can be driven now (see **Tests**); the diff picker is covered.
 - Restore/list live sessions on startup; layout-restore JSON (reboot survival).
 - Agent status: a `claude` typed by hand in a shell pane doesn't load the hooks,
   and "needs action" lags a permission prompt by Claude's ~6s notification delay.
@@ -564,6 +586,9 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
+- Diff viewers: hunk, diffnav, delta, difftastic, nvim diffview or plain git —
+  the first installed, or the one picked with `v` in the diff picker
+  (remembered); empty diffs say so; pagers can't quit on a short diff
 - SSH terminals don't need tmux on this machine (the check was for local
   terminals); the install hint fits the system instead of always `pacman`
 - SSH password logins: asked for when adding a host (SSH_ASKPASS, never
