@@ -50,6 +50,11 @@ function waitForDivider(app: RenderedApp, col: number) {
   return waitUntil(app, () => dividerColumn(app) === col, `the divider at column ${col}`);
 }
 
+/** The project's path, as the sidebar shows it (shortened to fit) — the row under its name. */
+function shownPath(app: RenderedApp): string {
+  return (app.captureCharFrame().split("\n")[2] ?? "").slice(0, dividerColumn(app)).trim();
+}
+
 function storedWidth(): number | undefined {
   return sandbox.readState()?.ui?.sidebarWidth;
 }
@@ -68,10 +73,12 @@ describe("dragging the divider", () => {
 
   test("resizes the sidebar live and remembers the width", async () => {
     await start();
+    const before = shownPath(app);
     await app.mockMouse.drag(DEFAULT_COL, 10, 50, 10);
     await waitForDivider(app, 50);
-    // The wider sidebar shows the worktree path it used to truncate.
-    expect(app.captureCharFrame()).toContain(join(sandbox.workspace, "widget"));
+    // The wider sidebar shows more of the project's path (all of it, if the temp dir's is short).
+    expect(shownPath(app).length).toBeGreaterThan(before.length);
+    expect(shownPath(app)).toEndWith("/workspace/widget");
     await waitUntil(app, () => storedWidth() === 51, "the width to be saved");
   });
 
