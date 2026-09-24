@@ -11,6 +11,10 @@ import { ResizeHandle } from "./ResizeHandle";
 /** Comments shown before "…N more on GitHub". */
 const MAX_COMMENTS = 20;
 
+/** The panel's foldable sections. */
+export const PR_SECTIONS = ["merge", "reviews", "checks", "labels", "description", "comments"] as const;
+export type PrSection = (typeof PR_SECTIONS)[number];
+
 /** What the app can do to the panel from its keys. */
 export interface PrPanelHandle {
   refresh(): void;
@@ -29,6 +33,9 @@ interface PrPanelProps {
   onClose: () => void;
   /** Open the merge prompt for this PR (`m`, or the Merge button). */
   onMerge?: () => void;
+  /** Sections folded away (click a section's header to fold / unfold it). */
+  collapsed?: readonly PrSection[];
+  onToggleSection?: (section: PrSection) => void;
   handleRef?: RefObject<PrPanelHandle | null>;
 }
 
@@ -84,17 +91,58 @@ const STATE_LABEL: Record<PrDetails["state"], string> = {
   closed: "Closed",
 };
 
-function Section({ title, extra, children }: { title: string; extra?: React.ReactNode; children: React.ReactNode }) {
+/**
+ * A titled block. Its header is a band across the panel so sections don't run
+ * together; clicking it folds the section down to that band. `extra` (counts,
+ * a verdict) shows either way, `folded` only while folded.
+ */
+function Section({
+  title,
+  extra,
+  folded,
+  collapsed = false,
+  onToggle,
+  children,
+}: {
+  title: string;
+  extra?: React.ReactNode;
+  folded?: React.ReactNode;
+  collapsed?: boolean;
+  onToggle?: () => void;
+  children: React.ReactNode;
+}) {
   const theme = useTheme();
   return (
     <box flexDirection="column" flexShrink={0} marginBottom={1}>
-      <box flexDirection="row" flexShrink={0}>
+      <box flexDirection="row" flexShrink={0} backgroundColor={theme.panelAlt} onMouseDown={onToggle}>
+        <text fg={theme.fgFaint} flexShrink={0}>
+          {collapsed ? " ▸ " : " ▾ "}
+        </text>
         <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>
           {title}
         </text>
         {extra}
+        {collapsed && folded}
       </box>
-      {children}
+      {!collapsed && (
+        // Glyphs line up under the band's ▾ — the band itself sets the
+        // section apart, and the panel is often narrow.
+        <box flexDirection="column" flexShrink={0} paddingLeft={1}>
+          {children}
+        </box>
+      )}
+    </box>
+  );
+}
+
+/** A block of quoted text (a comment, the description) set off by a rule on its left. */
+function Quote({ children }: { children: React.ReactNode }) {
+  const theme = useTheme();
+  return (
+    <box flexDirection="column" flexShrink={0} border={["left"]} borderColor={theme.border} paddingLeft={1}>
+      <text fg={theme.fgMuted} flexShrink={0}>
+        {children}
+      </text>
     </box>
   );
 }
@@ -144,6 +192,8 @@ export function PrPanel({
   onResetWidth,
   onClose,
   onMerge,
+  collapsed = [],
+  onToggleSection,
   handleRef,
 }: PrPanelProps) {
   const theme = useTheme();
@@ -183,6 +233,11 @@ export function PrPanel({
         .filter((c) => c.n > 0)
     : [];
   const overall = d ? summarizeChecks(d.checks.map((c) => c.state)) : pr.checks;
+  /** Props that make a section foldable. */
+  const fold = (section: PrSection) => ({
+    collapsed: collapsed.includes(section),
+    onToggle: onToggleSection ? () => onToggleSection(section) : undefined,
+  });
   const decision =
     d?.reviewDecision === "approved"
       ? { label: "approved", color: theme.added }
@@ -206,47 +261,50 @@ export function PrPanel({
         onReset={onResetWidth}
       />
       <box flexDirection="column" flexGrow={1} minWidth={0} paddingLeft={1} paddingRight={1}>
-        {/* Header: number + state ................ checks overall, close */}
-        <box flexDirection="row" flexShrink={0} paddingTop={1}>
-          <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>
-            {`⇡ #${pr.number} `}
+        {/* The PR's header, ruled off from the sections below. */}
+        <box flexDirection="column" flexShrink={0} border={["bottom"]} borderColor={theme.border} marginBottom={1}>
+          {/* number + state ................ checks overall, close */}
+          <box flexDirection="row" flexShrink={0} paddingTop={1}>
+            <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>
+              {`⇡ #${pr.number} `}
+            </text>
+            {d && (
+              <text
+                fg={toneColor(
+                  d.state === "merged" ? "merged" : d.state === "closed" ? "bad" : d.state === "draft" ? "muted" : "good",
+                  theme,
+                )}
+                flexShrink={0}
+              >
+                {STATE_LABEL[d.state]}
+              </text>
+            )}
+            <box flexGrow={1} />
+            {overall && (
+              <text fg={checkLook(overall, theme).color} flexShrink={0}>
+                {checkLook(overall, theme).glyph + " "}
+              </text>
+            )}
+            <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onClose}>
+              {" ✕"}
+            </text>
+          </box>
+          <text fg={theme.fg} attributes={TextAttributes.BOLD} flexShrink={0} onMouseDown={() => openExternal(url)}>
+            {title}
           </text>
           {d && (
-            <text
-              fg={toneColor(
-                d.state === "merged" ? "merged" : d.state === "closed" ? "bad" : d.state === "draft" ? "muted" : "good",
-                theme,
-              )}
-              flexShrink={0}
-            >
-              {STATE_LABEL[d.state]}
+            <text fg={theme.fgMuted} flexShrink={0} wrapMode="none" truncate>
+              {`${d.author || "?"} · ${d.base} ← ${d.head}`}
             </text>
           )}
-          <box flexGrow={1} />
-          {overall && (
-            <text fg={checkLook(overall, theme).color} flexShrink={0}>
-              {checkLook(overall, theme).glyph + " "}
+          {d && (
+            <text flexShrink={0} wrapMode="none" truncate>
+              <span fg={theme.added}>{`+${d.additions}`}</span>
+              <span fg={theme.removed}>{` −${d.deletions}`}</span>
+              <span fg={theme.fgMuted}>{` · ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"} · updated ${relativeTime(d.updatedAt)}`}</span>
             </text>
           )}
-          <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onClose}>
-            {" ✕"}
-          </text>
         </box>
-        <text fg={theme.fg} attributes={TextAttributes.BOLD} flexShrink={0} onMouseDown={() => openExternal(url)}>
-          {title}
-        </text>
-        {d && (
-          <text fg={theme.fgMuted} flexShrink={0} wrapMode="none" truncate>
-            {`${d.author || "?"} · ${d.base} ← ${d.head}`}
-          </text>
-        )}
-        {d && (
-          <text flexShrink={0} wrapMode="none" truncate marginBottom={1}>
-            <span fg={theme.added}>{`+${d.additions}`}</span>
-            <span fg={theme.removed}>{` −${d.deletions}`}</span>
-            <span fg={theme.fgMuted}>{` · ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"} · updated ${relativeTime(d.updatedAt)}`}</span>
-          </text>
-        )}
 
         {!d && (
           <box flexDirection="column" flexGrow={1} marginTop={1}>
@@ -273,17 +331,28 @@ export function PrPanel({
             scrollY
             contentOptions={{ paddingRight: 1 }}
           >
-            <Section title="Merge">
+            <Section
+              title="Merge"
+              {...fold("merge")}
+              folded={<text fg={toneColor(merge.tone, theme)} wrapMode="none" truncate>{"  " + merge.label}</text>}
+            >
               <Row glyph="●" color={toneColor(merge.tone, theme)} text={merge.label} />
               {d.state === "open" && onMerge && (
-                <text fg={theme.accent} flexShrink={0} onMouseDown={onMerge}>
-                  {"▸ Merge… (m)"}
-                </text>
+                // A filled button, so it reads as something to press.
+                <box flexDirection="row" flexShrink={0}>
+                  <text fg={theme.panel} bg={theme.accent} flexShrink={0} onMouseDown={onMerge}>
+                    {" Merge… "}
+                  </text>
+                  <text fg={theme.fgFaint} flexShrink={0}>
+                    {" m"}
+                  </text>
+                </box>
               )}
             </Section>
 
             <Section
               title="Reviews"
+              {...fold("reviews")}
               extra={decision && <text fg={decision.color}>{"  " + decision.label}</text>}
             >
               {d.reviewers.length === 0 ? (
@@ -298,6 +367,7 @@ export function PrPanel({
 
             <Section
               title="Checks"
+              {...fold("checks")}
               extra={
                 checkCounts.length > 0 && (
                   <text flexShrink={0}>
@@ -330,19 +400,24 @@ export function PrPanel({
             </Section>
 
             {d.labels.length > 0 && (
-              <Section title="Labels">
+              <Section
+                title="Labels"
+                {...fold("labels")}
+                folded={<text fg={theme.fgFaint} wrapMode="none" truncate>{"  " + d.labels.join(" · ")}</text>}
+              >
                 <text fg={theme.fgMuted}>{d.labels.join(" · ")}</text>
               </Section>
             )}
 
             {d.body.trim() && (
-              <Section title="Description">
-                <text fg={theme.fgMuted}>{excerpt(d.body, 6, 400)}</text>
+              <Section title="Description" {...fold("description")}>
+                <Quote>{excerpt(d.body, 6, 400)}</Quote>
               </Section>
             )}
 
             <Section
               title="Comments"
+              {...fold("comments")}
               extra={d.comments.length > 0 && <text fg={theme.fgFaint}>{`  ${d.comments.length} · newest first`}</text>}
             >
               {d.comments.length === 0 ? (
@@ -368,9 +443,7 @@ export function PrPanel({
                       )}
                       <span fg={theme.fgFaint}>{` · ${relativeTime(c.createdAt)}`}</span>
                     </text>
-                    <text fg={theme.fgMuted} flexShrink={0}>
-                      {excerpt(c.body)}
-                    </text>
+                    <Quote>{excerpt(c.body)}</Quote>
                   </box>
                 ))
               )}
@@ -382,15 +455,17 @@ export function PrPanel({
         )}
 
         {/* Footer */}
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={0} wrapMode="none" truncate>
-          {(query.isFetching
-            ? "refreshing…"
-            : error && details
-              ? "refresh failed"
-              : query.dataUpdatedAt
-                ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
-                : "") + (d?.state === "open" ? " · m merge" : "") + " · o open · r refresh"}
-        </text>
+        <box flexShrink={0} border={["top"]} borderColor={theme.border}>
+          <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={0} wrapMode="none" truncate>
+            {(query.isFetching
+              ? "refreshing…"
+              : error && details
+                ? "refresh failed"
+                : query.dataUpdatedAt
+                  ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
+                  : "") + (d?.state === "open" ? " · m merge" : "") + " · o open · r refresh"}
+          </text>
+        </box>
       </box>
     </box>
   );

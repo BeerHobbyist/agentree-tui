@@ -66,6 +66,20 @@ describe("loadState", () => {
     expect(loadState().ui).toEqual({ sidebarWidth: 52 });
   });
 
+  test("keeps the folded PR panel sections and the last merge method", async () => {
+    const state = loadState();
+    state.ui = { prPanelCollapsed: ["description", "comments"], mergeMethod: "rebase" };
+    await saveState(state);
+    expect(loadState().ui).toEqual({ prPanelCollapsed: ["description", "comments"], mergeMethod: "rebase" });
+  });
+
+  test("drops malformed folded sections and merge methods", () => {
+    mkdirSync(join(sandbox.configHome, "agentree"), { recursive: true });
+    const ui = { prPanelCollapsed: ["checks", 3, null], mergeMethod: "yolo" };
+    writeFileSync(sandbox.stateFile, JSON.stringify({ version: 1, repos: [], ui }));
+    expect(loadState().ui).toEqual({ prPanelCollapsed: ["checks"] });
+  });
+
   test("ignores a malformed sidebar width instead of trusting it", () => {
     mkdirSync(join(sandbox.configHome, "agentree"), { recursive: true });
     for (const sidebarWidth of ["wide", -5, 0, null]) {

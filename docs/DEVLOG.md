@@ -1,6 +1,6 @@
 # agentree-tui — Dev Log & State
 
-_Last updated: 2026-09-23 · Repo: github.com/BeerHobbyist/agentree-tui (private)_
+_Last updated: 2026-09-24 · Repo: github.com/BeerHobbyist/agentree-tui (private)_
 
 A terminal-first workspace manager for parallel development across git worktrees.
 Built with **Bun + TypeScript + OpenTUI (React renderer)**. A sidebar lists your
@@ -275,7 +275,16 @@ its ✕ / the tab bar's `⇡#N` button; drag its left edge to resize. Both are
 remembered (`ui.prPanelHidden`, `ui.prPanelWidth`). `fitPanels` narrows the
 sidebar to make room and hides the panel on a screen too narrow for it.
 
-**Merging** (`m`, or the panel's `▸ Merge…`): `MergeModal` offers the methods
+Layout: the header is ruled off from the sections, and the footer from them
+too. Each section's title sits on a band (`theme.panelAlt`) across the panel;
+**clicking it folds the section** down to that band, which keeps its summary
+(check counts, review verdict, comment count; the merge status and labels
+appear there once folded). Folded sections apply to every PR and are
+remembered (`ui.prPanelCollapsed`). Comments and the description are set off
+by a rule on their left (`Quote`). Bodies are indented one column, not to the
+title: the panel is often ~34 columns wide.
+
+**Merging** (`m`, or the panel's `Merge…` button): `MergeModal` offers the methods
 the repo allows (`gh api repos/{repo}` → `allow_*_merge`; GitHub leaves those
 out without push access, and then all three are offered and GitHub decides) —
 the one used last first (`ui.mergeMethod`). `mergeOptions` decides: ready,
@@ -306,7 +315,7 @@ each other.
 - `~/.config/agentree/state.json`: `{ version, workspaceRoot, repos[] { nameWithOwner,
   name, root, defaultBranch, worktrees[] { id, branch, name, path, createdAt },
   labels? { [worktreeId]: label } }, ui? { sidebarWidth?, prPanelHidden?,
-  prPanelWidth? } }`. Labels are keyed by worktree id so the main working copy
+  prPanelWidth?, prPanelCollapsed?, mergeMethod? } }`. Labels are keyed by worktree id so the main working copy
   (never stored in `worktrees[]`) can have one too; closing a worktree drops its
   label. Volatile git status is computed at runtime, never persisted. Atomic write.
 - `~/.config/agentree/claude-hooks.json` (the hooks agents load) and
@@ -395,7 +404,7 @@ each other.
 
 ## Tests
 
-`bun test` — 296 tests, ~40s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 301 tests, ~40s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -458,10 +467,15 @@ tmux's own `list-windows` for the result.
 
 ## Commit history
 
+### 2026-09-24
+
+- PR panel: sections fold (click the header band; remembered), ruled-off
+  header and footer, quoted comments, a filled `Merge…` button
+
 ### 2026-09-23
 
-- Merge PRs from the PR panel (`m`): repo's allowed methods, confirm step,
-  auto-merge for blocked PRs, pinned to the head commit
+- #33 `e43ba20` Merge PRs from the PR panel (`m`): repo's allowed methods, confirm
+  step, auto-merge for blocked PRs, pinned to the head commit
 - #32 `b5d3ea6` Rename terminal tabs (`⌥r` / right-click): tmux `rename-window`;
   empty turns `automatic-rename` back on; `65cbea5` the terminal's tmux client gets
   `TERM=xterm-256color`, not the host's

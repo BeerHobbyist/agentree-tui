@@ -62,7 +62,7 @@ async function start(opts: { view?: Record<string, unknown>; settings?: Record<s
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
-  await waitForText(app, "▸ Merge…");
+  await waitForText(app, " Merge… ");
 }
 
 const merges = () => sandbox.ghCalls().filter((c) => c.startsWith("pr merge "));
@@ -109,7 +109,7 @@ describe("merging from the PR panel", () => {
 
   test("the panel's Merge button opens it too; a method can be picked with the mouse", async () => {
     await start();
-    const button = locate("▸ Merge…");
+    const button = locate(" Merge… ");
     await app.mockMouse.click(button.x + 2, button.y);
     await waitForText(app, "Rebase and merge");
     const rebase = locate("Rebase and merge");

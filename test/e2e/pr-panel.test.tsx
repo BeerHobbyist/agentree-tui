@@ -214,3 +214,56 @@ describe("controls", () => {
     );
   });
 });
+
+describe("folding sections", () => {
+  /** Click a section's header band, folded or not. */
+  async function clickHeader(title: string) {
+    const folded = app.captureCharFrame().includes(`▸ ${title}`);
+    const { x, y } = locate(app, `${folded ? "▸" : "▾"} ${title}`);
+    await app.mockMouse.click(x + 2, y);
+  }
+
+  test("clicking a section's header folds it; its summary stays in the header", async () => {
+    await setup();
+    await openOnLogin();
+    await waitForText(app, "✗ lint · CI");
+    await clickHeader("Checks");
+    const frame = await waitForText(app, "▸ Checks");
+    expect(frame).toContain("✗ 1  ◌ 1  ✓ 1"); // the counts, still there
+    expect(frame).not.toContain("✗ lint · CI");
+    expect(frame).toContain("alice · approved"); // other sections untouched
+
+    await clickHeader("Checks"); // and back
+    await waitForText(app, "✗ lint · CI");
+  });
+
+  test("a folded Merge section shows its status in the header", async () => {
+    await setup();
+    await openOnLogin();
+    await waitForText(app, " Merge… ");
+    await clickHeader("Merge");
+    const frame = await waitForText(app, "▸ Merge  Blocked: changes requested");
+    expect(frame).not.toContain(" Merge… "); // the button is folded away with it
+  });
+
+  test("folded sections stay folded — for other PRs, and after a restart", async () => {
+    await setup();
+    await openOnLogin();
+    await waitForText(app, "Adds a login screen.");
+    await clickHeader("Description");
+    await clickHeader("Comments");
+    await waitForTextGone(app, "Adds a login screen.");
+    await waitUntil(
+      app,
+      () => JSON.stringify(sandbox.readState()?.ui?.prPanelCollapsed) === '["description","comments"]',
+      "the folded sections to be saved",
+    );
+    app.dispose();
+
+    await openOnLogin();
+    const frame = await waitForText(app, "▸ Description");
+    expect(frame).toContain("▸ Comments");
+    expect(frame).not.toContain("Guard this with the lock.");
+    expect(frame).toContain("✗ lint · CI");
+  });
+});

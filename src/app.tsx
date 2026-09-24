@@ -46,7 +46,7 @@ import {
 } from "./layout";
 import { TerminalPane } from "./components/TerminalPane";
 import { HelpOverlay } from "./components/HelpOverlay";
-import { PrPanel, type PrPanelHandle } from "./components/PrPanel";
+import { PrPanel, type PrPanelHandle, type PrSection } from "./components/PrPanel";
 import { openExternal } from "./services/open";
 import type { PrInfo } from "./data/model";
 import { ConfirmModal } from "./components/ConfirmModal";
@@ -209,6 +209,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const [prPanelWidth, setPrPanelWidth] = useState(
     () => state.ui?.prPanelWidth ?? DEFAULT_PR_PANEL_WIDTH,
   );
+  // PR panel sections folded away (click a section's header), remembered.
+  const [prCollapsed, setPrCollapsed] = useState<PrSection[]>(
+    () => (state.ui?.prPanelCollapsed ?? []) as PrSection[],
+  );
   const prPanelRef = useRef<PrPanelHandle | null>(null);
   /** The PR on screen (set while rendering), for the key handler. */
   const currentPrRef = useRef<{ repo: string; pr: PrInfo } | null>(null);
@@ -247,6 +251,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   prPanelHiddenRef.current = prPanelHidden;
   const prPanelWidthRef = useRef(prPanelWidth);
   prPanelWidthRef.current = prPanelWidth;
+  const prCollapsedRef = useRef(prCollapsed);
+  prCollapsedRef.current = prCollapsed;
 
   // ── What the sidebar shows beyond state.json, through the query cache ──
   // (src/queries.ts: keys, fetchers, poll intervals). Merged into `viewProjects`
@@ -393,6 +399,15 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     prPanelHiddenRef.current = hidden;
     setPrPanelHidden(hidden);
     saveUi({ prPanelHidden: hidden || undefined });
+  };
+
+  /** Fold / unfold a PR panel section, and remember it. */
+  const togglePrSection = (section: PrSection) => {
+    const prev = prCollapsedRef.current;
+    const next = prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section];
+    prCollapsedRef.current = next;
+    setPrCollapsed(next);
+    saveUi({ prPanelCollapsed: next.length > 0 ? next : undefined });
   };
 
   /** Resize the PR panel, within what's left beside the sidebar and content. */
@@ -858,6 +873,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           onResetWidth={resetPrPanelWidth}
           onClose={togglePrPanel}
           onMerge={requestMerge}
+          collapsed={prCollapsed}
+          onToggleSection={togglePrSection}
           handleRef={prPanelRef}
         />
       )}
