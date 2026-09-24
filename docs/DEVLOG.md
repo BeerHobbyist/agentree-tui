@@ -30,7 +30,8 @@ Working, at MVP+ level:
   `refs/pull/<n>/head` (works for forks) and named after the PR's branch.
 - **SSH projects** — `s` adds a host (typed, or from `~/.ssh/config`) and a
   directory on it; `＋`/`a` add more directories. Their terminals run on the
-  host, in tmux there. Remote shells only: no git status, PRs or diff.
+  host, in tmux there. Key or password login (asked for, never stored); only
+  `ssh` is needed locally. Remote shells only: no git status, PRs or diff.
 - **Embedded terminals** — OpenTUI `EmbeddedTerminal` + **Bun native PTY** + tmux
   for persistence. One terminal per worktree, kept mounted once opened so
   switching back is instant. A click on a worktree shows its terminal and leaves
@@ -41,6 +42,9 @@ Working, at MVP+ level:
   inside the one embedded terminal; app-styled tab/tool bar; keyboard + mouse.
   Tabs can be **renamed** (`⌥r` / right-click; empty = tmux names it after its
   program again).
+- **Diffs** — `⌥d` opens working changes / staged / vs base / a ref in a tab of
+  its own, in hunk, diffnav, delta, difftastic, nvim diffview or plain git
+  (`v` in the picker switches; the first installed by default).
 - **Ctrl+C reaches the shell**; app quit via `q` / Ctrl+C while the sidebar is focused.
 
 ## Architecture
@@ -586,14 +590,18 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
-- Diff viewers: hunk, diffnav, delta, difftastic, nvim diffview or plain git —
-  the first installed, or the one picked with `v` in the diff picker
-  (remembered); empty diffs say so; pagers can't quit on a short diff
-- SSH terminals don't need tmux on this machine (the check was for local
-  terminals); the install hint fits the system instead of always `pacman`
-- SSH password logins: asked for when adding a host (SSH_ASKPASS, never
-  stored), then the shared connection is reused; after a restart the terminal
-  asks; background calls never log in on their own
+- #39 `5eacad6` Diff viewers: hunk, diffnav, delta, difftastic, nvim diffview
+  or plain git — the first installed, or the one picked with `v` in the diff
+  picker (remembered); empty diffs say so; pagers can't quit on a short diff
+  (git's `LESS=FRX`, and the user's own `core.pager` = delta, both did)
+- #38 `980c900` SSH terminals don't need tmux on this machine (the check was
+  for local terminals); the install hint fits the system instead of always
+  `pacman`
+- #37 `d40225c` SSH password logins: asked for when adding a host
+  (SSH_ASKPASS, never stored), then the shared connection is reused; after a
+  restart the terminal asks; background calls never log in on their own (a
+  poll every second would get the client banned). Checked with a real sshd
+  and a passphrase-protected key
 - #36 `daeb54c` Hide the sidebar (`b` / its `⇤`; back with `b`, Ctrl+g or
   `‹`), remembered
 - #35 `e7b2b49` SSH projects (`s`): a host and directories on it, terminals
