@@ -20,6 +20,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["R", "rename worktree (its label here only)"],
       ["d", "close worktree (deletes it from disk)"],
       ["n", "add a project (pick a GitHub repo)"],
+      ["s", "add an SSH host (terminals on that machine)"],
       ["t", "cycle theme"],
       ["p  /  o  /  r", "PR panel · open PR · refresh"],
       ["m", "merge the PR (pick a method, then confirm)"],

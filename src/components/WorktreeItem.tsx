@@ -85,7 +85,7 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
           )}
         </box>
 
-        {/* Line 2: branch .......... ●changed-files +added −removed ↑ahead ↓behind */}
+        {/* Line 2: branch (an SSH directory: its path) .......... ●changed-files +added −removed ↑ahead ↓behind */}
         <box flexDirection="row" alignItems="center">
           <text
             fg={theme.fgFaint}
@@ -96,7 +96,7 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
             wrapMode="none"
             truncate
           >
-            {worktree.branch}
+            {worktree.subtitle ?? worktree.branch}
           </text>
 
           {(worktree.changed > 0 || hasStats || hasSync) && (

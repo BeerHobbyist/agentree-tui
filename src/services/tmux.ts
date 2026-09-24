@@ -4,6 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import { run } from "./proc";
+import { remoteArgv } from "./ssh";
 
 /**
  * Dedicated tmux server socket for the app. Isolates our sessions from the
@@ -24,6 +25,15 @@ export function socketName(): string {
 /** Build a `tmux -L <socket> …` argv. */
 function tx(...args: string[]): string[] {
   return ["tmux", "-L", socketName(), ...args];
+}
+
+/**
+ * The same, run on an ssh host. `-u`: an ssh session often has no UTF-8
+ * locale, and tmux would then print every non-ASCII character — and the tabs
+ * in our `-F` formats — as `_`, in list output and in the terminal alike.
+ */
+function remoteTmux(host: string, args: string[], opts: { tty?: boolean } = {}): string[] {
+  return remoteArgv(host, ["tmux", "-u", "-L", socketName(), ...args], opts);
 }
 
 /** True if the tmux binary is present and runnable. */
@@ -137,11 +147,6 @@ export function preAttachOptions(): string[] {
   ];
 }
 
-/** Re-apply the theme to the running server (live re-theme on theme switch). */
-export async function applyTheme(style: TermStyle): Promise<void> {
-  await run(tx(...themeOptions(style)));
-}
-
 /**
  * Command to run in a PTY: attach the session if it exists, else create it.
  * Theme options are set globally (`-g`) on our dedicated server so they apply
@@ -160,10 +165,12 @@ export function attachCommand(
   style?: TermStyle,
   startupCommand?: string,
   env: Record<string, string> = {},
+  /** Run tmux on this ssh host instead (an SSH project); the PTY runs `ssh -t`. */
+  host?: string,
 ): string[] {
   // new-session in the list makes tmux start the server if needed, so the
   // pre-attach options can run first even on a fresh server.
-  const cmd = tx(...preAttachOptions(), ";", "new-session", "-A", "-s", session, "-c", cwd);
+  const cmd = [...preAttachOptions(), ";", "new-session", "-A", "-s", session, "-c", cwd];
   // -e seeds a new session's environment (every window/pane inherits it);
   // set-environment below covers a session that already existed.
   for (const [k, v] of Object.entries(env)) cmd.push("-e", `${k}=${v}`);
@@ -174,7 +181,7 @@ export function attachCommand(
   for (const [k, v] of Object.entries(env)) {
     cmd.push(";", "set-environment", "-t", session, k, v);
   }
-  return cmd;
+  return host ? remoteTmux(host, cmd, { tty: true }) : tx(...cmd);
 }
 
 /**
@@ -201,16 +208,6 @@ export async function listPaneActivity(): Promise<Map<string, number> | null> {
   return panes;
 }
 
-/** Whether a session already exists (used for a "live" indicator). */
-export async function hasSession(session: string): Promise<boolean> {
-  try {
-    const { code } = await run(tx("has-session", "-t", session));
-    return code === 0;
-  } catch {
-    return false;
-  }
-}
-
 // --- window (tab) + pane (split) helpers ---
 
 export interface WindowInfo {
@@ -218,92 +215,6 @@ export interface WindowInfo {
   name: string;
   active: boolean;
   panes: number;
-}
-
-/** List a session's windows (tabs). Empty if the session is gone. */
-export async function listWindows(session: string): Promise<WindowInfo[]> {
-  const { code, stdout } = await run(
-    tx(
-      "list-windows",
-      "-t",
-      session,
-      "-F",
-      "#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}",
-    ),
-  );
-  if (code !== 0) return [];
-  return stdout
-    .trim()
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [index, name, active, panes] = line.split("\t");
-      return {
-        index: parseInt(index || "0", 10) || 0,
-        name: name || "",
-        active: active === "1",
-        panes: parseInt(panes || "1", 10) || 1,
-      };
-    });
-}
-
-export async function newWindow(session: string, cwd: string): Promise<void> {
-  await run(tx("new-window", "-t", session, "-c", cwd));
-}
-
-/**
- * New window (tab) running a specific command; the window closes when it exits.
- * Used to launch the hunk diff viewer in its own tab.
- */
-export async function newWindowCmd(
-  session: string,
-  cwd: string,
-  command: string,
-  name = "cmd",
-): Promise<void> {
-  await run(tx("new-window", "-t", session, "-c", cwd, "-n", name, command));
-}
-
-/** Longest tab name accepted from the rename prompt. */
-export const MAX_TAB_NAME_LENGTH = 32;
-
-/**
- * Name a window (tab). tmux then stops renaming it after the program running
- * in it (it turns the window's `automatic-rename` off).
- */
-export async function renameWindow(session: string, index: number, name: string): Promise<void> {
-  // `--`: a name starting with "-" is a name, not a flag.
-  await run(tx("rename-window", "-t", `${session}:${index}`, "--", name));
-}
-
-/** Give a window's name back to tmux: it follows the running program again. */
-export async function autoNameWindow(session: string, index: number): Promise<void> {
-  await run(tx("set-window-option", "-t", `${session}:${index}`, "automatic-rename", "on"));
-}
-
-export async function selectWindow(
-  session: string,
-  index: number,
-): Promise<void> {
-  await run(tx("select-window", "-t", `${session}:${index}`));
-}
-
-/** Switch to the next window (wraps). Relative, so no stale-index math. */
-export async function nextWindow(session: string): Promise<void> {
-  await run(tx("next-window", "-t", session));
-}
-
-/** Switch to the previous window (wraps). */
-export async function prevWindow(session: string): Promise<void> {
-  await run(tx("previous-window", "-t", session));
-}
-
-/** Move focus to the pane in the given direction within the active window. */
-export async function selectPane(
-  session: string,
-  dir: "L" | "R" | "U" | "D",
-): Promise<void> {
-  await run(tx("select-pane", "-t", session, `-${dir}`));
 }
 
 export interface PaneGeom {
@@ -347,30 +258,141 @@ export async function selectPaneById(id: string): Promise<void> {
   await run(tx("select-pane", "-t", id));
 }
 
-/** Split the session's active pane. `h` = left/right, `v` = top/bottom. */
-export async function splitWindow(
-  session: string,
-  dir: "h" | "v",
-  cwd: string,
-): Promise<void> {
-  await run(tx("split-window", `-${dir}`, "-t", session, "-c", cwd));
+/** Longest tab name accepted from the rename prompt. */
+export const MAX_TAB_NAME_LENGTH = 32;
+
+/**
+ * The session, window and pane commands, run by tmux on this machine or — for
+ * an SSH project — by tmux on `host` over ssh (on the same socket name there).
+ */
+export function tmuxOn(host?: string) {
+  const exec = (...args: string[]) => run(host ? remoteTmux(host, args) : tx(...args));
+  return {
+    host,
+
+    /** Re-apply the theme to the running server (live re-theme on theme switch). */
+    async applyTheme(style: TermStyle): Promise<void> {
+      await exec(...themeOptions(style));
+    },
+
+    /** Whether a session already exists (used for a "live" indicator). */
+    async hasSession(session: string): Promise<boolean> {
+      try {
+        return (await exec("has-session", "-t", session)).code === 0;
+      } catch {
+        return false;
+      }
+    },
+
+    /** List a session's windows (tabs). Empty if the session is gone. */
+    async listWindows(session: string): Promise<WindowInfo[]> {
+      const { code, stdout } = await exec(
+        "list-windows",
+        "-t",
+        session,
+        "-F",
+        "#{window_index}\t#{window_name}\t#{window_active}\t#{window_panes}",
+      );
+      if (code !== 0) return [];
+      return stdout
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [index, name, active, panes] = line.split("\t");
+          return {
+            index: parseInt(index || "0", 10) || 0,
+            name: name || "",
+            active: active === "1",
+            panes: parseInt(panes || "1", 10) || 1,
+          };
+        });
+    },
+
+    async newWindow(session: string, cwd: string): Promise<void> {
+      await exec("new-window", "-t", session, "-c", cwd);
+    },
+
+    /**
+     * New window (tab) running a specific command; the window closes when it exits.
+     * Used to launch the hunk diff viewer in its own tab.
+     */
+    async newWindowCmd(session: string, cwd: string, command: string, name = "cmd"): Promise<void> {
+      await exec("new-window", "-t", session, "-c", cwd, "-n", name, command);
+    },
+
+    /**
+     * Name a window (tab). tmux then stops renaming it after the program running
+     * in it (it turns the window's `automatic-rename` off).
+     */
+    async renameWindow(session: string, index: number, name: string): Promise<void> {
+      // `--`: a name starting with "-" is a name, not a flag.
+      await exec("rename-window", "-t", `${session}:${index}`, "--", name);
+    },
+
+    /** Give a window's name back to tmux: it follows the running program again. */
+    async autoNameWindow(session: string, index: number): Promise<void> {
+      await exec("set-window-option", "-t", `${session}:${index}`, "automatic-rename", "on");
+    },
+
+    async selectWindow(session: string, index: number): Promise<void> {
+      await exec("select-window", "-t", `${session}:${index}`);
+    },
+
+    /** Switch to the next window (wraps). Relative, so no stale-index math. */
+    async nextWindow(session: string): Promise<void> {
+      await exec("next-window", "-t", session);
+    },
+
+    /** Switch to the previous window (wraps). */
+    async prevWindow(session: string): Promise<void> {
+      await exec("previous-window", "-t", session);
+    },
+
+    /** Move focus to the pane in the given direction within the active window. */
+    async selectPane(session: string, dir: "L" | "R" | "U" | "D"): Promise<void> {
+      await exec("select-pane", "-t", session, `-${dir}`);
+    },
+
+    /** Split the session's active pane. `h` = left/right, `v` = top/bottom. */
+    async splitWindow(session: string, dir: "h" | "v", cwd: string): Promise<void> {
+      await exec("split-window", `-${dir}`, "-t", session, "-c", cwd);
+    },
+
+    /** Kill the active pane; killing the last pane closes its window (tab). */
+    async killPane(session: string): Promise<void> {
+      await exec("kill-pane", "-t", session);
+    },
+
+    /** Kill a whole window (tab). Omit `index` to kill the session's current window. */
+    async killWindow(session: string, index?: number): Promise<void> {
+      await exec("kill-window", "-t", index === undefined ? session : `${session}:${index}`);
+    },
+
+    /** Kill a whole session (all windows/panes). No-op if it doesn't exist. */
+    async killSession(session: string): Promise<void> {
+      await exec("kill-session", "-t", session);
+    },
+  };
 }
 
-/** Kill the active pane; killing the last pane closes its window (tab). */
-export async function killPane(session: string): Promise<void> {
-  await run(tx("kill-pane", "-t", session));
-}
+export type Tmux = ReturnType<typeof tmuxOn>;
 
-/** Kill a whole window (tab). Omit `index` to kill the session's current window. */
-export async function killWindow(
-  session: string,
-  index?: number,
-): Promise<void> {
-  const target = index === undefined ? session : `${session}:${index}`;
-  await run(tx("kill-window", "-t", target));
-}
-
-/** Kill a whole session (all windows/panes). No-op if it doesn't exist. */
-export async function killSession(session: string): Promise<void> {
-  await run(tx("kill-session", "-t", session));
-}
+/** The same commands against the local server. */
+export const {
+  applyTheme,
+  hasSession,
+  listWindows,
+  newWindow,
+  newWindowCmd,
+  renameWindow,
+  autoNameWindow,
+  selectWindow,
+  nextWindow,
+  prevWindow,
+  selectPane,
+  splitWindow,
+  killPane,
+  killWindow,
+  killSession,
+} = tmuxOn();

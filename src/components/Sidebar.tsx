@@ -90,7 +90,7 @@ function ProjectGroup({
             {collapsed ? "▸ " : "▾ "}
           </text>
           <text fg={theme.accent} flexShrink={0}>
-            {"◈ "}
+            {project.ssh ? "⌁ " : "◈ "}
           </text>
           <text
             fg={theme.fg}
@@ -137,7 +137,7 @@ function ProjectGroup({
             wrapMode="none"
             truncate
           >
-            {project.root}
+            {project.ssh ? `ssh ${project.ssh.host}` : project.root}
           </text>
         </box>
       )}
@@ -272,7 +272,7 @@ export function Sidebar({
             </text>
           </box>
           <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-            {"↑↓ move  ⏎ terminal  a +wt  R rename  d close  n new  p PR  b hide  t theme  ? help  q quit"}
+            {"↑↓ move  ⏎ terminal  a +wt  R rename  d close  n new  s ssh  p PR  b hide  t theme  ? help  q quit"}
           </text>
         </box>
       </box>

@@ -119,6 +119,10 @@ export interface Worktree {
   missing?: boolean;
   /** Open PR for this branch, if any (filled by a background lookup). */
   pr?: PrInfo;
+  /** A directory on this ssh host (an SSH project): no git, terminals run there. */
+  host?: string;
+  /** The row's second line when it isn't the branch (an SSH directory's path). */
+  subtitle?: string;
 }
 
 /** What the UI calls a worktree: your label if you gave it one, else its name. */
@@ -129,9 +133,11 @@ export function displayName(w: Pick<Worktree, "name" | "label">): string {
 export interface Project {
   id: string;
   name: string;
-  /** Repo root path (the main clone). */
+  /** Repo root path (the main clone); for an SSH project, the host. */
   root: string;
   worktrees: Worktree[];
+  /** An SSH project: directories on `host` instead of a repo's worktrees. */
+  ssh?: { host: string };
 }
 
 /** A GitHub repository as returned by `gh repo list --json`. */

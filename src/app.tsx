@@ -19,7 +19,7 @@ import {
 import { useTheme, cycleTheme } from "./theme";
 import { displayName, type AgentStatus, type Project, type Worktree } from "./data/model";
 import { removeWorktree } from "./services/git";
-import { killSession, sessionName as tmuxSessionName } from "./services/tmux";
+import { killSession, sessionName as tmuxSessionName, tmuxOn } from "./services/tmux";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
 import {
   AddWorktreeModal,
@@ -30,6 +30,9 @@ import {
   reconcile,
   removeManagedWorktree,
   MAX_LABEL_LENGTH,
+  removeHost,
+  removeRemoteDir,
+  sshProjectId,
   saveState,
   setWorktreeLabel,
   type State,
@@ -52,6 +55,7 @@ import type { PrInfo } from "./data/model";
 import { ConfirmModal } from "./components/ConfirmModal";
 import { RenameModal } from "./components/RenameModal";
 import { MergeModal } from "./components/MergeModal";
+import { SshModal } from "./components/SshModal";
 
 function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?: boolean }) {
   const theme = useTheme();
@@ -62,7 +66,9 @@ function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?
       : row.project.name;
   const subtitle =
     row?.kind === "worktree"
-      ? row.worktree.path
+      ? row.worktree.host
+        ? `${row.worktree.host}:${row.worktree.subtitle ?? row.worktree.path}`
+        : row.worktree.path
       : row?.kind === "project"
         ? row.project.root
         : "Press n to add a project";
@@ -241,6 +247,15 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   noticeRef.current = notice;
   const renamingRef = useRef(renaming);
   renamingRef.current = renaming;
+  // Adding an SSH host (s), or a directory to one (its ＋ / a).
+  const [sshModal, setSshModal] = useState<{ host?: string } | null>(null);
+  const sshModalRef = useRef(sshModal);
+  sshModalRef.current = sshModal;
+  // Pending "forget" of an SSH directory, or a whole host (d): nothing on the
+  // host is deleted, only its tmux sessions end.
+  const [confirmForget, setConfirmForget] = useState<{ host: string; dirId?: string; what: string } | null>(null);
+  const confirmForgetRef = useRef(confirmForget);
+  confirmForgetRef.current = confirmForget;
   // The PR being merged (m / the PR panel's Merge button).
   const [merging, setMerging] = useState<{ repo: string; pr: PrInfo } | null>(null);
   const mergingRef = useRef(merging);
@@ -261,9 +276,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   // ── What the sidebar shows beyond state.json, through the query cache ──
   // (src/queries.ts: keys, fetchers, poll intervals). Merged into `viewProjects`
   // below rather than written into `projects`.
-  const liveWorktrees = projects.flatMap((p) =>
-    p.worktrees.filter((w) => !w.missing).map((w) => ({ repoId: p.id, worktree: w })),
-  );
+  // (Local git only: an SSH project's directories have no git status or PRs.)
+  const liveWorktrees = projects
+    .filter((p) => !p.ssh)
+    .flatMap((p) => p.worktrees.filter((w) => !w.missing).map((w) => ({ repoId: p.id, worktree: w })));
 
   // Git status (dirty, changed files, +/−, ahead/behind) — polled per worktree,
   // invalidated when an agent changes state (it has probably touched files).
@@ -476,6 +492,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   };
 
   const handleApplied = (newProjects: Project[], sel: Selection) => {
+    setSshModal(null);
     setProjects(newProjects);
     const nextCollapsed = new Set(collapsedRef.current);
     nextCollapsed.delete(sel.repoId);
@@ -527,6 +544,11 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const openAddForProject = (projectId: string) => {
     const proj = projectsRef.current.find((p) => p.id === projectId);
     if (!proj) return;
+    if (proj.ssh) {
+      setFocusMode("sidebar");
+      setSshModal({ host: proj.ssh.host });
+      return;
+    }
     openAdd({ nameWithOwner: proj.id, name: proj.name, root: proj.root });
   };
 
@@ -587,6 +609,16 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
 
   /** Ask to close (delete from disk) the worktree under the cursor. */
   const requestCloseWorktree = (row: Row | undefined) => {
+    // An SSH project: forget a directory, or (on its header) the whole host.
+    if (row?.project.ssh) {
+      const { host } = row.project.ssh;
+      setConfirmForget(
+        row.kind === "worktree"
+          ? { host, dirId: row.worktree.id, what: row.worktree.subtitle ?? row.worktree.path }
+          : { host, what: host },
+      );
+      return;
+    }
     if (!row || row.kind !== "worktree") return;
     if (row.worktree.id === "main") {
       setNotice({
@@ -650,6 +682,39 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     }
   };
 
+  /**
+   * Forget an SSH directory (or a whole host): end its tmux session(s) on the
+   * host and drop it from state. Nothing on the host is deleted.
+   */
+  const performForget = async () => {
+    const target = confirmForgetRef.current;
+    if (!target) return;
+    setConfirmForget(null);
+    const repoId = sshProjectId(target.host);
+    const project = projectsRef.current.find((p) => p.id === repoId);
+    const dirIds = target.dirId ? [target.dirId] : (project?.worktrees.map((w) => w.id) ?? []);
+    const remote = tmuxOn(target.host);
+    await Promise.all(dirIds.map((id) => remote.killSession(tmuxSessionName(repoId, id)).catch(() => {})));
+    try {
+      if (target.dirId) await removeRemoteDir(state, target.host, target.dirId);
+      else await removeHost(state, target.host);
+      const newProjects = await reconcile(state);
+      setProjects(newProjects);
+      const isGone = (o: { repoId: string; worktreeId: string }) => o.repoId === repoId && dirIds.includes(o.worktreeId);
+      const remaining = opened.filter((o) => !isGone(o));
+      setOpened(remaining);
+      const wasOpen = openRef.current;
+      if (wasOpen && isGone(wasOpen)) {
+        setOpen(remaining[remaining.length - 1] ?? null);
+        setFocusMode("sidebar");
+      }
+      const rows = buildRows(newProjects, collapsedRef.current);
+      applyActiveIndex(Math.min(activeIndexRef.current, Math.max(rows.length - 1, 0)));
+    } catch (err) {
+      setNotice({ title: "Could not remove it", message: errText(err) });
+    }
+  };
+
   /** Ask for a new label for a worktree (the branch and directory keep their names). */
   const requestRename = (repoId: string, worktreeId: string) => {
     const worktree = projectsRef.current
@@ -662,7 +727,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       worktreeId,
       label: displayName(worktree),
       name: worktree.name,
-      branch: worktree.branch,
+      branch: worktree.branch || worktree.subtitle || worktree.path,
     });
   };
 
@@ -713,7 +778,15 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (modalOpenRef.current) return;
 
     // The close-worktree confirm/error and rename overlays own the keyboard while open.
-    if (confirmCloseRef.current || noticeRef.current || renamingRef.current || mergingRef.current) return;
+    if (
+      confirmCloseRef.current ||
+      confirmForgetRef.current ||
+      noticeRef.current ||
+      renamingRef.current ||
+      mergingRef.current ||
+      sshModalRef.current
+    )
+      return;
 
     // While a terminal is focused, TerminalView owns the keyboard (input +
     // Ctrl+g to return + Alt tab chords). App nav stays inert.
@@ -732,6 +805,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
 
     if (key.name === "n") {
       openAdd(null);
+      return;
+    }
+    if (key.name === "s") {
+      setSshModal({});
       return;
     }
     if (key.name === "a") {
@@ -939,6 +1016,27 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           }
           onConfirm={() => void performCloseWorktree()}
           onCancel={() => setConfirmClose(null)}
+        />
+      )}
+      {confirmForget && (
+        <ConfirmModal
+          title={confirmForget.dirId ? "Remove directory" : "Remove host"}
+          message={
+            confirmForget.dirId
+              ? `Remove ${confirmForget.what} on ${confirmForget.host} from agentree?`
+              : `Remove ${confirmForget.host} and its directories from agentree?`
+          }
+          detail="Their tmux sessions on the host end (and anything running in them); no files are touched."
+          onConfirm={() => void performForget()}
+          onCancel={() => setConfirmForget(null)}
+        />
+      )}
+      {sshModal && (
+        <SshModal
+          state={state}
+          host={sshModal.host}
+          onClose={() => setSshModal(null)}
+          onAdded={handleApplied}
         />
       )}
       {merging && (

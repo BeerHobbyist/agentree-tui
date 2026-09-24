@@ -70,6 +70,14 @@ export interface Sandbox {
   failGh(...subcommands: string[]): void;
   /** Every `gh` invocation so far, one argv string per line. */
   ghCalls(): string[];
+  /** The fake ssh host's home directory (a directory in the sandbox). */
+  sshHome: string;
+  /** Every `ssh` invocation so far, one argv string per line. */
+  sshCalls(): string[];
+  /** Write the ~/.ssh/config agentree reads host suggestions from. */
+  setSshConfig(text: string): void;
+  /** Make ssh connections fail, or the host lack tmux. */
+  failSsh(how: "connect" | "no-tmux"): void;
   cleanup(): void;
 }
 
@@ -120,10 +128,14 @@ export function createSandbox(): Sandbox {
   const ghLog = join(root, "gh.log");
   const openLog = join(root, "open.log");
   const gitconfig = join(root, "gitconfig");
-  for (const d of [workspace, configHome, remotes, fixtures]) {
+  const sshHome = join(root, "ssh-home");
+  const sshLog = join(root, "ssh.log");
+  const sshConfig = join(root, "ssh-config");
+  for (const d of [workspace, configHome, remotes, fixtures, sshHome]) {
     mkdirSync(d, { recursive: true });
   }
   writeFileSync(ghLog, "");
+  writeFileSync(sshLog, "");
   writeFileSync(gitconfig, "");
 
   const tmuxSocket = `agentree-test-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
@@ -158,6 +170,15 @@ export function createSandbox(): Sandbox {
     // Record browser opens instead of launching one.
     AGENTREE_OPEN_CMD: join(FAKEBIN, "fake-open"),
     FAKE_OPEN_LOG: openLog,
+    // The fake `ssh`: every host is this machine, with this as its home;
+    // ~/.ssh/config suggestions come from a sandbox file.
+    FAKE_SSH_HOME: sshHome,
+    FAKE_SSH_LOG: sshLog,
+    FAKE_SSH_FAIL: "",
+    FAKE_SSH_NO_TMUX: "",
+    AGENTREE_SSH_CONFIG: sshConfig,
+    // ssh's shared-connection sockets go here rather than the real runtime dir.
+    XDG_RUNTIME_DIR: join(root, "run"),
     // Keep git away from the developer's identity and global config.
     GIT_CONFIG_GLOBAL: gitconfig,
     GIT_AUTHOR_NAME: "agentree test",
@@ -223,6 +244,21 @@ export function createSandbox(): Sandbox {
       } catch {
         return [];
       }
+    },
+    sshHome,
+    sshCalls() {
+      try {
+        return readFileSync(sshLog, "utf8").split("\n").filter(Boolean);
+      } catch {
+        return [];
+      }
+    },
+    setSshConfig(text) {
+      writeFileSync(sshConfig, text);
+    },
+    failSsh(how) {
+      if (how === "connect") process.env.FAKE_SSH_FAIL = "1";
+      else process.env.FAKE_SSH_NO_TMUX = "1";
     },
     cleanup() {
       stopTmux();
