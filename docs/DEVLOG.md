@@ -18,11 +18,17 @@ Working, at MVP+ level:
   the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered;
   **hideable** (`b` or its `⇤`; back with `b`, Ctrl+g or the tab bar's `‹`).
   Worktrees can be **renamed** (`R` / right-click): a label shown instead of the
-  branch's leaf name — the branch and directory keep their names.
+  branch's leaf name — the branch and directory keep their names. The footer's
+  hint line is one line of keys for the selected row.
+- **Agents** — status for the agents agentree starts, and (with `H`, which adds
+  its hooks to Claude's user settings) for any claude started in its terminals,
+  on SSH hosts too. A desktop notification when one needs you or finishes while
+  you're elsewhere; `Tab` / `⌥n` / a footer count jump to it.
 - **PR panel** — on the right, for the worktree on screen when it has an open
   PR: merge status, reviews, checks, labels, description and comments; `p` / ⌥p
   toggles, `o` opens on GitHub, `r` refreshes, **`m` merges** (pick a method the
-  repo allows, then confirm; a blocked PR can be set to auto-merge).
+  repo allows, then confirm; a blocked PR can be set to auto-merge). Sections
+  fold (click their header band), remembered.
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
   persisted; `＋` on a header or `a` preselects the project. The repo's open
@@ -45,6 +51,10 @@ Working, at MVP+ level:
 - **Diffs** — `⌥d` opens working changes / staged / vs base / a ref in a tab of
   its own, in hunk, diffnav, delta, difftastic, nvim diffview or plain git
   (`v` in the picker switches; the first installed by default).
+- **Agent CLI** — `agentree tab new|read|send|…`, `diff`, `notify`, `status`,
+  on PATH in every agentree terminal, so agents can run dev servers in their
+  own tabs and read them; claude is told about it on start, and a Claude Code
+  skill (`agentree skill install`) covers when and how.
 - **Ctrl+C reaches the shell**; app quit via `q` / Ctrl+C while the sidebar is focused.
 
 ## Architecture
