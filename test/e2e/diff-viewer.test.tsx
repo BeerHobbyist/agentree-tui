@@ -3,7 +3,7 @@
  * opens in, `v` switches between the installed ones (remembered), and the
  * chosen diff opens in a tmux tab of its own.
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, test } from "bun:test";
 import { join } from "node:path";
 import { sessionName } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";

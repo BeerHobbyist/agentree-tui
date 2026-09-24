@@ -12,7 +12,7 @@ import {
   prForBranch,
 } from "../../src/services/gh";
 import { fetchMergeSettings, fetchPrDetails, mergePr } from "../../src/services/pr";
-import { createSandbox, repoSummary, type Sandbox } from "../helpers/sandbox";
+import { createSandbox, type Sandbox } from "../helpers/sandbox";
 import { makeRemote } from "../helpers/repo";
 
 let sandbox: Sandbox;

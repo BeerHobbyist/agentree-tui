@@ -45,12 +45,31 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
   const s = useRef({ phase, hostInput, host, dir, index, password });
   s.current = { phase, hostInput, host, dir, index, password };
   const set = {
-    phase: (v: Phase) => ((s.current.phase = v), setPhase(v)),
-    hostInput: (v: string) => ((s.current.hostInput = v), setHostInput(v), (s.current.index = 0), setIndex(0)),
-    host: (v: string) => ((s.current.host = v), setHost(v)),
-    dir: (v: string) => ((s.current.dir = v), setDir(v)),
-    index: (v: number) => ((s.current.index = v), setIndex(v)),
-    password: (v: string) => ((s.current.password = v), setPassword(v)),
+    phase(v: Phase) {
+      s.current.phase = v;
+      setPhase(v);
+    },
+    hostInput(v: string) {
+      s.current.hostInput = v;
+      setHostInput(v);
+      set.index(0);
+    },
+    host(v: string) {
+      s.current.host = v;
+      setHost(v);
+    },
+    dir(v: string) {
+      s.current.dir = v;
+      setDir(v);
+    },
+    index(v: number) {
+      s.current.index = v;
+      setIndex(v);
+    },
+    password(v: string) {
+      s.current.password = v;
+      setPassword(v);
+    },
   };
 
   /** Host rows: what you typed (if it's not already listed), then matching ~/.ssh/config hosts. */

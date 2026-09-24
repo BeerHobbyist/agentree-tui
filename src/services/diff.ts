@@ -23,8 +23,7 @@ export function diffArgs(target: DiffTarget, arg?: string): string[] {
     case "ref":
       // A ref, or a range like "A..B" / "A...B".
       return [arg || "HEAD"];
-    case "working":
-    default:
+    default: // "working": the uncommitted changes
       return [];
   }
 }

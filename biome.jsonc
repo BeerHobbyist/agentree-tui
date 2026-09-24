@@ -1,0 +1,37 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  // Test fakes (fakebin) are shell scripts.
+  "files": { "includes": ["src/**", "test/**", "*.json", "*.jsonc", "!**/fakebin"] },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": { "quoteStyle": "double", "semicolons": "always", "trailingCommas": "all" }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      // DOM accessibility rules: agentree draws boxes in a terminal, not HTML.
+      "a11y": "off",
+      "style": {
+        // `!` is deliberate: noUncheckedIndexedAccess makes every index optional.
+        "noNonNullAssertion": "off",
+        "useTemplate": "off"
+      },
+      "correctness": {
+        // Effects are keyed on signature strings on purpose (each one says why).
+        "useExhaustiveDependencies": "off"
+      },
+      "suspicious": {
+        // The regexes that match control characters exist to strip them.
+        "noControlCharactersInRegex": "off"
+      }
+    }
+  },
+  "assist": { "enabled": false }
+}

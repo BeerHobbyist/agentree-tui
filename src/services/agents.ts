@@ -80,6 +80,7 @@ export function hooksSettingsPath(): string {
  * some hooks (UserPromptSubmit, SessionStart) back into the conversation.
  */
 export function hookCommand(state: ReportedState | "gone"): string {
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion, for sh to expand
   const file = '"$AGENTREE_AGENT_DIR/$AGENTREE_SESSION.${TMUX_PANE#%}"';
   const action =
     state === "gone"
@@ -113,7 +114,9 @@ export function contextHookCommand(): string {
 export function hooksSettings(): { hooks: Record<string, unknown[]> } {
   const hooks: Record<string, unknown[]> = {};
   for (const { event, matcher, state } of HOOK_EVENTS) {
-    (hooks[event] ??= []).push({
+    const entries = hooks[event] ?? [];
+    hooks[event] = entries;
+    entries.push({
       ...(matcher !== undefined && { matcher }),
       hooks: [{ type: "command", command: hookCommand(state), timeout: 5 }],
     });
@@ -333,7 +336,7 @@ export async function readRemoteAgentStatuses(
       const tab = line.indexOf("\t");
       return { name: line.slice(0, tab), content: line.slice(tab + 1) };
     });
-  let panes: Map<string, number> | null = new Map();
+  const panes: Map<string, number> | null = new Map();
   if (!panePart.includes(NO_TMUX_MARK)) {
     for (const line of panePart.split("\n")) {
       const [session, paneId, activity] = line.split("\t");

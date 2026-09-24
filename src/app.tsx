@@ -329,7 +329,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       );
       return;
     }
-    if (!row || row.kind !== "worktree") return;
+    if (row?.kind !== "worktree") return;
     if (row.worktree.id === "main") {
       overlays.open({
         kind: "notice",

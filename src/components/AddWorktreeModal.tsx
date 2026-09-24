@@ -797,11 +797,11 @@ function typedChar(key: ParsedKey): string | null {
 }
 
 function isPrintable(ch: string): boolean {
-  return /^[A-Za-z0-9._/\-]$/.test(ch);
+  return /^[A-Za-z0-9._/-]$/.test(ch);
 }
 
 function isBranchChar(ch: string): boolean {
-  return /^[A-Za-z0-9._/\-]$/.test(ch);
+  return /^[A-Za-z0-9._/-]$/.test(ch);
 }
 
 function errText(err: unknown): string {

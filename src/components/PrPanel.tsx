@@ -387,6 +387,7 @@ export function PrPanel({
                   const look = checkLook(c.state, theme);
                   return (
                     <Row
+                      // biome-ignore lint/suspicious/noArrayIndexKey: two checks can share a name (matrix jobs); the list is rebuilt from each fetch
                       key={`${c.name}-${i}`}
                       glyph={look.glyph}
                       color={look.color}
@@ -425,6 +426,7 @@ export function PrPanel({
               ) : (
                 d.comments.slice(0, MAX_COMMENTS).map((c, i) => (
                   <box
+                    // biome-ignore lint/suspicious/noArrayIndexKey: comments have no id here; the list is rebuilt from each fetch
                     key={i}
                     flexDirection="column"
                     flexShrink={0}
