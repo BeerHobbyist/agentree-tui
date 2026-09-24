@@ -261,8 +261,8 @@ features. Project id `ssh:<host>`; `state.hosts[]` holds the host, its `$HOME`
 - **Adding** (`SshModal`, `s`; `＋`/`a` on the host skip to the directory):
   `probeRemoteDir` connects once in batch mode, `cd`s into the directory
   (`~` → `"$HOME"`), prints its absolute path and `$HOME`, and checks tmux is
-  there. Missing directory, no tmux, or a prompt (password, unknown host key)
-  → says why; nothing is saved.
+  there. Missing directory, no tmux, or an unknown host key → says why;
+  nothing is saved. "Permission denied" → it asks for the password (see below).
 - **Terminals**: `attachCommand(…, host)` → `ssh -t -- host 'exec sh -c …'`
   running the same tmux command list as locally, on the same socket name
   there. A remote session starts a plain shell (the agent's status hooks are a
@@ -276,6 +276,22 @@ features. Project id `ssh:<host>`; `state.hosts[]` holds the host, its `$HOME`
   their tmux sessions on the host; never touches files.
 - **Git status and PR lookups skip SSH projects** (they'd run local git/gh on a
   remote path).
+- **Password logins**: when the batch check is refused, `SshModal` asks for
+  the password (or key passphrase — ssh asks for either the same way), masked.
+  `probeRemoteDir(…, { password })` logs in with `SSH_ASKPASS` pointing at a
+  helper and `SSH_ASKPASS_REQUIRE=force` (so ssh never prompts on agentree's
+  own terminal); the password travels only in that ssh's environment, and the
+  helper (no secret in it) answers only password/passphrase prompts — a
+  host-key question or a one-time code gets refused, not the password. That
+  login becomes the host's shared connection, which everything after reuses;
+  the host is saved with `needsPassword`, the password never. After it expires
+  (agentree closed for 10 min), opening a terminal shows ssh's own prompt
+  there, and typing it opens the connection again.
+  For such a host, **background calls never log in**: `tmuxOn(host,
+  { onlyIfConnected })` checks `ssh -O check` (local) first — otherwise the tab
+  bar's poll would be a failed login every second, which gets you banned
+  (fail2ban, MaxAuthTries). The trade-off: `d` can't end its remote sessions
+  while it isn't connected.
 
 Checked against a real sshd (a throwaway one on 127.0.0.1, login shell zsh):
 probing, a path with a space, the session starting in it, renames with quotes,
@@ -290,7 +306,12 @@ the shared connection. That's where these came from:
 
 Tests use a fake `ssh` whose every host is this machine (`test/helpers/fakebin/
 ssh`: skips options, `sh -c`s the command with `HOME=$FAKE_SSH_HOME`), so the
-"remote" tmux is the test's own server.
+"remote" tmux is the test's own server. It can also play a password host
+(refuses batch mode, answers SSH_ASKPASS or a prompt on the tty, keeps a
+"connection" file for `-O check`, logs every login attempt). The password path
+was also run against the real sshd with a passphrase-protected key (a user-run
+sshd can't check real passwords): askpass login, reuse, and the terminal's own
+prompt.
 
 ## Resizable sidebar
 
@@ -459,7 +480,7 @@ each other.
 
 ## Tests
 
-`bun test` — 335 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 341 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -487,7 +508,16 @@ help, a focused terminal swallows it.
 
 The sandbox also runs an inert agent command (`AGENTREE_AGENT_CMD=sh`) — tests
 that open a terminal used to start the real `claude` — and its cleanup stops the
-test's own tmux server and removes the socket file tmux leaves behind.
+test's own tmux server and removes the socket file tmux leaves behind. It also
+puts a fake `ssh` on PATH (every host is this machine) and points
+`XDG_RUNTIME_DIR` and the `~/.ssh/config` agentree reads into the sandbox.
+
+**A test must wait for the app's last write before it ends.** Paths like
+state.json's come from the environment at the moment of writing, and the next
+test's sandbox has already replaced that environment — so a save still in
+flight (a merge's `.then` saving the method used) lands in the *next* test's
+state file, which then starts with a stale worktree. Seen once in CI (#34); the
+merge tests now wait for the save.
 Terminal-focused chords *can* be driven: mock keys reach the app's global key
 handlers before the focused emulator, as real input does (checked with Ctrl+g
 and ⌥r; this file used to say otherwise). The tab-rename tests do it, and read
@@ -507,12 +537,19 @@ tmux's own `list-windows` for the result.
   tabs the ones on the right (maybe the current one) are out of view.
 - Persistence layer stays on tmux (only JS lib with true persistence needs Node;
   `dtach` is a lighter binary alternative if ever wanted).
+- SSH projects: agent status for a `claude` running on the host (its hooks
+  write files there); git features for remote directories (status, worktrees,
+  PRs); a directory deleted on the host isn't noticed (no "missing" check).
+- PR panel sections fold by mouse only — keyboard folding needs a way to move
+  through the panel's sections.
 
 ## Caveats
 
 - **tmux required** (3.7c installed). If absent, the terminal pane shows an
-  install hint. Most of this was verified via headless harnesses (the sandbox has
-  no interactive TTY) — worth occasional live passes (`bun run dev`).
+  install hint. SSH hosts need tmux too, and their host key accepted once
+  (`ssh host` in a terminal); a password or key passphrase is asked for. Most of this was verified via headless
+  harnesses (the sandbox has no interactive TTY) — worth occasional live passes
+  (`bun run dev`).
 - **Tests never touch the real environment**: every test goes through
   `createSandbox()`, which redirects `AGENTREE_HOME`, `XDG_CONFIG_HOME` and the
   tmux socket into a temp dir.
@@ -524,11 +561,21 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
-- Hide the sidebar (`b` / its `⇤`; back with `b`, Ctrl+g or `‹`), remembered
+- SSH password logins: asked for when adding a host (SSH_ASKPASS, never
+  stored), then the shared connection is reused; after a restart the terminal
+  asks; background calls never log in on their own
+- #36 `daeb54c` Hide the sidebar (`b` / its `⇤`; back with `b`, Ctrl+g or
+  `‹`), remembered
 - #35 `e7b2b49` SSH projects (`s`): a host and directories on it, terminals
-  running on the host in tmux there; remote shells only
-- #34 PR panel: sections fold (click the header band; remembered), ruled-off
-  header and footer, quoted comments, a filled `Merge…` button
+  running on the host in tmux there; remote shells only. Checked against a
+  real sshd, which found the ControlPath length limit, tmux's `_` for
+  non-ASCII without a UTF-8 locale (`-u`), and non-POSIX login shells
+- #34 `2003961` PR panel: sections fold (click the header band; remembered),
+  ruled-off header and footer, quoted comments, a filled `Merge…` button;
+  `dfff0fe` merge tests wait for the merge to finish (a late save leaked into
+  the next test's sandbox)
+- (#32 tab renaming and #33 merging from the PR panel, listed under
+  2026-09-23, were merged this morning.)
 
 ### 2026-09-23
 

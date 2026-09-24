@@ -139,11 +139,14 @@ export const hunkAvailableQuery = () =>
   });
 
 /** A session's windows (tabs) for the tab bar. */
-/** A session's windows (tabs) — on `host` over ssh for an SSH project. */
-export const tmuxWindowsQuery = (session: string, host?: string) =>
+/**
+ * A session's windows (tabs) — on `host` over ssh for an SSH project; only over
+ * a live connection for a host that logs in with a password.
+ */
+export const tmuxWindowsQuery = (session: string, host?: string, onlyIfConnected = false) =>
   queryOptions({
     queryKey: queryKeys.tmuxWindows(session),
-    queryFn: () => tmuxOn(host).listWindows(session),
+    queryFn: () => tmuxOn(host, { onlyIfConnected }).listWindows(session),
     staleTime: 0,
     refetchInterval: TMUX_WINDOWS_MS,
     refetchIntervalInBackground: true,
