@@ -435,6 +435,37 @@ colour the `⇡#N` badge, and is re-run every 60s, when an agent changes state
 (throttled), and on `r`. A failed lookup throws (it used to answer "no PR"), so
 the cache keeps the last good badge through a network hiccup.
 
+## Agent CLI (`agentree <command>`)
+
+So the agents in its terminals can drive their tabs: `src/cli.ts`, reached
+through the same binary (`src/index.tsx` dispatches — commands never load the
+UI, which moved to `src/tui.tsx`). Inside an agentree terminal the session is
+known (`$AGENTREE_SESSION`), so commands act on that worktree; `--session`
+names another. Tabs are tmux windows, so the app's tab bar follows.
+
+- `tab list|new|read|send|select|rename|close`, `diff`, `notify`, `status`,
+  `skill`; `--json` on `tab list` / `status`. `tab new` opens a shell tab in the
+  background (`-d`; `--select` to switch) and types the command into it, so the
+  tab outlives the command and its output stays readable (`tab read` =
+  `capture-pane -J`). It refuses a name already in use (a second "dev" would be
+  a second dev server), and `tab close` refuses the last tab (it would take the
+  session, and the app's terminal, with it).
+- **Reaching it**: agentree writes a launcher (`~/.config/agentree/bin/
+  agentree`: the binary, or `bun src/index.tsx` in development) and puts its
+  directory on *its own* PATH — tmux gives a new window the PATH of the client
+  that creates it (agentree's own tmux clients), not the session's `-e PATH`.
+  Sessions also get `$AGENTREE_CLI`.
+- **Telling agents**: a SessionStart hook prints a short note about the CLI
+  (SessionStart output becomes context) — only in an agentree terminal, and
+  only where the CLI is (`$AGENTREE_CLI`), so not on SSH hosts. It rides along
+  with the status hooks, in `--settings` and, with tracking on, in the user
+  settings.
+- **The skill**: `skills/agentree/SKILL.md` — when to use the CLI (anything
+  that doesn't finish by itself), the dev-server workflow, and etiquette (don't
+  steal the user's view, name and close your tabs, notify sparingly). Bundled
+  into the binary; `agentree skill install` copies it to Claude's skills
+  (`$CLAUDE_CONFIG_DIR` or `~/.claude/skills/agentree/`), `uninstall` removes it.
+
 ## Help
 
 `?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all
@@ -539,7 +570,7 @@ each other.
 
 ## Tests
 
-`bun test` — 380 tests, ~60s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 399 tests, ~65s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -621,6 +652,9 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
+- Agent CLI: `agentree tab new|read|send|list|select|rename|close`, `diff`,
+  `notify`, `status` — on PATH in every agentree terminal, announced to claude
+  by a SessionStart hook; plus a Claude Code skill (`agentree skill install`)
 - Status for every agent: `H` puts the hooks in Claude's user settings (asks
   first; merged, reversible) so a hand-typed claude reports too; SSH hosts
   report over ssh. Notifications when an agent needs you elsewhere; `Tab` /

@@ -52,6 +52,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["⌥ \\  /  ⌥ -", "split horizontal / vertical"],
       ["Ctrl+C", "→ sent to the shell"],
       ["Ctrl+b …", "native tmux keys still work"],
+      ["agentree --help", "the CLI agents use to drive these tabs"],
     ],
   },
   {

@@ -404,6 +404,47 @@ export function tmuxOn(host?: string, opts: { onlyIfConnected?: boolean } = {}) 
     async killSession(session: string): Promise<void> {
       await exec("kill-session", "-t", session);
     },
+
+    /**
+     * Open a tab (window) running the user's shell, without switching to it
+     * unless `select`; returns its index. `cwd` defaults to the session's
+     * directory.
+     */
+    async openTab(session: string, opts: { name?: string; cwd?: string; select?: boolean } = {}): Promise<number> {
+      const args = ["new-window", "-P", "-F", "#{window_index}", "-t", `${session}:`];
+      if (!opts.select) args.push("-d");
+      if (opts.name) args.push("-n", opts.name);
+      if (opts.cwd) args.push("-c", opts.cwd);
+      const { code, stdout, stderr } = await exec(...args);
+      if (code !== 0) throw new Error(stderr.trim() || `couldn't open a tab in ${session}`);
+      return parseInt(stdout.trim(), 10);
+    },
+
+    /** The last `lines` lines a pane shows (scrollback included), wrapped lines joined. */
+    async capturePane(target: string, lines = 50): Promise<string> {
+      const { code, stdout, stderr } = await exec("capture-pane", "-p", "-J", "-t", target, "-S", `-${Math.max(1, lines)}`);
+      if (code !== 0) throw new Error(stderr.trim() || `couldn't read ${target}`);
+      return stdout.replace(/\s+$/, "");
+    },
+
+    /** Type `text` into a pane (literally), then Enter unless `enter` is false. */
+    async sendText(target: string, text: string, enter = true): Promise<void> {
+      const { code, stderr } = await exec("send-keys", "-t", target, "-l", "--", text);
+      if (code !== 0) throw new Error(stderr.trim() || `couldn't type into ${target}`);
+      if (enter) await exec("send-keys", "-t", target, "Enter");
+    },
+
+    /** Press keys in a pane, tmux-style names (`C-c`, `Enter`, `Up`). */
+    async sendKeys(target: string, ...keys: string[]): Promise<void> {
+      const { code, stderr } = await exec("send-keys", "-t", target, ...keys);
+      if (code !== 0) throw new Error(stderr.trim() || `couldn't send keys to ${target}`);
+    },
+
+    /** The directory the session was started in (its worktree). */
+    async sessionPath(session: string): Promise<string> {
+      const { stdout } = await exec("display-message", "-p", "-t", session, "#{session_path}");
+      return stdout.trim();
+    },
   };
 }
 
