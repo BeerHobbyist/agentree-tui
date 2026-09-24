@@ -6,7 +6,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { sessionName } from "../../src/services/tmux";
+import { sessionName, tmuxInstallHint } from "../../src/services/tmux";
+import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
+import { makeRepo } from "../helpers/repo";
 import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
@@ -257,5 +259,32 @@ describe("a host that logs in with a password", () => {
       () => sandbox.sshCalls().some((c) => c.includes("list-windows")) && /● \S/.test(app.captureCharFrame()),
       "the tab bar to come back over the connection",
     );
+  });
+});
+
+describe("without tmux on this machine (a Mac without it)", () => {
+  test("SSH terminals still open — tmux runs on the host", async () => {
+    sandbox.hideLocalTmux();
+    await addApi();
+    await waitUntil(app, () => tmuxPath(SESSION) !== null, "the remote tmux session");
+    await waitUntil(app, () => /● \S/.test(app.captureCharFrame()), "its tab bar");
+    expect(app.captureCharFrame()).not.toContain("tmux not found");
+  });
+
+  test("a local worktree's terminal says so, with how to install it here", async () => {
+    const root = await makeRepo(join(sandbox.workspace, "widget"), { worktrees: [{ branch: "feature/x" }] });
+    const state = loadState();
+    upsertRepo(state, { nameWithOwner: "acme/widget", name: "widget", root });
+    await saveState(state);
+    await reconcile(state);
+    sandbox.hideLocalTmux();
+    app = await renderApp({ width: 120 });
+    await waitForText(app, "feature/x");
+    app.mockInput.pressKey("j");
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "x");
+    app.mockInput.pressEnter();
+    await waitForText(app, "tmux not found");
+    await waitForText(app, tmuxInstallHint());
   });
 });

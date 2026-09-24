@@ -267,7 +267,9 @@ features. Project id `ssh:<host>`; `state.hosts[]` holds the host, its `$HOME`
   running the same tmux command list as locally, on the same socket name
   there. A remote session starts a plain shell (the agent's status hooks are a
   file on this machine); ⌥a runs plain `claude` there; the diff viewer is
-  hidden (it needs local git).
+  hidden (it needs local git). Only `ssh` is needed locally: the "tmux not
+  found" check applies to local terminals only, so a Mac without tmux can
+  still use SSH projects.
 - **tmux over ssh**: `tmuxOn(host)` gives the tab bar's window/pane commands
   run as `ssh host tmux -u -L <socket> …`. Every ssh call shares one master
   connection per host (`ControlMaster=auto`, `ControlPersist=10m`), so polling
@@ -480,7 +482,7 @@ each other.
 
 ## Tests
 
-`bun test` — 341 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 346 tests, ~45s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -545,8 +547,9 @@ tmux's own `list-windows` for the result.
 
 ## Caveats
 
-- **tmux required** (3.7c installed). If absent, the terminal pane shows an
-  install hint. SSH hosts need tmux too, and their host key accepted once
+- **tmux required** for local terminals (3.7c installed). If absent, the
+  terminal pane says so, with the install command for this system (`brew` on
+  macOS, else the Linux package manager found). SSH hosts need tmux too, and their host key accepted once
   (`ssh host` in a terminal); a password or key passphrase is asked for. Most of this was verified via headless
   harnesses (the sandbox has no interactive TTY) — worth occasional live passes
   (`bun run dev`).
@@ -561,6 +564,8 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
+- SSH terminals don't need tmux on this machine (the check was for local
+  terminals); the install hint fits the system instead of always `pacman`
 - SSH password logins: asked for when adding a host (SSH_ASKPASS, never
   stored), then the shared connection is reused; after a restart the terminal
   asks; background calls never log in on their own

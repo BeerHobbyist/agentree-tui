@@ -7,6 +7,7 @@ import {
   sessionName,
   socketName,
   themeOptions,
+  tmuxInstallHint,
 } from "../../src/services/tmux";
 
 const saved = { ...process.env };
@@ -178,5 +179,23 @@ describe("preAttachOptions", () => {
     const override = cmd.indexOf("terminal-overrides[90]");
     expect(override).toBeGreaterThan(-1);
     expect(override).toBeLessThan(cmd.indexOf("new-session"));
+  });
+});
+
+describe("tmuxInstallHint", () => {
+  const has = (...cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);
+
+  test("Homebrew on a Mac", () => {
+    expect(tmuxInstallHint("darwin", has())).toBe("brew install tmux");
+  });
+
+  test("the package manager this Linux has", () => {
+    expect(tmuxInstallHint("linux", has("pacman"))).toBe("sudo pacman -S tmux");
+    expect(tmuxInstallHint("linux", has("apt-get"))).toBe("sudo apt install tmux");
+    expect(tmuxInstallHint("linux", has("dnf"))).toBe("sudo dnf install tmux");
+  });
+
+  test("a plain hint when there's none it knows", () => {
+    expect(tmuxInstallHint("linux", has())).toBe("install tmux with your package manager");
   });
 });
