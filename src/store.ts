@@ -5,9 +5,9 @@
  * computed at runtime. Loading is synchronous; every mutation writes atomically.
  */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { stateFilePath, workspaceRoot, branchLeaf } from "./config";
-import { ignoreWorktreesDir, listWorktrees } from "./services/git";
+import { canonicalPath, ignoreWorktreesDir, listWorktrees } from "./services/git";
 import type { Project, Worktree } from "./data/model";
 import { displayPath } from "./services/ssh";
 import { DIFF_VIEWERS, type DiffViewerId } from "./services/diff";
@@ -399,12 +399,13 @@ export async function reconcile(state: State): Promise<Project[]> {
       onDisk = [];
     }
 
-    const rootResolved = resolve(repo.root);
-    const byPath = new Map(onDisk.map((w) => [resolve(w.path), w]));
+    // Compared as real paths: git lists them with symlinks resolved.
+    const rootResolved = canonicalPath(repo.root);
+    const byPath = new Map(onDisk.map((w) => [canonicalPath(w.path), w]));
     const matchedPaths = new Set<string>();
 
     // 1. Main working copy (git entry at the repo root).
-    const main = onDisk.find((w) => resolve(w.path) === rootResolved);
+    const main = onDisk.find((w) => canonicalPath(w.path) === rootResolved);
     if (main) {
       matchedPaths.add(rootResolved);
       worktrees.push(
@@ -425,7 +426,7 @@ export async function reconcile(state: State): Promise<Project[]> {
     // with `git worktree remove`) counts as matched either way — otherwise
     // step 3 below would treat it as unclaimed and adopt a duplicate for it.
     for (const w of repo.worktrees) {
-      const key = resolve(w.path);
+      const key = canonicalPath(w.path);
       if (byPath.has(key)) matchedPaths.add(key);
       if (byPath.has(key) && existsSync(w.path)) {
         worktrees.push(toUiWorktree(w, label(w.id)));
@@ -436,7 +437,7 @@ export async function reconcile(state: State): Promise<Project[]> {
 
     // 3. On-disk worktrees not in state (and not the main copy) → adopt.
     for (const w of onDisk) {
-      const key = resolve(w.path);
+      const key = canonicalPath(w.path);
       if (matchedPaths.has(key)) continue;
       const branch = w.branch ?? "(detached)";
       const adopted: StoredWorktree = {

@@ -1,9 +1,27 @@
 /**
  * Thin async wrappers over `git`.
  */
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import { run, runOrThrow } from "./proc";
+
+/**
+ * A path with its symlinks resolved, the way git reports worktree paths — for
+ * comparing a path agentree has with one from git, never for storing. A repo
+ * reached through a symlink (a code folder on another disk, `/home` →
+ * `/var/home` on Fedora Silverblue, macOS's `/tmp` → `/private/tmp`) is listed
+ * by git under its real path. For a path that's gone, its nearest existing
+ * parent is resolved.
+ */
+export function canonicalPath(path: string): string {
+  const abs = resolve(path);
+  try {
+    return realpathSync(abs);
+  } catch {
+    const parent = dirname(abs);
+    return parent === abs ? abs : join(canonicalPath(parent), basename(abs));
+  }
+}
 
 /**
  * Make git ignore our `.worktrees/` directory locally, so the main working copy
