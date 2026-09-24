@@ -21,6 +21,7 @@ import { agentCommand, stateFilePath } from "../config";
 import type { AgentStatus } from "../data/model";
 import { run } from "./proc";
 import { isConnected, remoteArgv, shq } from "./ssh";
+import { ensureCliOnPath } from "./self";
 import { listPaneActivity, socketName } from "./tmux";
 
 /** A state a hook can report (everything but "none"). */
@@ -92,7 +93,23 @@ export function hookCommand(state: ReportedState | "gone"): string {
   );
 }
 
-/** The `--settings` JSON: one command hook per event in HOOK_EVENTS. */
+/**
+ * What a claude starting in an agentree terminal is told (a SessionStart
+ * hook's output becomes context): that it can drive its tabs with the CLI.
+ */
+export const AGENT_CONTEXT =
+  "You are running inside agentree, a terminal workspace where each git worktree has tabs (tmux windows) the user sees. " +
+  "The `agentree` command (also at $AGENTREE_CLI) controls this worktree's tabs: run long-lived processes in their own tab " +
+  "with `agentree tab new --name dev -- npm run dev` (opens in the background), read a tab's output with `agentree tab read dev`, " +
+  "stop it with `agentree tab send dev --key C-c`, show the user a diff with `agentree diff`, and ask for their attention with " +
+  "`agentree notify MESSAGE`. See `agentree --help`.";
+
+/** The SessionStart hook that prints AGENT_CONTEXT — only inside an agentree terminal whose CLI is on hand. */
+export function contextHookCommand(): string {
+  return `[ -n "$AGENTREE_CLI" ] && [ -n "$AGENTREE_SESSION" ] && printf '%s\\n' ${shellQuote(AGENT_CONTEXT)}; exit 0`;
+}
+
+/** The `--settings` JSON: one command hook per event in HOOK_EVENTS, plus the context hook. */
 export function hooksSettings(): { hooks: Record<string, unknown[]> } {
   const hooks: Record<string, unknown[]> = {};
   for (const { event, matcher, state } of HOOK_EVENTS) {
@@ -101,6 +118,7 @@ export function hooksSettings(): { hooks: Record<string, unknown[]> } {
       hooks: [{ type: "command", command: hookCommand(state), timeout: 5 }],
     });
   }
+  hooks.SessionStart!.push({ hooks: [{ type: "command", command: contextHookCommand(), timeout: 5 }] });
   return { hooks };
 }
 
@@ -122,9 +140,18 @@ export function ensureHooksSettings(): string {
   return path;
 }
 
-/** Environment the tmux session gives its panes, so the hooks know where to report. */
+/**
+ * Environment the tmux session gives its panes: where the hooks report, and
+ * the CLI (on PATH, and by name in $AGENTREE_CLI) for the agents there.
+ */
 export function agentSessionEnv(session: string): Record<string, string> {
-  return { AGENTREE_AGENT_DIR: agentStatusDir(), AGENTREE_SESSION: session };
+  const cli = ensureCliOnPath();
+  return {
+    AGENTREE_AGENT_DIR: agentStatusDir(),
+    AGENTREE_SESSION: session,
+    AGENTREE_CLI: cli,
+    PATH: process.env.PATH ?? "",
+  };
 }
 
 function shellQuote(s: string): string {
@@ -329,10 +356,13 @@ export function claudeSettingsPath(): string {
 
 type ClaudeSettings = Record<string, unknown> & { hooks?: Record<string, unknown[]> };
 
-/** One of our hook commands (they all read AGENTREE_AGENT_DIR). */
+/** One of our hook commands (the status hooks read AGENTREE_AGENT_DIR, the context hook AGENTREE_CLI). */
 function isOurs(entry: unknown): boolean {
   const hooks = (entry as { hooks?: { command?: unknown }[] } | null)?.hooks;
-  return Array.isArray(hooks) && hooks.some((h) => typeof h?.command === "string" && h.command.includes("AGENTREE_AGENT_DIR"));
+  return (
+    Array.isArray(hooks) &&
+    hooks.some((h) => typeof h?.command === "string" && /AGENTREE_(AGENT_DIR|CLI)/.test(h.command))
+  );
 }
 
 /**
