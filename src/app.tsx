@@ -1,72 +1,35 @@
-import { TextAttributes } from "@opentui/core";
+import { TextAttributes, type ParsedKey } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { existsSync } from "node:fs";
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  focusManager,
-  QueryClientProvider,
-  useQueries,
-  useQuery,
-  useQueryClient,
-  type QueryClient,
-} from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { QueryClientProvider, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { bindTerminalFocus, createQueryClient } from "./queryClient";
-import {
-  agentStatusQuery,
-  gitStatusQuery,
-  prForBranchQuery,
-  queryKeys,
-  remoteAgentStatusQuery,
-  trackingQuery,
-} from "./queries";
-import {
-  claudeSettingsPath,
-  setRemoteTracking,
-  setTrackingEveryClaude,
-  type AgentReport,
-} from "./services/agents";
-import { notify } from "./services/notify";
+import { queryKeys } from "./queries";
+import { setRemoteTracking, setTrackingEveryClaude } from "./services/agents";
 import { useTheme, cycleTheme } from "./theme";
-import { displayName, type AgentStatus, type Project, type Worktree } from "./data/model";
+import { displayName, type AgentStatus, type PrInfo, type Project, type Worktree } from "./data/model";
 import { removeWorktree } from "./services/git";
-import { killSession, sessionName as tmuxSessionName, tmuxOn } from "./services/tmux";
+import { killSession, sessionName, tmuxOn } from "./services/tmux";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
-import {
-  AddWorktreeModal,
-  type PreselectRepo,
-  type Selection,
-} from "./components/AddWorktreeModal";
+import type { Selection } from "./components/AddWorktreeModal";
 import {
   reconcile,
-  removeManagedWorktree,
-  MAX_LABEL_LENGTH,
   removeHost,
+  removeManagedWorktree,
   removeRemoteDir,
-  sshProjectId,
-  saveState,
   setWorktreeLabel,
+  sshProjectId,
   type State,
-  type UiState,
 } from "./store";
-import {
-  DEFAULT_PR_PANEL_WIDTH,
-  DEFAULT_SIDEBAR_WIDTH,
-  MIN_CONTENT_WIDTH,
-  MIN_PR_PANEL_WIDTH,
-  SIDEBAR_WIDTH_STEP,
-  clampSidebarWidth,
-  fitPanels,
-} from "./layout";
+import { SIDEBAR_WIDTH_STEP, fitPanels } from "./layout";
 import { TerminalPane } from "./components/TerminalPane";
-import { HelpOverlay } from "./components/HelpOverlay";
-import { PrPanel, type PrPanelHandle, type PrSection } from "./components/PrPanel";
+import { PrPanel, type PrPanelHandle } from "./components/PrPanel";
 import { openExternal } from "./services/open";
-import type { PrInfo } from "./data/model";
-import { ConfirmModal } from "./components/ConfirmModal";
-import { RenameModal } from "./components/RenameModal";
-import { MergeModal } from "./components/MergeModal";
-import { SshModal } from "./components/SshModal";
-import type { DiffViewerId } from "./services/diff";
+import { useLive, useMirror } from "./app/live";
+import { OverlayLayer, useOverlays, type Overlay, type OverlayActions } from "./app/overlays";
+import { usePrefs } from "./app/usePrefs";
+import { useAgents } from "./app/useAgents";
+import { useLiveProjects } from "./app/useLiveProjects";
 
 function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?: boolean }) {
   const theme = useTheme();
@@ -125,25 +88,28 @@ export function rowKey(row: Row): string {
     : worktreeKey(row.project.id, row.worktree.id);
 }
 
+/**
+ * The names a key goes by, most specific first: `C-c` for Ctrl+C, `R` for
+ * Shift+R, then its plain name — so Shift or Ctrl with a letter that has no
+ * binding of its own acts as the letter.
+ */
+export function keyIds(key: Pick<ParsedKey, "name" | "ctrl" | "shift">): string[] {
+  const ids: string[] = [];
+  if (key.ctrl) ids.push(`C-${key.name}`);
+  if (key.shift && /^[a-z]$/.test(key.name)) ids.push(key.name.toUpperCase());
+  ids.push(key.name);
+  return ids;
+}
+
 /** Two clicks on the same worktree row within this count as a double-click. */
 const DOUBLE_CLICK_MS = 400;
-/** At most one extra PR lookup this often (agent state changes come in bursts). */
-const PR_LOOKUP_THROTTLE_MS = 15_000;
 
 function errText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function samePr(a: PrInfo | undefined, b: PrInfo | undefined): boolean {
-  if (!a || !b) return a === b;
-  return (
-    a.number === b.number &&
-    a.title === b.title &&
-    a.url === b.url &&
-    a.draft === b.draft &&
-    a.checks === b.checks
-  );
-}
+/** A worktree in a project — which terminal is where. */
+type Pane = { repoId: string; worktreeId: string };
 
 export interface AppProps {
   initialProjects: Project[];
@@ -176,469 +142,103 @@ export function App(props: AppProps) {
 
 function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const theme = useTheme();
+  const renderer = useRenderer();
   const queryClient = useQueryClient();
-  const [projects, setProjects] = useState<Project[]>(initialProjects);
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [preselect, setPreselect] = useState<PreselectRepo | null>(null);
-  const [helpOpen, setHelpOpen] = useState(false);
-  // The worktree whose terminal is visible in the content pane, and where keys go.
-  const [open, setOpen] = useState<{ repoId: string; worktreeId: string } | null>(
-    null,
-  );
-  // Every worktree opened at least once. Their terminals stay mounted (hidden)
-  // so switching back is instant: re-attaching tmux would clear+redraw the
-  // emulator, which reads as a flash. Only the `open` one is visible.
-  const [opened, setOpened] = useState<
-    { repoId: string; worktreeId: string }[]
-  >([]);
-  const [focusMode, setFocusMode] = useState<"sidebar" | "terminal">("sidebar");
-  // Pending "close worktree" confirmation (d key).
-  const [confirmClose, setConfirmClose] = useState<{
-    repoId: string;
-    worktreeId: string;
-    /** How the prompt names it: `"label" (branch)` when it has a label, else `"name"`. */
-    what: string;
-    dirty: boolean;
-    missing: boolean;
-  } | null>(null);
-  // An error to show (closing a worktree failed, say) until dismissed.
-  const [notice, setNotice] = useState<{ title: string; message: string } | null>(null);
-  // The worktree being renamed (R / right-click): a label for the sidebar only.
-  const [renaming, setRenaming] = useState<{
-    repoId: string;
-    worktreeId: string;
-    label: string;
-    name: string;
-    branch: string;
-  } | null>(null);
-  // Sidebar width the user chose (drag / [ ] keys), remembered in state.json.
-  // What's rendered is this clamped to the current screen, so shrinking the
-  // window doesn't lose the preference.
-  const [sidebarWidth, setSidebarWidth] = useState(
-    () => state.ui?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
-  );
   const { width: screenWidth } = useTerminalDimensions();
-  // The PR panel on the right, for the worktree on screen when it has a PR:
-  // shown unless switched off with `p`. Both that and its width are remembered.
-  const [prPanelHidden, setPrPanelHidden] = useState(() => state.ui?.prPanelHidden ?? false);
-  // The diff viewer picked in the diff picker (v); remembered. Unset = auto.
-  const [diffViewer, setDiffViewer] = useState(() => state.ui?.diffViewer);
-  const chooseDiffViewer = (id: DiffViewerId) => {
-    setDiffViewer(id);
-    saveUi({ diffViewer: id });
-  };
-  // The sidebar can be hidden (b) to give the terminal the whole width; remembered.
-  const [sidebarHidden, setSidebarHidden] = useState(() => state.ui?.sidebarHidden ?? false);
-  const [prPanelWidth, setPrPanelWidth] = useState(
-    () => state.ui?.prPanelWidth ?? DEFAULT_PR_PANEL_WIDTH,
-  );
-  // PR panel sections folded away (click a section's header), remembered.
-  const [prCollapsed, setPrCollapsed] = useState<PrSection[]>(
-    () => (state.ui?.prPanelCollapsed ?? []) as PrSection[],
-  );
-  const prPanelRef = useRef<PrPanelHandle | null>(null);
-  /** The PR on screen (set while rendering), for the key handler. */
-  const currentPrRef = useRef<{ repo: string; pr: PrInfo } | null>(null);
+  const screenWidthRef = useMirror(screenWidth);
   /** The rendered side-panel widths (set while rendering). */
   const layoutRef = useRef({ sidebar: 0, panel: 0 });
 
-  // Refs mirror state so the keyboard handler always reads current values.
-  const projectsRef = useRef(projects); // set to the live view further down
-  const collapsedRef = useRef(collapsed);
-  collapsedRef.current = collapsed;
-  const activeIndexRef = useRef(activeIndex);
-  activeIndexRef.current = activeIndex;
-  const focusModeRef = useRef(focusMode);
-  focusModeRef.current = focusMode;
-  const modalOpenRef = useRef(modalOpen);
-  modalOpenRef.current = modalOpen;
-  const helpOpenRef = useRef(helpOpen);
-  helpOpenRef.current = helpOpen;
-  const openRef = useRef(open);
-  openRef.current = open;
-  const confirmCloseRef = useRef(confirmClose);
-  confirmCloseRef.current = confirmClose;
-  const noticeRef = useRef(notice);
-  noticeRef.current = notice;
-  const renamingRef = useRef(renaming);
-  renamingRef.current = renaming;
-  // Adding an SSH host (s), or a directory to one (its ＋ / a).
-  const [sshModal, setSshModal] = useState<{ host?: string } | null>(null);
-  const sshModalRef = useRef(sshModal);
-  sshModalRef.current = sshModal;
-  // Pending "forget" of an SSH directory, or a whole host (d): nothing on the
-  // host is deleted, only its tmux sessions end.
-  const [confirmForget, setConfirmForget] = useState<{
-    host: string;
-    dirId?: string;
-    what: string;
-    needsPassword?: boolean;
-  } | null>(null);
-  const confirmForgetRef = useRef(confirmForget);
-  confirmForgetRef.current = confirmForget;
-  // Turning "track every claude" on or off (H) — asked first: it edits Claude's settings.
-  const [confirmTracking, setConfirmTracking] = useState<boolean | null>(null);
-  const confirmTrackingRef = useRef(confirmTracking);
-  confirmTrackingRef.current = confirmTracking;
-  // The PR being merged (m / the PR panel's Merge button).
-  const [merging, setMerging] = useState<{ repo: string; pr: PrInfo } | null>(null);
-  const mergingRef = useRef(merging);
-  mergingRef.current = merging;
-  const sidebarWidthRef = useRef(sidebarWidth);
-  sidebarWidthRef.current = sidebarWidth;
-  const screenWidthRef = useRef(screenWidth);
-  screenWidthRef.current = screenWidth;
-  const prPanelHiddenRef = useRef(prPanelHidden);
-  prPanelHiddenRef.current = prPanelHidden;
-  const sidebarHiddenRef = useRef(sidebarHidden);
-  sidebarHiddenRef.current = sidebarHidden;
-  const prPanelWidthRef = useRef(prPanelWidth);
-  prPanelWidthRef.current = prPanelWidth;
-  const prCollapsedRef = useRef(prCollapsed);
-  prCollapsedRef.current = prCollapsed;
+  // Everything the key handler reads is `useLive` state (see app/live.ts).
+  const [projects, rawProjectsRef, setProjects] = useLive<Project[]>(initialProjects);
+  const [collapsed, collapsedRef, setCollapsed] = useLive<Set<string>>(() => new Set());
+  const [activeIndex, activeIndexRef, setActiveIndex] = useLive(0);
+  // The worktree whose terminal is visible in the content pane, and where keys go.
+  const [open, openRef, setOpen] = useLive<Pane | null>(null);
+  // Every worktree opened at least once. Their terminals stay mounted (hidden)
+  // so switching back is instant: re-attaching tmux would clear+redraw the
+  // emulator, which reads as a flash. Only the `open` one is visible.
+  const [opened, openedRef, setOpened] = useLive<Pane[]>([]);
+  const [focusMode, focusModeRef, setFocusMode] = useLive<"sidebar" | "terminal">("sidebar");
+  const overlays = useOverlays();
+  const prefs = usePrefs(state, screenWidthRef, layoutRef);
+  const prPanelRef = useRef<PrPanelHandle | null>(null);
+  /** The PR on screen (set while rendering), for the key handler. */
+  const currentPrRef = useRef<{ repo: string; pr: PrInfo } | null>(null);
+  /** The projects as shown — live status merged in — for the handlers. */
+  const projectsRef = useRef(projects);
 
-  // ── What the sidebar shows beyond state.json, through the query cache ──
-  // (src/queries.ts: keys, fetchers, poll intervals). Merged into `viewProjects`
-  // below rather than written into `projects`.
-  // (Local git only: an SSH project's directories have no git status or PRs.)
-  const liveWorktrees = projects
-    .filter((p) => !p.ssh)
-    .flatMap((p) => p.worktrees.filter((w) => !w.missing).map((w) => ({ repoId: p.id, worktree: w })));
-
-  // Git status (dirty, changed files, +/−, ahead/behind) — polled per worktree,
-  // invalidated when an agent changes state (it has probably touched files).
-  const gitStatuses = useQueries({
-    queries: liveWorktrees.map(({ worktree }) => gitStatusQuery(worktree.path)),
-  });
-
-  // Each branch's open PR (the ⇡#N badge) — polled every minute, invalidated
-  // when an agent changes state and on `r`. A failed lookup keeps the last
-  // answer rather than dropping the badge.
-  const prTargets = liveWorktrees.filter(
-    ({ worktree: w }) => w.branch && w.branch !== "(detached)",
-  );
-  const branchPrs = useQueries({
-    queries: prTargets.map(({ repoId, worktree }) => prForBranchQuery(repoId, worktree.branch)),
-  });
-  // A PR whose checks or title moved has newer details too: mark its cached
-  // details stale, so the panel refetches them when it next shows that PR.
-  const knownPrs = useRef(new Map<string, PrInfo>());
-  const branchPrSig = branchPrs.map((q) => JSON.stringify(q.data ?? null)).join("|");
-  useEffect(() => {
-    const next = new Map<string, PrInfo>();
-    prTargets.forEach(({ repoId }, i) => {
-      const pr = branchPrs[i]?.data;
-      if (!pr) return;
-      const key = `${repoId}#${pr.number}`;
-      const before = knownPrs.current.get(key);
-      if (before && !samePr(before, pr)) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.prDetails(repoId, pr.number) });
-      }
-      next.set(key, pr);
-    });
-    knownPrs.current = next;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [branchPrSig]);
-
-  /** Re-ask GitHub for every branch's PR, at most once per PR_LOOKUP_THROTTLE_MS. */
-  const lastPrInvalidation = useRef(0);
-  const invalidatePrLookupsSoon = () => {
-    const now = Date.now();
-    if (now - lastPrInvalidation.current < PR_LOOKUP_THROTTLE_MS) return;
-    lastPrInvalidation.current = now;
-    void queryClient.invalidateQueries({ queryKey: queryKeys.allPrForBranch });
-  };
-
-  // Live agent status per tmux session (services/agents), shown with "done"
-  // turned into "idle" once that worktree's terminal has been on screen.
-  const localReports = useQuery(agentStatusQuery()).data;
-  // SSH hosts with a terminal open here: their agents report on the host, and
-  // are read over ssh (see services/agents).
-  const remoteHosts = projects
-    .filter((p) => p.ssh?.home && opened.some((o) => o.repoId === p.id))
-    .map((p) => ({ host: p.ssh!.host, home: p.ssh!.home!, needsPassword: !!p.ssh!.needsPassword }));
-  const remoteReports = useQueries({
-    queries: remoteHosts.map((h) => remoteAgentStatusQuery(h.host, h.home, h.needsPassword)),
-  });
-  const remoteSig = remoteReports.map((q) => JSON.stringify(q.data ?? null)).join("|");
-  const agentReports = useMemo(() => {
-    const all: Record<string, AgentReport> = { ...localReports };
-    for (const q of remoteReports) Object.assign(all, q.data);
-    return all;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [localReports, remoteSig]);
-
-  // Tracking every claude (H): agentree's hooks in Claude's user settings, here
-  // and — once one of their terminals is open — on SSH hosts.
-  const tracking = useQuery(trackingQuery()).data ?? false;
-  const hookedHosts = useRef(new Set<string>());
-  const hookingHosts = useRef(new Set<string>());
-  const remotePolls = remoteReports.map((q) => q.dataUpdatedAt).join(",");
-  useEffect(() => {
-    if (!tracking) {
-      hookedHosts.current.clear();
-      return;
-    }
-    for (const h of remoteHosts) {
-      if (hookedHosts.current.has(h.host) || hookingHosts.current.has(h.host)) continue;
-      hookingHosts.current.add(h.host);
-      void setRemoteTracking(h.host, true, { onlyIfConnected: h.needsPassword })
-        .then((result) => {
-          if (result !== "unreachable") hookedHosts.current.add(h.host);
-        })
-        .finally(() => hookingHosts.current.delete(h.host));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracking, remotePolls]);
-
-  const openSession = open ? tmuxSessionName(open.repoId, open.worktreeId) : null;
-  /** When each session's terminal was last on screen (epoch seconds). */
-  const [seenAt, setSeenAt] = useState<Record<string, number>>({});
-  useEffect(() => {
-    if (!openSession) return;
-    const now = Math.floor(Date.now() / 1000);
-    setSeenAt((prev) => (prev[openSession] === now ? prev : { ...prev, [openSession]: now }));
-  }, [openSession, agentReports]);
-  const agentStatus: Record<string, AgentStatus> = {};
-  for (const [session, r] of Object.entries(agentReports ?? {})) {
-    const seen = session === openSession || (seenAt[session] ?? 0) >= r.since;
-    agentStatus[session] = r.state === "done" && seen ? "idle" : r.state;
-  }
-  // Tell the user when an agent starts needing them or finishes — unless
-  // they're looking at it (its terminal on screen, in a focused window). Only
-  // for changes since agentree started watching: an old "done" found at
-  // startup, or on a host opened later, isn't news.
-  const [watchingSince] = useState(() => Math.floor(Date.now() / 1000));
-  const notified = useRef<Record<string, AgentStatus>>({});
-  const statusSig = JSON.stringify(agentStatus);
-  useEffect(() => {
-    for (const [session, state] of Object.entries(agentStatus)) {
-      const before = notified.current[session];
-      notified.current[session] = state;
-      if (state !== "needs-action" && state !== "done") continue;
-      if (before === state || (agentReports[session]?.since ?? 0) < watchingSince) continue;
-      if (session === openSession && focusManager.isFocused()) continue;
-      const where = projectsRef.current
-        .flatMap((p) => p.worktrees.map((w) => ({ p, w })))
-        .find(({ p, w }) => tmuxSessionName(p.id, w.id) === session);
-      if (!where) continue;
-      const name = displayName(where.w);
-      notify(state === "needs-action" ? `${name} needs you` : `${name} is done`, where.p.name);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusSig]);
-
-  // An agent changing state has probably touched files, and may have opened
-  // or pushed to a PR.
-  const reportsSig = JSON.stringify(agentReports ?? null);
-  const lastReportsSig = useRef<string | null>(null);
-  useEffect(() => {
-    if (lastReportsSig.current !== null && lastReportsSig.current !== reportsSig) {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.allGitStatus });
-      invalidatePrLookupsSoon();
-    }
-    lastReportsSig.current = reportsSig;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reportsSig]);
-
-  // Projects as the sidebar shows them: state.json's worktrees plus live git
-  // status, PR and agent status.
-  const statusByPath = new Map(liveWorktrees.map(({ worktree }, i) => [worktree.path, gitStatuses[i]?.data]));
-  const prByWorktree = new Map(
-    prTargets.map(({ repoId, worktree }, i) => [`${repoId}:${worktree.id}`, branchPrs[i]?.data]),
-  );
-  const viewProjects: Project[] = projects.map((p) => ({
-    ...p,
-    worktrees: p.worktrees.map((w) => {
-      const st = w.missing ? undefined : statusByPath.get(w.path);
-      const pr = prByWorktree.get(`${p.id}:${w.id}`) ?? undefined;
-      return { ...w, ...st, pr, agent: agentStatus[tmuxSessionName(p.id, w.id)] ?? "none" };
-    }),
-  }));
-  // Handlers read the live view (a worktree's dirty flag, say), not just state.json.
+  const agents = useAgents(projects, opened, open, projectsRef);
+  const { viewProjects, refreshPrs } = useLiveProjects(projects, agents.status, agents.reports);
   projectsRef.current = viewProjects;
 
-  // A burst of keystrokes (key repeat, a paste) arrives in one tick, before
-  // React re-renders and refreshes the mirrors above, so every write also
-  // updates the mirror — otherwise holding `j` advances a single row.
-  const applyActiveIndex = (idx: number) => {
-    activeIndexRef.current = idx;
-    setActiveIndex(idx);
-  };
-  /** Set the sidebar width (clamped to the screen), updating the mirror too. */
-  const applySidebarWidth = (width: number) => {
-    const next = clampSidebarWidth(width, screenWidthRef.current);
-    sidebarWidthRef.current = next;
-    setSidebarWidth(next);
-    return next;
-  };
+  const notice = (title: string, err: unknown) => overlays.open({ kind: "notice", title, message: errText(err) });
 
-  /**
-   * Remember the sidebar width in state.json: once when a drag is released, and
-   * on each `[` / `]` / `=` that changes it. Written straight away rather than
-   * debounced, so quitting right after a resize can't drop it. The default width
-   * isn't stored, so a future change to the default still applies.
-   */
-  const persistSidebarWidth = () => {
-    const width = sidebarWidthRef.current;
-    saveUi({ sidebarWidth: width === DEFAULT_SIDEBAR_WIDTH ? undefined : width });
-  };
+  // ── Selection, folding, opening terminals ──
 
-  /** Merge UI preferences into state.json; `undefined` drops a field. No-op if nothing changed. */
-  const saveUi = (patch: Partial<UiState>) => {
-    const ui: Record<string, unknown> = { ...state.ui };
-    let changed = false;
-    for (const [key, value] of Object.entries(patch)) {
-      if (ui[key] === value) continue;
-      changed = true;
-      if (value === undefined) delete ui[key];
-      else ui[key] = value;
-    }
-    if (!changed) return;
-    if (Object.keys(ui).length > 0) state.ui = ui as UiState;
-    else delete state.ui;
-    void saveState(state).catch(() => {});
-  };
-
-  /** Show / hide the sidebar, and remember it. */
-  const applySidebarHidden = (hidden: boolean) => {
-    sidebarHiddenRef.current = hidden;
-    setSidebarHidden(hidden);
-    saveUi({ sidebarHidden: hidden || undefined });
-  };
-
-  /**
-   * Hide the sidebar (`b`, its ⇤): the keys go to the terminal on screen, if
-   * there is one. Shown again by `b`, or by going back to it (Ctrl+g, ‹).
-   */
-  const hideSidebar = () => {
-    applySidebarHidden(true);
-    if (openRef.current) setFocusMode("terminal");
-  };
-
-  /** Back to the sidebar (Ctrl+g, the tab bar's ‹) — showing it if it was hidden. */
-  const exitToSidebar = () => {
-    if (sidebarHiddenRef.current) applySidebarHidden(false);
-    setFocusMode("sidebar");
-  };
-
-  /** Show / hide the PR panel (`p`, ⌥p, its ✕, or the tab bar's PR button). */
-  const togglePrPanel = () => {
-    const hidden = !prPanelHiddenRef.current;
-    prPanelHiddenRef.current = hidden;
-    setPrPanelHidden(hidden);
-    saveUi({ prPanelHidden: hidden || undefined });
-  };
-
-  /** Fold / unfold a PR panel section, and remember it. */
-  const togglePrSection = (section: PrSection) => {
-    const prev = prCollapsedRef.current;
-    const next = prev.includes(section) ? prev.filter((s) => s !== section) : [...prev, section];
-    prCollapsedRef.current = next;
-    setPrCollapsed(next);
-    saveUi({ prPanelCollapsed: next.length > 0 ? next : undefined });
-  };
-
-  /** Resize the PR panel, within what's left beside the sidebar and content. */
-  const applyPrPanelWidth = (width: number) => {
-    const room = screenWidthRef.current - layoutRef.current.sidebar - MIN_CONTENT_WIDTH;
-    const next = Math.round(Math.min(Math.max(width, MIN_PR_PANEL_WIDTH), Math.max(room, MIN_PR_PANEL_WIDTH)));
-    prPanelWidthRef.current = next;
-    setPrPanelWidth(next);
-  };
-  const persistPrPanelWidth = () => {
-    const width = prPanelWidthRef.current;
-    saveUi({ prPanelWidth: width === DEFAULT_PR_PANEL_WIDTH ? undefined : width });
-  };
-  const resetPrPanelWidth = () => {
-    applyPrPanelWidth(DEFAULT_PR_PANEL_WIDTH);
-    persistPrPanelWidth();
-  };
-
-  const resetSidebarWidth = () => {
-    applySidebarWidth(DEFAULT_SIDEBAR_WIDTH);
-    persistSidebarWidth();
-  };
-
-  const applyCollapsed = (next: Set<string>) => {
-    collapsedRef.current = next;
-    setCollapsed(next);
+  /** Select a worktree's row (in `projects`, as folded by `folded`). */
+  const selectWorktreeRow = (repoId: string, worktreeId: string, list = projectsRef.current, folded = collapsedRef.current) => {
+    const idx = buildRows(list, folded).findIndex(
+      (r) => r.kind === "worktree" && r.project.id === repoId && r.worktree.id === worktreeId,
+    );
+    if (idx >= 0) setActiveIndex(idx);
   };
 
   const setCollapsedFor = (projectId: string, wantCollapsed: boolean) => {
     const next = new Set(collapsedRef.current);
     if (wantCollapsed) next.add(projectId);
     else next.delete(projectId);
-    applyCollapsed(next);
+    setCollapsed(next);
     // Keep the selection valid: snap to the project header in the new layout.
-    const rows = buildRows(projectsRef.current, next);
-    const idx = rows.findIndex(
-      (r) => r.kind === "project" && r.project.id === projectId,
-    );
-    if (idx >= 0) applyActiveIndex(idx);
+    const idx = buildRows(projectsRef.current, next).findIndex((r) => r.kind === "project" && r.project.id === projectId);
+    if (idx >= 0) setActiveIndex(idx);
   };
-
-  const handleApplied = (newProjects: Project[], sel: Selection) => {
-    setSshModal(null);
-    setProjects(newProjects);
-    const nextCollapsed = new Set(collapsedRef.current);
-    nextCollapsed.delete(sel.repoId);
-    applyCollapsed(nextCollapsed);
-    const rows = buildRows(newProjects, nextCollapsed);
-    const idx = rows.findIndex(
-      (r) =>
-        r.kind === "worktree" &&
-        r.project.id === sel.repoId &&
-        r.worktree.id === sel.worktreeId,
-    );
-    if (idx >= 0) applyActiveIndex(idx);
-    // Mount the new worktree's terminal so the content pane matches the
-    // sidebar selection, instead of leaving the previously open one behind.
-    // Focus stays on the sidebar (unlike Enter/click), so keyboard shortcuts
-    // keep working right after the modal closes.
-    markOpened(sel.repoId, sel.worktreeId);
-    setOpen({ repoId: sel.repoId, worktreeId: sel.worktreeId });
-    setModalOpen(false);
-    setPreselect(null);
-  };
-
-  const openAdd = (pre: PreselectRepo | null) => {
-    setPreselect(pre);
-    setModalOpen(true);
-  };
+  const toggleFold = (projectId: string) => setCollapsedFor(projectId, !collapsedRef.current.has(projectId));
 
   /** Record a worktree as opened so its terminal stays mounted across switches. */
   const markOpened = (repoId: string, worktreeId: string) => {
-    setOpened((prev) =>
-      prev.some((o) => o.repoId === repoId && o.worktreeId === worktreeId)
-        ? prev
-        : [...prev, { repoId, worktreeId }],
-    );
+    const list = openedRef.current;
+    if (!list.some((o) => o.repoId === repoId && o.worktreeId === worktreeId)) setOpened([...list, { repoId, worktreeId }]);
   };
 
-  const renderer = useRenderer();
-  const quit = () => {
-    try {
-      renderer.destroy();
-    } catch {
-      // fall through to hard exit
-    }
-    if (onQuit) onQuit();
-    else process.exit(0);
+  /** Open (mount + focus) a worktree's terminal — Enter, a double-click. */
+  const openWorktreeTerminal = (repoId: string, worktreeId: string) => {
+    markOpened(repoId, worktreeId);
+    setOpen({ repoId, worktreeId });
+    setFocusMode("terminal");
+    selectWorktreeRow(repoId, worktreeId);
   };
 
-  /** Open the add-worktree modal with the given project's repo preselected. */
-  const openAddForProject = (projectId: string) => {
-    const proj = projectsRef.current.find((p) => p.id === projectId);
-    if (!proj) return;
-    if (proj.ssh) {
-      setFocusMode("sidebar");
-      setSshModal({ host: proj.ssh.host });
-      return;
+  /**
+   * Select a worktree and show its terminal, keeping the keyboard in the
+   * sidebar (a click on its row). A worktree that's gone on disk is only selected.
+   */
+  const showWorktree = (repoId: string, worktreeId: string) => {
+    const worktree = projectsRef.current.find((p) => p.id === repoId)?.worktrees.find((w) => w.id === worktreeId);
+    if (worktree && !worktree.missing) {
+      markOpened(repoId, worktreeId);
+      setOpen({ repoId, worktreeId });
     }
-    openAdd({ nameWithOwner: proj.id, name: proj.name, root: proj.root });
+    setFocusMode("sidebar");
+    selectWorktreeRow(repoId, worktreeId);
+  };
+
+  /** A worktree row was clicked: select + show it; a second click on it soon after types in it. */
+  const lastRowClick = useRef({ key: "", at: 0 });
+  const clickWorktree = (repoId: string, worktreeId: string) => {
+    const key = `${repoId}:${worktreeId}`;
+    const now = Date.now();
+    const double = lastRowClick.current.key === key && now - lastRowClick.current.at < DOUBLE_CLICK_MS;
+    lastRowClick.current = double ? { key: "", at: 0 } : { key, at: now };
+    const missing = projectsRef.current.find((p) => p.id === repoId)?.worktrees.find((w) => w.id === worktreeId)?.missing;
+    if (double && !missing) openWorktreeTerminal(repoId, worktreeId);
+    else showWorktree(repoId, worktreeId);
+  };
+
+  /** Click a project header: return focus to the sidebar and toggle its fold. */
+  const selectProject = (projectId: string) => {
+    setFocusMode("sidebar");
+    toggleFold(projectId);
   };
 
   /**
@@ -659,122 +259,116 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       if (collapsedRef.current.has(o.repoId)) {
         const next = new Set(collapsedRef.current);
         next.delete(o.repoId);
-        applyCollapsed(next);
+        setCollapsed(next);
       }
       openWorktreeTerminal(o.repoId, o.worktreeId);
       return;
     }
   };
 
-  /** Track every claude, or stop: agentree's hooks in Claude's user settings, here and on open SSH hosts. */
-  const performTracking = (on: boolean) => {
-    setConfirmTracking(null);
+  /** Hide the sidebar (`b`, its ⇤): the keys go to the terminal on screen, if there is one. */
+  const hideSidebar = () => {
+    prefs.sidebar.setHidden(true);
+    if (openRef.current) setFocusMode("terminal");
+  };
+
+  /** Back to the sidebar (Ctrl+g, the tab bar's ‹) — showing it if it was hidden. */
+  const exitToSidebar = () => {
+    if (prefs.sidebar.hiddenRef.current) prefs.sidebar.setHidden(false);
+    setFocusMode("sidebar");
+  };
+
+  const quit = () => {
     try {
-      setTrackingEveryClaude(on);
-    } catch (err) {
-      setNotice({ title: "Couldn't change Claude's settings", message: errText(err) });
+      renderer.destroy();
+    } catch {
+      // fall through to hard exit
+    }
+    if (onQuit) onQuit();
+    else process.exit(0);
+  };
+
+  // ── Adding, removing, renaming ──
+
+  /** A worktree (or SSH directory) was added: show it, selected, its terminal mounted. */
+  const onApplied = (newProjects: Project[], sel: Selection) => {
+    overlays.close("add");
+    overlays.close("ssh");
+    setProjects(newProjects);
+    const nextCollapsed = new Set(collapsedRef.current);
+    nextCollapsed.delete(sel.repoId);
+    setCollapsed(nextCollapsed);
+    selectWorktreeRow(sel.repoId, sel.worktreeId, newProjects, nextCollapsed);
+    // Mount its terminal so the content pane matches the sidebar selection.
+    // Focus stays on the sidebar (unlike Enter/click), so keyboard shortcuts
+    // keep working right after the modal closes.
+    markOpened(sel.repoId, sel.worktreeId);
+    setOpen({ repoId: sel.repoId, worktreeId: sel.worktreeId });
+  };
+
+  /** `a` / a header's ＋: add a worktree to that project (or a directory, on an SSH host). */
+  const openAddForProject = (projectId: string) => {
+    const proj = projectsRef.current.find((p) => p.id === projectId);
+    if (!proj) return;
+    if (proj.ssh) {
+      setFocusMode("sidebar");
+      overlays.open({ kind: "ssh", host: proj.ssh.host });
       return;
     }
-    hookedHosts.current.clear();
-    for (const h of remoteHosts) {
-      void setRemoteTracking(h.host, on, { onlyIfConnected: h.needsPassword }).then((result) => {
-        if (on && result !== "unreachable") hookedHosts.current.add(h.host);
-      });
-    }
-    void queryClient.invalidateQueries({ queryKey: queryKeys.tracking });
+    overlays.open({ kind: "add", preselect: { nameWithOwner: proj.id, name: proj.name, root: proj.root } });
   };
 
-  /** Open (mount + focus) a worktree's terminal — used by click and Enter. */
-  const openWorktreeTerminal = (repoId: string, worktreeId: string) => {
-    markOpened(repoId, worktreeId);
-    setOpen({ repoId, worktreeId });
-    setFocusMode("terminal");
-    const rows = buildRows(projectsRef.current, collapsedRef.current);
-    const idx = rows.findIndex(
-      (r) =>
-        r.kind === "worktree" &&
-        r.project.id === repoId &&
-        r.worktree.id === worktreeId,
-    );
-    if (idx >= 0) applyActiveIndex(idx);
-  };
-
-  /**
-   * Select a worktree and show its terminal, keeping the keyboard in the
-   * sidebar (a click on its row). A worktree that's gone on disk is only selected.
-   */
-  const showWorktree = (repoId: string, worktreeId: string) => {
-    const worktree = projectsRef.current
-      .find((p) => p.id === repoId)
-      ?.worktrees.find((w) => w.id === worktreeId);
-    if (worktree && !worktree.missing) {
-      markOpened(repoId, worktreeId);
-      setOpen({ repoId, worktreeId });
-    }
-    setFocusMode("sidebar");
-    const rows = buildRows(projectsRef.current, collapsedRef.current);
-    const idx = rows.findIndex(
-      (r) => r.kind === "worktree" && r.project.id === repoId && r.worktree.id === worktreeId,
-    );
-    if (idx >= 0) applyActiveIndex(idx);
-  };
-
-  /** A worktree row was clicked: select + show it; a second click on it soon after types in it. */
-  const lastRowClick = useRef({ key: "", at: 0 });
-  const clickWorktree = (repoId: string, worktreeId: string) => {
-    const key = `${repoId}:${worktreeId}`;
-    const now = Date.now();
-    const double = lastRowClick.current.key === key && now - lastRowClick.current.at < DOUBLE_CLICK_MS;
-    lastRowClick.current = double ? { key: "", at: 0 } : { key, at: now };
-    const missing = projectsRef.current
-      .find((p) => p.id === repoId)
-      ?.worktrees.find((w) => w.id === worktreeId)?.missing;
-    if (double && !missing) openWorktreeTerminal(repoId, worktreeId);
-    else showWorktree(repoId, worktreeId);
-  };
-
-  /** Click a project header: return focus to the sidebar and toggle its fold. */
-  const selectProject = (projectId: string) => {
-    setFocusMode("sidebar");
-    setCollapsedFor(projectId, !collapsedRef.current.has(projectId));
-  };
-
-  /** Ask to close (delete from disk) the worktree under the cursor. */
-  const requestCloseWorktree = (row: Row | undefined) => {
-    // An SSH project: forget a directory, or (on its header) the whole host.
+  /** `d`: ask to close (delete) the worktree under the cursor — or forget an SSH directory / host. */
+  const requestClose = (row: Row | undefined) => {
     if (row?.project.ssh) {
       const { host, needsPassword } = row.project.ssh;
-      setConfirmForget(
+      overlays.open(
         row.kind === "worktree"
-          ? { host, dirId: row.worktree.id, what: row.worktree.subtitle ?? row.worktree.path, needsPassword }
-          : { host, what: host, needsPassword },
+          ? { kind: "forget", host, dirId: row.worktree.id, what: row.worktree.subtitle ?? row.worktree.path, needsPassword }
+          : { kind: "forget", host, what: host, needsPassword },
       );
       return;
     }
     if (!row || row.kind !== "worktree") return;
     if (row.worktree.id === "main") {
-      setNotice({
+      overlays.open({
+        kind: "notice",
         title: "Could not close worktree",
         message: "The main working copy can't be closed this way — remove the project instead.",
       });
       return;
     }
-    setConfirmClose({
+    overlays.open({
+      kind: "close-worktree",
       repoId: row.project.id,
       worktreeId: row.worktree.id,
-      what: row.worktree.label
-        ? `"${row.worktree.label}" (${row.worktree.branch})`
-        : `"${row.worktree.name}"`,
+      what: row.worktree.label ? `"${row.worktree.label}" (${row.worktree.branch})` : `"${row.worktree.name}"`,
       dirty: row.worktree.dirty,
       missing: !!row.worktree.missing,
     });
   };
 
+  /**
+   * After worktrees went away: the new project list, their terminals unmounted
+   * (tearing down their PTYs), another one shown if one of them was on screen,
+   * and the selection kept in range.
+   */
+  const afterRemoval = (newProjects: Project[], gone: (o: Pane) => boolean) => {
+    setProjects(newProjects);
+    const remaining = openedRef.current.filter((o) => !gone(o));
+    setOpened(remaining);
+    const wasOpen = openRef.current;
+    if (wasOpen && gone(wasOpen)) {
+      setOpen(remaining.at(-1) ?? null);
+      setFocusMode("sidebar");
+    }
+    const rows = buildRows(newProjects, collapsedRef.current);
+    setActiveIndex(Math.min(activeIndexRef.current, Math.max(rows.length - 1, 0)));
+  };
+
   /** Kill its tmux session, delete it on disk (unless already missing), and drop it from state. */
-  const performCloseWorktree = async () => {
-    const target = confirmCloseRef.current;
-    if (!target) return;
-    setConfirmClose(null);
+  const closeWorktree = async (target: Extract<Overlay, { kind: "close-worktree" }>) => {
+    overlays.close("close-worktree");
     try {
       const project = projectsRef.current.find((p) => p.id === target.repoId);
       const wt = project?.worktrees.find((w) => w.id === target.worktreeId);
@@ -782,35 +376,13 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       // git still tracks it as "prunable" until told to remove it, and
       // leaving that behind would make reconcile() re-adopt it right back.
       if (project && wt && existsSync(project.root)) {
-        await killSession(tmuxSessionName(target.repoId, target.worktreeId)).catch(
-          () => {},
-        );
+        await killSession(sessionName(target.repoId, target.worktreeId)).catch(() => {});
         await removeWorktree(project.root, wt.path, { force: true });
       }
       await removeManagedWorktree(state, target.repoId, target.worktreeId);
-      const newProjects = await reconcile(state);
-      setProjects(newProjects);
-
-      // The closed worktree's terminal is no longer valid: drop it from the
-      // mounted set (unmounts it, tearing down its PTY).
-      const isClosed = (o: { repoId: string; worktreeId: string }) =>
-        o.repoId === target.repoId && o.worktreeId === target.worktreeId;
-      const remaining = opened.filter((o) => !isClosed(o));
-      setOpened(remaining);
-
-      // If it was the visible one, fall back to another mounted terminal (or
-      // the placeholder pane) and return focus to the sidebar.
-      const wasOpen = openRef.current;
-      if (wasOpen && isClosed(wasOpen)) {
-        setOpen(remaining[remaining.length - 1] ?? null);
-        setFocusMode("sidebar");
-      }
-
-      // Keep the selection in bounds in the new (shorter) row list.
-      const rows = buildRows(newProjects, collapsedRef.current);
-      applyActiveIndex(Math.min(activeIndexRef.current, Math.max(rows.length - 1, 0)));
+      afterRemoval(await reconcile(state), (o) => o.repoId === target.repoId && o.worktreeId === target.worktreeId);
     } catch (err) {
-      setNotice({ title: "Could not close worktree", message: errText(err) });
+      notice("Could not close worktree", err);
     }
   };
 
@@ -818,43 +390,29 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
    * Forget an SSH directory (or a whole host): end its tmux session(s) on the
    * host and drop it from state. Nothing on the host is deleted.
    */
-  const performForget = async () => {
-    const target = confirmForgetRef.current;
-    if (!target) return;
-    setConfirmForget(null);
+  const forget = async (target: Extract<Overlay, { kind: "forget" }>) => {
+    overlays.close("forget");
     const repoId = sshProjectId(target.host);
     const project = projectsRef.current.find((p) => p.id === repoId);
     const dirIds = target.dirId ? [target.dirId] : (project?.worktrees.map((w) => w.id) ?? []);
     const remote = tmuxOn(target.host, { onlyIfConnected: project?.ssh?.needsPassword });
-    await Promise.all(dirIds.map((id) => remote.killSession(tmuxSessionName(repoId, id)).catch(() => {})));
+    await Promise.all(dirIds.map((id) => remote.killSession(sessionName(repoId, id)).catch(() => {})));
     try {
       if (target.dirId) await removeRemoteDir(state, target.host, target.dirId);
       else await removeHost(state, target.host);
-      const newProjects = await reconcile(state);
-      setProjects(newProjects);
-      const isGone = (o: { repoId: string; worktreeId: string }) => o.repoId === repoId && dirIds.includes(o.worktreeId);
-      const remaining = opened.filter((o) => !isGone(o));
-      setOpened(remaining);
-      const wasOpen = openRef.current;
-      if (wasOpen && isGone(wasOpen)) {
-        setOpen(remaining[remaining.length - 1] ?? null);
-        setFocusMode("sidebar");
-      }
-      const rows = buildRows(newProjects, collapsedRef.current);
-      applyActiveIndex(Math.min(activeIndexRef.current, Math.max(rows.length - 1, 0)));
+      afterRemoval(await reconcile(state), (o) => o.repoId === repoId && dirIds.includes(o.worktreeId));
     } catch (err) {
-      setNotice({ title: "Could not remove it", message: errText(err) });
+      notice("Could not remove it", err);
     }
   };
 
   /** Ask for a new label for a worktree (the branch and directory keep their names). */
   const requestRename = (repoId: string, worktreeId: string) => {
-    const worktree = projectsRef.current
-      .find((p) => p.id === repoId)
-      ?.worktrees.find((w) => w.id === worktreeId);
+    const worktree = projectsRef.current.find((p) => p.id === repoId)?.worktrees.find((w) => w.id === worktreeId);
     if (!worktree) return;
     setFocusMode("sidebar");
-    setRenaming({
+    overlays.open({
+      kind: "rename",
       repoId,
       worktreeId,
       label: displayName(worktree),
@@ -864,29 +422,21 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   };
 
   /** Save a worktree's label (blank clears it) and show it straight away. */
-  const saveLabel = (label: string) => {
-    const target = renamingRef.current;
-    if (!target) return;
-    renamingRef.current = null;
-    setRenaming(null);
+  const saveLabel = (target: Extract<Overlay, { kind: "rename" }>, label: string) => {
+    overlays.close("rename");
     // Saving it as the branch's own name just clears the label.
     const next = label === target.name ? undefined : label;
     void setWorktreeLabel(state, target.repoId, target.worktreeId, next)
       .then((stored) => {
-        setProjects((prev) =>
-          prev.map((p) =>
+        setProjects(
+          rawProjectsRef.current.map((p) =>
             p.id !== target.repoId
               ? p
-              : {
-                  ...p,
-                  worktrees: p.worktrees.map((w) =>
-                    w.id !== target.worktreeId ? w : { ...w, label: stored },
-                  ),
-                },
+              : { ...p, worktrees: p.worktrees.map((w) => (w.id !== target.worktreeId ? w : { ...w, label: stored })) },
           ),
         );
       })
-      .catch((err) => setNotice({ title: "Could not save the label", message: errText(err) }));
+      .catch((err) => notice("Could not save the label", err));
   };
 
   /** Ask to merge the PR on screen; the prompt picks a method and confirms first. */
@@ -894,155 +444,98 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     const current = currentPrRef.current;
     if (!current) return;
     setFocusMode("sidebar"); // keys go to the prompt, not a terminal
-    setMerging(current);
+    overlays.open({ kind: "merge", ...current });
   };
 
+  /** Track every claude, or stop: agentree's hooks in Claude's user settings, here and on open SSH hosts. */
+  const setTracking = (on: boolean) => {
+    overlays.close("tracking");
+    try {
+      setTrackingEveryClaude(on);
+    } catch (err) {
+      notice("Couldn't change Claude's settings", err);
+      return;
+    }
+    agents.hookedHosts.current.clear();
+    for (const h of agents.remoteHosts) {
+      void setRemoteTracking(h.host, on, { onlyIfConnected: h.needsPassword }).then((result) => {
+        if (on && result !== "unreachable") agents.hookedHosts.current.add(h.host);
+      });
+    }
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tracking });
+  };
+
+  // ── Keys (while the sidebar has them) ──
+
+  /** What each key does in the sidebar; `row` is the selected one. See keyIds for the names. */
+  const sidebarKeys: Record<string, (row: Row | undefined, rows: Row[], i: number) => void> = {
+    q: quit,
+    "C-c": quit,
+    n: () => overlays.open({ kind: "add", preselect: null }),
+    s: () => overlays.open({ kind: "ssh" }),
+    a: (row) => row && openAddForProject(row.project.id),
+    d: (row) => requestClose(row),
+    R: (row) => row?.kind === "worktree" && requestRename(row.project.id, row.worktree.id),
+    H: () => overlays.open({ kind: "tracking", on: !agents.tracking }),
+    tab: () => jumpToNext(),
+    "[": () => {
+      prefs.sidebar.resize(prefs.sidebar.widthRef.current - SIDEBAR_WIDTH_STEP);
+      prefs.sidebar.persistWidth();
+    },
+    "]": () => {
+      prefs.sidebar.resize(prefs.sidebar.widthRef.current + SIDEBAR_WIDTH_STEP);
+      prefs.sidebar.persistWidth();
+    },
+    "=": () => prefs.sidebar.resetWidth(),
+    b: () => (prefs.sidebar.hiddenRef.current ? prefs.sidebar.setHidden(false) : hideSidebar()),
+    // The PR panel: toggle, open on GitHub, merge, refresh, scroll.
+    p: () => prefs.prPanel.toggle(),
+    o: () => currentPrRef.current && openExternal(currentPrRef.current.pr.url),
+    m: requestMerge,
+    r: () => {
+      prPanelRef.current?.refresh();
+      refreshPrs();
+    },
+    pagedown: () => prPanelRef.current?.scroll(10),
+    pageup: () => prPanelRef.current?.scroll(-10),
+    t: () => cycleTheme(),
+    "?": () => overlays.open({ kind: "help" }),
+    // Moving and folding.
+    down: (_, rows, i) => setActiveIndex(Math.min(i + 1, rows.length - 1)),
+    up: (_, __, i) => setActiveIndex(Math.max(i - 1, 0)),
+    g: () => setActiveIndex(0),
+    G: (_, rows) => setActiveIndex(rows.length - 1),
+    space: (row) => row && toggleFold(row.project.id),
+    left: (row) => row && setCollapsedFor(row.project.id, true),
+    right: (row) => row && setCollapsedFor(row.project.id, false),
+    // Enter on a project header folds it; on a worktree it opens its terminal.
+    return: (row) => {
+      if (row?.kind === "project") toggleFold(row.project.id);
+      else if (row?.kind === "worktree" && !row.worktree.missing) openWorktreeTerminal(row.project.id, row.worktree.id);
+    },
+  };
+  sidebarKeys.j = sidebarKeys.down!;
+  sidebarKeys.k = sidebarKeys.up!;
+  sidebarKeys.h = sidebarKeys.left!;
+  sidebarKeys.l = sidebarKeys.right!;
+
   useKeyboard((key) => {
-    // Help overlay is top-most: esc / ? / q close it, everything else is inert.
-    if (helpOpenRef.current) {
-      if (key.name === "escape" || key.name === "?" || key.name === "q") {
-        setHelpOpen(false);
-      }
+    const top = overlays.topRef.current;
+    // Help is read-only: esc / ? / q close it.
+    if (top?.kind === "help") {
+      if (key.name === "escape" || key.name === "?" || key.name === "q") overlays.close("help");
       return;
     }
-
-    // The modal owns the keyboard while open; App nav stays inert.
-    if (modalOpenRef.current) return;
-
-    // The close-worktree confirm/error and rename overlays own the keyboard while open.
-    if (
-      confirmCloseRef.current ||
-      confirmForgetRef.current ||
-      confirmTrackingRef.current !== null ||
-      noticeRef.current ||
-      renamingRef.current ||
-      mergingRef.current ||
-      sshModalRef.current
-    )
-      return;
-
-    // While a terminal is focused, TerminalView owns the keyboard (input +
-    // Ctrl+g to return + Alt tab chords). App nav stays inert.
-    if (focusModeRef.current === "terminal") return;
-
-    // Sidebar focus: Ctrl+C (or q) quits the app. In terminal focus these go to
-    // the shell instead (handled by the early return above).
-    if ((key.ctrl && key.name === "c") || key.name === "q") {
-      quit();
-      return;
-    }
-
+    // Any other pop-up owns the keyboard; so does a focused terminal (its own
+    // keys, Ctrl+g back, the ⌥ chords — see TerminalPane).
+    if (top || focusModeRef.current === "terminal") return;
     const rows = buildRows(projectsRef.current, collapsedRef.current);
     const i = activeIndexRef.current;
-    const row = rows[i];
-
-    if (key.name === "n") {
-      openAdd(null);
-      return;
-    }
-    if (key.name === "s") {
-      setSshModal({});
-      return;
-    }
-    if (key.name === "a") {
-      // Add a worktree to the currently-focused project (preselected).
-      if (row) openAddForProject(row.project.id);
-      return;
-    }
-    if (key.name === "[" || key.name === "]") {
-      const step = key.name === "]" ? SIDEBAR_WIDTH_STEP : -SIDEBAR_WIDTH_STEP;
-      applySidebarWidth(sidebarWidthRef.current + step);
-      persistSidebarWidth();
-      return;
-    }
-    if (key.name === "=") {
-      resetSidebarWidth();
-      return;
-    }
-    // PR panel: toggle, open on GitHub, refresh, scroll.
-    if (key.name === "p") {
-      togglePrPanel();
-      return;
-    }
-    if (key.name === "o") {
-      const current = currentPrRef.current;
-      if (current) openExternal(current.pr.url);
-      return;
-    }
-    if (key.name === "m") {
-      requestMerge();
-      return;
-    }
-    if (key.name === "r" && key.shift) {
-      // R: rename (label) the selected worktree.
-      if (row?.kind === "worktree") requestRename(row.project.id, row.worktree.id);
-      return;
-    }
-    if (key.name === "r") {
-      prPanelRef.current?.refresh();
-      lastPrInvalidation.current = Date.now();
-      void queryClient.invalidateQueries({ queryKey: queryKeys.allPrForBranch });
-      return;
-    }
-    if (key.name === "pagedown" || key.name === "pageup") {
-      prPanelRef.current?.scroll(key.name === "pagedown" ? 10 : -10);
-      return;
-    }
-    if (key.name === "t") {
-      cycleTheme();
-      return;
-    }
-    if (key.name === "tab") {
-      jumpToNext();
-      return;
-    }
-    if (key.name === "h" && key.shift) {
-      // H: track every claude (or stop) — asks first.
-      setConfirmTracking(!tracking);
-      return;
-    }
-    if (key.name === "b") {
-      if (sidebarHiddenRef.current) applySidebarHidden(false);
-      else hideSidebar();
-      return;
-    }
-    if (key.name === "?") {
-      setHelpOpen(true);
-      return;
-    }
-    if (key.name === "d") {
-      requestCloseWorktree(row);
-      return;
-    }
-
-    if (key.name === "down" || key.name === "j") {
-      applyActiveIndex(Math.min(i + 1, rows.length - 1));
-    } else if (key.name === "up" || key.name === "k") {
-      applyActiveIndex(Math.max(i - 1, 0));
-    } else if (key.name === "g" && !key.shift) {
-      applyActiveIndex(0);
-    } else if (key.name === "g" && key.shift) {
-      // Shift+G arrives as name "g" with the shift flag, never as "G".
-      applyActiveIndex(rows.length - 1);
-    } else if (key.name === "space") {
-      if (row) {
-        const id = row.project.id;
-        setCollapsedFor(id, !collapsedRef.current.has(id));
-      }
-    } else if (key.name === "left" || key.name === "h") {
-      if (row) setCollapsedFor(row.project.id, true);
-    } else if (key.name === "right" || key.name === "l") {
-      if (row) setCollapsedFor(row.project.id, false);
-    } else if (key.name === "return") {
-      // Enter on a project header folds it; on a worktree it opens its terminal.
-      if (row && row.kind === "project") {
-        const id = row.project.id;
-        setCollapsedFor(id, !collapsedRef.current.has(id));
-      } else if (row && row.kind === "worktree" && !row.worktree.missing) {
-        openWorktreeTerminal(row.project.id, row.worktree.id);
-      }
-    }
+    const action = keyIds(key).map((id) => sidebarKeys[id]).find(Boolean);
+    action?.(rows[i], rows, i);
   });
+
+  // ── Layout ──
 
   const rows = buildRows(viewProjects, collapsed);
   const active = rows[Math.min(activeIndex, rows.length - 1)];
@@ -1054,12 +547,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const mounted = opened
     .map((o) => {
       const project = viewProjects.find((p) => p.id === o.repoId);
-      const worktree = project?.worktrees.find(
-        (w) => w.id === o.worktreeId && !w.missing,
-      );
-      return project && worktree
-        ? { key: `${o.repoId}:${o.worktreeId}`, repoId: o.repoId, worktree }
-        : null;
+      const worktree = project?.worktrees.find((w) => w.id === o.worktreeId && !w.missing);
+      return project && worktree ? { key: `${o.repoId}:${o.worktreeId}`, repoId: o.repoId, worktree } : null;
     })
     .filter((m): m is NonNullable<typeof m> => m !== null);
   // Show the placeholder pane only when no mounted terminal is the visible one.
@@ -1067,18 +556,34 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
 
   // The PR panel follows the worktree on screen: the open terminal's, or the
   // selected row's when no terminal is showing.
-  const onScreen = mounted.find((m) => m.key === activeTermKey) ??
+  const onScreen =
+    mounted.find((m) => m.key === activeTermKey) ??
     (active?.kind === "worktree" ? { repoId: active.project.id, worktree: active.worktree } : null);
-  const currentPr = onScreen?.worktree.pr
-    ? { repo: onScreen.repoId, pr: onScreen.worktree.pr }
-    : null;
+  const currentPr = onScreen?.worktree.pr ? { repo: onScreen.repoId, pr: onScreen.worktree.pr } : null;
   currentPrRef.current = currentPr;
-  const layout = fitPanels(screenWidth, sidebarWidth, prPanelWidth, !prPanelHidden && !!currentPr, sidebarHidden);
+  const layout = fitPanels(
+    screenWidth,
+    prefs.sidebar.width,
+    prefs.prPanel.width,
+    !prefs.prPanel.hidden && !!currentPr,
+    prefs.sidebar.hidden,
+  );
   layoutRef.current = layout;
+
+  const overlayActions: OverlayActions = {
+    state,
+    themeName: theme.name,
+    onApplied,
+    closeWorktree: (target) => void closeWorktree(target),
+    forget: (target) => void forget(target),
+    setTracking,
+    saveLabel,
+    merged: (method) => prefs.saveUi({ mergeMethod: method }),
+  };
 
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.bg}>
-      {!sidebarHidden && (
+      {!prefs.sidebar.hidden && (
         <Sidebar
           projects={viewProjects}
           collapsed={collapsed}
@@ -1089,11 +594,11 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           onFocus={() => setFocusMode("sidebar")}
           onSelectProject={selectProject}
           onCycleTheme={() => cycleTheme()}
-          onHelp={() => setHelpOpen(true)}
+          onHelp={() => overlays.open({ kind: "help" })}
           width={layout.sidebar}
-          onResize={applySidebarWidth}
-          onResizeEnd={() => persistSidebarWidth()}
-          onResetWidth={resetSidebarWidth}
+          onResize={prefs.sidebar.resize}
+          onResizeEnd={prefs.sidebar.persistWidth}
+          onResetWidth={prefs.sidebar.resetWidth}
           onHide={hideSidebar}
           onJump={jumpToNext}
         />
@@ -1111,128 +616,31 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
               onRequestFocus={() => setFocusMode("terminal")}
               onExit={exitToSidebar}
               prPanelShown={layout.panel > 0}
-              onTogglePrPanel={togglePrPanel}
-              diffViewer={diffViewer}
-              onDiffViewer={chooseDiffViewer}
+              onTogglePrPanel={prefs.prPanel.toggle}
+              diffViewer={prefs.diffViewer}
+              onDiffViewer={prefs.chooseDiffViewer}
               onJumpNext={jumpToNext}
             />
           );
         })}
-        {showMain && <MainPane row={active} sidebarHidden={sidebarHidden} />}
+        {showMain && <MainPane row={active} sidebarHidden={prefs.sidebar.hidden} />}
       </box>
       {layout.panel > 0 && currentPr && (
         <PrPanel
           repo={currentPr.repo}
           pr={currentPr.pr}
           width={layout.panel}
-          onResize={applyPrPanelWidth}
-          onResizeEnd={persistPrPanelWidth}
-          onResetWidth={resetPrPanelWidth}
-          onClose={togglePrPanel}
+          onResize={prefs.prPanel.resize}
+          onResizeEnd={prefs.prPanel.persistWidth}
+          onResetWidth={prefs.prPanel.resetWidth}
+          onClose={prefs.prPanel.toggle}
           onMerge={requestMerge}
-          collapsed={prCollapsed}
-          onToggleSection={togglePrSection}
+          collapsed={prefs.prPanel.collapsed}
+          onToggleSection={prefs.prPanel.toggleSection}
           handleRef={prPanelRef}
         />
       )}
-      {modalOpen && (
-        <AddWorktreeModal
-          state={state}
-          preselect={preselect}
-          onClose={() => {
-            setModalOpen(false);
-            setPreselect(null);
-          }}
-          onApplied={handleApplied}
-        />
-      )}
-      {helpOpen && (
-        <HelpOverlay themeName={theme.name} onClose={() => setHelpOpen(false)} />
-      )}
-      {confirmClose && (
-        <ConfirmModal
-          title="Close worktree"
-          message={`Delete ${confirmClose.what} from disk? This cannot be undone.`}
-          detail={
-            confirmClose.missing
-              ? "Already gone on disk — this only forgets it."
-              : confirmClose.dirty
-                ? "It has uncommitted changes, which will be lost."
-                : undefined
-          }
-          onConfirm={() => void performCloseWorktree()}
-          onCancel={() => setConfirmClose(null)}
-        />
-      )}
-      {confirmTracking !== null && (
-        <ConfirmModal
-          title={confirmTracking ? "Track every claude" : "Stop tracking every claude"}
-          message={
-            confirmTracking
-              ? `Show the status of any claude you start in an agentree terminal — not just the ones agentree starts? This adds agentree's hooks to ${claudeSettingsPath()} (and on SSH hosts, once you open one).`
-              : `Take agentree's hooks out of ${claudeSettingsPath()} (and SSH hosts you have open)? The agents agentree starts keep reporting.`
-          }
-          detail={
-            confirmTracking
-              ? "They do nothing outside agentree terminals, and your other settings are left as they are. H again takes them out."
-              : undefined
-          }
-          onConfirm={() => performTracking(confirmTracking)}
-          onCancel={() => setConfirmTracking(null)}
-        />
-      )}
-      {confirmForget && (
-        <ConfirmModal
-          title={confirmForget.dirId ? "Remove directory" : "Remove host"}
-          message={
-            confirmForget.dirId
-              ? `Remove ${confirmForget.what} on ${confirmForget.host} from agentree?`
-              : `Remove ${confirmForget.host} and its directories from agentree?`
-          }
-          detail={
-            confirmForget.needsPassword
-              ? "Their tmux sessions on the host end if agentree is connected to it right now (it logs in with a password); no files are touched."
-              : "Their tmux sessions on the host end (and anything running in them); no files are touched."
-          }
-          onConfirm={() => void performForget()}
-          onCancel={() => setConfirmForget(null)}
-        />
-      )}
-      {sshModal && (
-        <SshModal
-          state={state}
-          host={sshModal.host}
-          onClose={() => setSshModal(null)}
-          onAdded={handleApplied}
-        />
-      )}
-      {merging && (
-        <MergeModal
-          repo={merging.repo}
-          pr={merging.pr}
-          preferred={state.ui?.mergeMethod}
-          onMerged={(method) => saveUi({ mergeMethod: method })}
-          onClose={() => setMerging(null)}
-        />
-      )}
-      {renaming && (
-        <RenameModal
-          initial={renaming.label}
-          heading={`Label for ${renaming.branch}`}
-          placeholder={renaming.name}
-          note="Only the label changes — the branch and folder keep their names. Empty goes back to the branch name."
-          maxLength={MAX_LABEL_LENGTH}
-          onSave={saveLabel}
-          onCancel={() => setRenaming(null)}
-        />
-      )}
-      {notice && (
-        <ConfirmModal
-          title={notice.title}
-          message={notice.message}
-          onCancel={() => setNotice(null)}
-        />
-      )}
+      <OverlayLayer overlays={overlays} actions={overlayActions} />
     </box>
   );
 }

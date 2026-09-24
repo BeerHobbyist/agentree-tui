@@ -196,6 +196,19 @@ describe("quitting and help", () => {
     await waitUntil(app, () => app.quitCount() > 0, "the app to quit");
   });
 
+  test("? then q in one burst closes help — it doesn't quit", async () => {
+    await twoProjects();
+    app = await renderApp();
+    await waitForSelection(app, "widget");
+
+    // Both keys in the same tick, before React re-renders (a fast typist, or a paste).
+    app.mockInput.pressKey("?");
+    app.mockInput.pressKey("q");
+    await Bun.sleep(200);
+    expect(app.quitCount()).toBe(0);
+    expect(app.captureCharFrame()).not.toContain("Keyboard & mouse");
+  });
+
   test("ctrl+c quits too", async () => {
     await twoProjects();
     app = await renderApp();
