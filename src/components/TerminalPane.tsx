@@ -125,7 +125,9 @@ function TerminalView({
   );
   // An SSH project's directory: tmux (and everything in it) runs on the host.
   const host = worktree.host;
-  const tmux = useMemo(() => tmuxOn(host), [host]);
+  // A password host: talk to it only over the connection its terminal opened.
+  const onlyIfConnected = !!worktree.hostNeedsPassword;
+  const tmux = useMemo(() => tmuxOn(host, { onlyIfConnected }), [host, onlyIfConnected]);
   const menuItems = host ? REMOTE_MENU_ITEMS : MENU_ITEMS;
   // Initial attach applies the theme once; theme changes are re-applied live
   // via applyTheme below (not by rebuilding the command, which would re-spawn).
@@ -176,7 +178,7 @@ function TerminalView({
   // kept across a refetch so the bar never blanks.
   const queryClient = useQueryClient();
   const windowsQuery = useQuery({
-    ...tmuxWindowsQuery(session, host),
+    ...tmuxWindowsQuery(session, host, onlyIfConnected),
     enabled: status === "running" && visible,
     placeholderData: keepPreviousData,
   });

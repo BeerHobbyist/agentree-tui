@@ -253,7 +253,12 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   sshModalRef.current = sshModal;
   // Pending "forget" of an SSH directory, or a whole host (d): nothing on the
   // host is deleted, only its tmux sessions end.
-  const [confirmForget, setConfirmForget] = useState<{ host: string; dirId?: string; what: string } | null>(null);
+  const [confirmForget, setConfirmForget] = useState<{
+    host: string;
+    dirId?: string;
+    what: string;
+    needsPassword?: boolean;
+  } | null>(null);
   const confirmForgetRef = useRef(confirmForget);
   confirmForgetRef.current = confirmForget;
   // The PR being merged (m / the PR panel's Merge button).
@@ -611,11 +616,11 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const requestCloseWorktree = (row: Row | undefined) => {
     // An SSH project: forget a directory, or (on its header) the whole host.
     if (row?.project.ssh) {
-      const { host } = row.project.ssh;
+      const { host, needsPassword } = row.project.ssh;
       setConfirmForget(
         row.kind === "worktree"
-          ? { host, dirId: row.worktree.id, what: row.worktree.subtitle ?? row.worktree.path }
-          : { host, what: host },
+          ? { host, dirId: row.worktree.id, what: row.worktree.subtitle ?? row.worktree.path, needsPassword }
+          : { host, what: host, needsPassword },
       );
       return;
     }
@@ -693,7 +698,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     const repoId = sshProjectId(target.host);
     const project = projectsRef.current.find((p) => p.id === repoId);
     const dirIds = target.dirId ? [target.dirId] : (project?.worktrees.map((w) => w.id) ?? []);
-    const remote = tmuxOn(target.host);
+    const remote = tmuxOn(target.host, { onlyIfConnected: project?.ssh?.needsPassword });
     await Promise.all(dirIds.map((id) => remote.killSession(tmuxSessionName(repoId, id)).catch(() => {})));
     try {
       if (target.dirId) await removeRemoteDir(state, target.host, target.dirId);
@@ -1026,7 +1031,11 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
               ? `Remove ${confirmForget.what} on ${confirmForget.host} from agentree?`
               : `Remove ${confirmForget.host} and its directories from agentree?`
           }
-          detail="Their tmux sessions on the host end (and anything running in them); no files are touched."
+          detail={
+            confirmForget.needsPassword
+              ? "Their tmux sessions on the host end if agentree is connected to it right now (it logs in with a password); no files are touched."
+              : "Their tmux sessions on the host end (and anything running in them); no files are touched."
+          }
           onConfirm={() => void performForget()}
           onCancel={() => setConfirmForget(null)}
         />

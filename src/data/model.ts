@@ -121,6 +121,8 @@ export interface Worktree {
   pr?: PrInfo;
   /** A directory on this ssh host (an SSH project): no git, terminals run there. */
   host?: string;
+  /** That host logs in with a password: background calls need a live connection. */
+  hostNeedsPassword?: boolean;
   /** The row's second line when it isn't the branch (an SSH directory's path). */
   subtitle?: string;
 }
@@ -137,7 +139,7 @@ export interface Project {
   root: string;
   worktrees: Worktree[];
   /** An SSH project: directories on `host` instead of a repo's worktrees. */
-  ssh?: { host: string };
+  ssh?: { host: string; needsPassword?: boolean };
 }
 
 /** A GitHub repository as returned by `gh repo list --json`. */

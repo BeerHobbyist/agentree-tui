@@ -53,6 +53,8 @@ export interface StoredHost {
   host: string;
   /** The remote $HOME, to show paths under it as `~/…`. */
   home?: string;
+  /** Logging in takes a password (or a key passphrase) — asked for, never stored. */
+  needsPassword?: boolean;
   dirs: StoredRemoteDir[];
   /** Your labels for its directories, by id (see StoredRepo.labels). */
   labels?: Record<string, string>;
@@ -120,6 +122,7 @@ function sanitizeHosts(raw: unknown): StoredHost[] | undefined {
     hosts.push({
       host: h.host,
       ...(typeof h.home === "string" && { home: h.home }),
+      ...(h.needsPassword === true && { needsPassword: true }),
       dirs,
       ...(h.labels && typeof h.labels === "object" && { labels: h.labels }),
     });
@@ -284,6 +287,7 @@ export async function addRemoteDir(
   state: State,
   host: string,
   dir: { path: string; home?: string },
+  opts: { needsPassword?: boolean } = {},
 ): Promise<string> {
   let record = findHost(state, host);
   if (!record) {
@@ -291,6 +295,7 @@ export async function addRemoteDir(
     state.hosts = [...(state.hosts ?? []), record];
   }
   if (dir.home) record.home = dir.home;
+  if (opts.needsPassword) record.needsPassword = true;
   const existing = record.dirs.find((d) => d.path === dir.path);
   if (existing) {
     await saveState(state);
@@ -333,12 +338,17 @@ function hostProject(record: StoredHost): Project {
     id: sshProjectId(record.host),
     name: record.host,
     root: record.host,
-    ssh: { host: record.host },
+    ssh: { host: record.host, ...(record.needsPassword && { needsPassword: true }) },
     worktrees: record.dirs.map((d) => {
       const label = labelFor(record, d.id);
       return toUiWorktree(
         { id: d.id, name: remoteDirName(d.path, record.home), branch: "", path: d.path },
-        { host: record.host, subtitle: displayPath(d.path, record.home), ...(label && { label }) },
+        {
+          host: record.host,
+          subtitle: displayPath(d.path, record.home),
+          ...(record.needsPassword && { hostNeedsPassword: true }),
+          ...(label && { label }),
+        },
       );
     }),
   };

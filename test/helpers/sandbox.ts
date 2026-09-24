@@ -6,7 +6,7 @@
  * without it the suite would read and write the developer's real
  * `~/.config/agentree/state.json`, `~/agentree`, and tmux sessions.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { RepoSummary } from "../../src/data/model";
@@ -78,6 +78,14 @@ export interface Sandbox {
   setSshConfig(text: string): void;
   /** Make ssh connections fail, or the host lack tmux. */
   failSsh(how: "connect" | "no-tmux"): void;
+  /** Make the ssh host log in with this password (no key login). */
+  requireSshPassword(password: string): void;
+  /** Whether the fake has a shared connection open (a password login succeeded). */
+  sshConnected(): boolean;
+  /** Drop the shared connection, as if it expired. */
+  dropSshConnection(): void;
+  /** Login attempts on the password host (each one a failed login if refused). */
+  sshLoginAttempts(): string[];
   cleanup(): void;
 }
 
@@ -131,6 +139,8 @@ export function createSandbox(): Sandbox {
   const sshHome = join(root, "ssh-home");
   const sshLog = join(root, "ssh.log");
   const sshConfig = join(root, "ssh-config");
+  const sshMaster = join(root, "ssh-master");
+  const sshAttempts = join(root, "ssh-attempts.log");
   for (const d of [workspace, configHome, remotes, fixtures, sshHome]) {
     mkdirSync(d, { recursive: true });
   }
@@ -176,6 +186,9 @@ export function createSandbox(): Sandbox {
     FAKE_SSH_LOG: sshLog,
     FAKE_SSH_FAIL: "",
     FAKE_SSH_NO_TMUX: "",
+    FAKE_SSH_PASSWORD: "",
+    FAKE_SSH_MASTER: sshMaster,
+    FAKE_SSH_ATTEMPTS: sshAttempts,
     AGENTREE_SSH_CONFIG: sshConfig,
     // ssh's shared-connection sockets go here rather than the real runtime dir.
     XDG_RUNTIME_DIR: join(root, "run"),
@@ -259,6 +272,22 @@ export function createSandbox(): Sandbox {
     failSsh(how) {
       if (how === "connect") process.env.FAKE_SSH_FAIL = "1";
       else process.env.FAKE_SSH_NO_TMUX = "1";
+    },
+    requireSshPassword(password) {
+      process.env.FAKE_SSH_PASSWORD = password;
+    },
+    sshConnected() {
+      return existsSync(sshMaster);
+    },
+    dropSshConnection() {
+      rmSync(sshMaster, { force: true });
+    },
+    sshLoginAttempts() {
+      try {
+        return readFileSync(sshAttempts, "utf8").split("\n").filter(Boolean);
+      } catch {
+        return [];
+      }
     },
     cleanup() {
       stopTmux();

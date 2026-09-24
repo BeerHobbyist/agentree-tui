@@ -3,9 +3,9 @@
  * directory before adding it, and tmux commands run "on the host".
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { probeRemoteDir } from "../../src/services/ssh";
+import { ASKPASS_SCRIPT, isConnected, probeRemoteDir, SshAuthError } from "../../src/services/ssh";
 import { tmuxOn } from "../../src/services/tmux";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -62,5 +62,51 @@ describe("tmux on a host", () => {
     expect(await remote.hasSession("remote-s")).toBe(false);
 
     expect(sandbox.sshCalls().every((c) => c.includes("-- dev-box exec sh -c 'tmux -u -L "))).toBe(true);
+  });
+});
+
+describe("hosts that log in with a password", () => {
+  test("our askpass answers only password and passphrase prompts", () => {
+    const helper = join(sandbox.root, "askpass");
+    writeFileSync(helper, ASKPASS_SCRIPT, { mode: 0o700 });
+    const ask = (prompt: string) =>
+      Bun.spawnSync([helper, prompt], { env: { ...process.env, AGENTREE_SSH_SECRET: "s3cret pass" } });
+    const answer = (prompt: string) => new TextDecoder().decode(ask(prompt).stdout);
+    expect(answer("dev-box's password: ")).toBe("s3cret pass\n");
+    expect(answer("Enter passphrase for key '/home/me/.ssh/id_ed25519': ")).toBe("s3cret pass\n");
+    // A host-key question or a one-time code must never get the password.
+    const hostKey = ask("Are you sure you want to continue connecting (yes/no/[fingerprint])? ");
+    expect(hostKey.exitCode).not.toBe(0);
+    expect(new TextDecoder().decode(hostKey.stdout)).toBe("");
+    expect(ask("Verification code: ").exitCode).not.toBe(0);
+  });
+
+  test("without the password the probe says it's needed; a wrong one is refused", async () => {
+    sandbox.requireSshPassword("hunter2");
+    await expect(probeRemoteDir("dev-box", "~")).rejects.toBeInstanceOf(SshAuthError);
+    await expect(probeRemoteDir("dev-box", "~", { password: "nope" })).rejects.toBeInstanceOf(SshAuthError);
+    expect(sandbox.sshConnected()).toBe(false);
+  });
+
+  test("the right password opens the shared connection, which later calls reuse", async () => {
+    sandbox.requireSshPassword("hunter2");
+    expect(await isConnected("dev-box")).toBe(false);
+    expect((await probeRemoteDir("dev-box", "~", { password: "hunter2" })).path).toBe(sandbox.sshHome);
+    expect(await isConnected("dev-box")).toBe(true);
+    expect((await probeRemoteDir("dev-box", "~")).path).toBe(sandbox.sshHome); // no password now
+    // The password went to ssh through the environment, never on its command line.
+    expect(sandbox.sshCalls().join("\n")).not.toContain("hunter2");
+  });
+
+  test("background tmux calls wait for a connection instead of trying to log in", async () => {
+    sandbox.requireSshPassword("hunter2");
+    const remote = tmuxOn("dev-box", { onlyIfConnected: true });
+    expect(await remote.listWindows("any")).toEqual([]);
+    expect(await remote.hasSession("any")).toBe(false);
+    expect(sandbox.sshLoginAttempts()).toEqual([]); // not a single failed login
+
+    await probeRemoteDir("dev-box", "~", { password: "hunter2" });
+    Bun.spawnSync(["tmux", "-L", sandbox.tmuxSocket, "new-session", "-d", "-s", "pw-s", "sleep 60"]);
+    expect(await remote.hasSession("pw-s")).toBe(true);
   });
 });

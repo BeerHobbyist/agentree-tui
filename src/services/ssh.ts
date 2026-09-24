@@ -7,7 +7,7 @@
  * (`ControlMaster`), so the tab bar's once-a-second tmux polling reuses it
  * instead of doing an ssh handshake each time.
  */
-import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { stateFilePath } from "../config";
@@ -126,20 +126,38 @@ export interface RemoteDir {
   home: string;
 }
 
+/** The login was refused: the host wants a password (or the key's passphrase). */
+export class SshAuthError extends Error {}
+
 /**
- * Check a directory on `host` before adding it: that we can connect without a
- * prompt, that the directory exists (resolved to an absolute path), and that
- * tmux is installed there. Throws a message fit to show.
+ * Check a directory on `host` before adding it: that we can connect, that the
+ * directory exists (resolved to an absolute path), and that tmux is installed
+ * there. Throws a message fit to show — an SshAuthError when the login needs
+ * a password.
+ *
+ * With `password`, the login answers ssh's password (or key passphrase)
+ * prompt with it, and this connection becomes the host's shared one, which
+ * everything after reuses without logging in again. The password isn't kept.
  */
-export async function probeRemoteDir(host: string, path: string): Promise<RemoteDir> {
+export async function probeRemoteDir(
+  host: string,
+  path: string,
+  opts: { password?: string } = {},
+): Promise<RemoteDir> {
   const script = [
     `cd -- ${remotePathExpr(path)} || exit 3`,
     "pwd",
     `printf '%s\\n' "$HOME"`,
     "if command -v tmux >/dev/null 2>&1; then echo tmux; else echo no-tmux; fi",
   ].join("; ");
-  const { code, stdout, stderr } = await run(sshArgv(host, script, false));
+  const { code, stdout, stderr } =
+    opts.password === undefined
+      ? await run(sshArgv(host, script, false))
+      : await runWithPassword(host, script, opts.password);
   if (code === 3) throw new Error(`${path} doesn't exist on ${host} (or isn't a directory).`);
+  if (code !== 0 && /Permission denied/i.test(stderr)) {
+    throw new SshAuthError(stderr.trim().split("\n").pop() || "Permission denied");
+  }
   if (code !== 0) throw new Error(connectError(host, stderr));
   const [resolved, home, tmux] = stdout.trim().split("\n");
   if (!resolved) throw new Error(`Couldn't read ${path} on ${host}.`);
@@ -149,11 +167,81 @@ export async function probeRemoteDir(host: string, path: string): Promise<Remote
   return { path: resolved, home: home || "" };
 }
 
+/**
+ * Log in with a password: ssh asks SSH_ASKPASS instead of a terminal (forced,
+ * so it never prompts on agentree's own terminal), and our helper answers
+ * with the password, passed only in this ssh's environment. The connection
+ * stays up as the host's shared one (ControlPersist), so later calls reuse it.
+ */
+async function runWithPassword(host: string, script: string, password: string) {
+  const opts = sshOptions();
+  if (opts.length === 0) {
+    return { code: 255, stdout: "", stderr: "can't keep a connection to reuse, so a password login won't last" };
+  }
+  const argv = [
+    "ssh",
+    ...opts,
+    "-T",
+    "-o",
+    "NumberOfPasswordPrompts=1",
+    "-o",
+    "ConnectTimeout=10",
+    "--",
+    host,
+    `exec sh -c ${shq(script)}`,
+  ];
+  return run(argv, {
+    env: {
+      ...process.env,
+      SSH_ASKPASS: askpassHelper(),
+      SSH_ASKPASS_REQUIRE: "force",
+      DISPLAY: process.env.DISPLAY || ":0",
+      AGENTREE_SSH_SECRET: password,
+    },
+  });
+}
+
+/**
+ * Our SSH_ASKPASS: answers ssh's password or passphrase prompt with the secret
+ * in its environment, and refuses anything else — a host-key question or a
+ * one-time code mustn't be answered with the password. Holds no secret itself.
+ */
+export const ASKPASS_SCRIPT = `#!/bin/sh
+case "$1" in
+  *assword*|*assphrase*) printf '%s\\n' "$AGENTREE_SSH_SECRET" ;;
+  *) exit 1 ;;
+esac
+`;
+
+function askpassHelper(): string {
+  const file = join(controlDir() ?? dirname(stateFilePath()), "askpass");
+  mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
+  writeFileSync(file, ASKPASS_SCRIPT, { mode: 0o700 });
+  chmodSync(file, 0o700);
+  return file;
+}
+
+/**
+ * Whether there's a live shared connection to `host` (a local check; nothing
+ * is sent to the host). For a password host, background calls only go ahead
+ * when there is: each attempt to log in without one would count as a failed
+ * login on the server, and a poll every second gets you locked out.
+ */
+export async function isConnected(host: string): Promise<boolean> {
+  const opts = sshOptions();
+  if (opts.length === 0) return false;
+  try {
+    return (await run(["ssh", ...opts, "-O", "check", "--", host])).code === 0;
+  } catch {
+    return false;
+  }
+}
+
 /** ssh's complaint, with what to do about the usual ones. */
 function connectError(host: string, stderr: string): string {
   const last = stderr.trim().split("\n").pop() || `ssh to ${host} failed`;
-  if (/Permission denied|Host key verification failed|password/i.test(stderr)) {
-    return `${last} — agentree connects without prompts: use key-based login (ssh-agent), and run \`ssh ${host}\` once in a terminal to accept its host key.`;
+  if (/Host key verification failed/i.test(stderr)) {
+    return `${last} — run \`ssh ${host}\` once in a terminal to check and accept its host key.`;
   }
   return last;
 }

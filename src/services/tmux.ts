@@ -4,7 +4,7 @@
  */
 import { createHash } from "node:crypto";
 import { run } from "./proc";
-import { remoteArgv } from "./ssh";
+import { isConnected, remoteArgv } from "./ssh";
 
 /**
  * Dedicated tmux server socket for the app. Isolates our sessions from the
@@ -264,9 +264,19 @@ export const MAX_TAB_NAME_LENGTH = 32;
 /**
  * The session, window and pane commands, run by tmux on this machine or — for
  * an SSH project — by tmux on `host` over ssh (on the same socket name there).
+ *
+ * `onlyIfConnected` (a host that logs in with a password): run only over a
+ * live shared connection, never by logging in — otherwise each call (the tab
+ * bar polls every second) would be a failed login on the server.
  */
-export function tmuxOn(host?: string) {
-  const exec = (...args: string[]) => run(host ? remoteTmux(host, args) : tx(...args));
+export function tmuxOn(host?: string, opts: { onlyIfConnected?: boolean } = {}) {
+  const exec = async (...args: string[]) => {
+    if (!host) return run(tx(...args));
+    if (opts.onlyIfConnected && !(await isConnected(host))) {
+      return { code: 255, stdout: "", stderr: `not connected to ${host}` };
+    }
+    return run(remoteTmux(host, args));
+  };
   return {
     host,
 

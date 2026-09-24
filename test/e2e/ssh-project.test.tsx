@@ -193,3 +193,69 @@ describe("what SSH projects leave out", () => {
     expect(sidebar).not.toContain("●");
   });
 });
+
+describe("a host that logs in with a password", () => {
+  /** s → dev-box → ~/code/api, up to the password step. */
+  async function upToPassword() {
+    mkdirSync(join(sandbox.sshHome, "code", "api"), { recursive: true });
+    sandbox.requireSshPassword("hunter2");
+    app = await renderApp();
+    await waitForText(app, "Press n to add a project");
+    app.mockInput.pressKey("s");
+    await waitForText(app, ADD_HOST);
+    type("dev-box");
+    app.mockInput.pressEnter();
+    await waitForText(app, "Directory on dev-box");
+    app.mockInput.pressKey("u", { ctrl: true });
+    type("~/code/api");
+    app.mockInput.pressEnter();
+    await waitForText(app, "Password (or key passphrase) for dev-box");
+  }
+
+  test("adding it asks for the password (masked); a wrong one can be retried", async () => {
+    await upToPassword();
+    type("nope");
+    await waitForText(app, "❯ ••••");
+    expect(app.captureCharFrame()).not.toContain("nope");
+    app.mockInput.pressEnter();
+    await waitForText(app, "That didn't work — try again.");
+
+    type("hunter2");
+    app.mockInput.pressEnter();
+    await waitForText(app, "⌁ dev-box");
+    expect(sandbox.readState()!.hosts![0]!.needsPassword).toBe(true);
+    expect(JSON.stringify(sandbox.readState())).not.toContain("hunter2"); // never stored
+    // Its terminal opens over the connection that login left open — no prompt.
+    await waitUntil(app, () => tmuxPath(SESSION) !== null, "the remote tmux session");
+    expect(app.captureCharFrame()).not.toContain("password:");
+  });
+
+  test("after a restart, its terminal asks for the password; nothing else tries to log in", async () => {
+    await upToPassword();
+    type("hunter2");
+    app.mockInput.pressEnter();
+    await waitForText(app, "⌁ dev-box");
+    app.dispose();
+    sandbox.dropSshConnection(); // it expired while agentree was closed
+
+    app = await renderApp();
+    await waitForText(app, "~/code/api");
+    const before = sandbox.sshLoginAttempts().length;
+    app.mockInput.pressKey("g");
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "api");
+    app.mockInput.pressEnter();
+    await waitForText(app, "dev-box's password:");
+    await Bun.sleep(1500); // the tab bar polls meanwhile…
+    expect(sandbox.sshLoginAttempts().length).toBe(before + 1); // …but only the terminal logged in
+
+    type("hunter2");
+    app.mockInput.pressEnter();
+    await waitUntil(app, () => sandbox.sshConnected(), "the terminal's login to connect");
+    await waitUntil(
+      app,
+      () => sandbox.sshCalls().some((c) => c.includes("list-windows")) && /● \S/.test(app.captureCharFrame()),
+      "the tab bar to come back over the connection",
+    );
+  });
+});

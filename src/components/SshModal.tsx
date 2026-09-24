@@ -4,7 +4,7 @@ import { useKeyboard, usePaste } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { addRemoteDir, reconcile, sshProjectId, type State } from "../store";
-import { configuredHosts, isValidHost, probeRemoteDir } from "../services/ssh";
+import { configuredHosts, isValidHost, probeRemoteDir, SshAuthError } from "../services/ssh";
 import type { Selection } from "./AddWorktreeModal";
 
 interface SshModalProps {
@@ -16,7 +16,7 @@ interface SshModalProps {
   onAdded: (projects: Project[], selection: Selection) => void;
 }
 
-type Phase = "host" | "dir" | "checking" | "error";
+type Phase = "host" | "dir" | "password" | "checking" | "error";
 
 /** Most suggestions shown under the host input. */
 const MAX_SUGGESTIONS = 6;
@@ -24,7 +24,10 @@ const MAX_SUGGESTIONS = 6;
 /**
  * Add an SSH project, or a directory to one: pick a host (typed, or from
  * ~/.ssh/config), then a directory on it. Before saving, it connects once to
- * check the directory exists and tmux is installed there. Owns the keyboard.
+ * check the directory exists and tmux is installed there. A host that wants a
+ * password (or a key passphrase) gets asked for it; it's used for that one
+ * login, which the host's later connections reuse, and never stored. Owns the
+ * keyboard.
  */
 export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProps) {
   const theme = useTheme();
@@ -34,17 +37,20 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
   const [dir, setDir] = useState("~");
   const [index, setIndex] = useState(0);
   const [error, setError] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [suggestions] = useState(() => configuredHosts());
 
   // Mirrors: keys can arrive faster than React re-renders.
-  const s = useRef({ phase, hostInput, host, dir, index });
-  s.current = { phase, hostInput, host, dir, index };
+  const s = useRef({ phase, hostInput, host, dir, index, password });
+  s.current = { phase, hostInput, host, dir, index, password };
   const set = {
     phase: (v: Phase) => ((s.current.phase = v), setPhase(v)),
     hostInput: (v: string) => ((s.current.hostInput = v), setHostInput(v), (s.current.index = 0), setIndex(0)),
     host: (v: string) => ((s.current.host = v), setHost(v)),
     dir: (v: string) => ((s.current.dir = v), setDir(v)),
     index: (v: number) => ((s.current.index = v), setIndex(v)),
+    password: (v: string) => ((s.current.password = v), setPassword(v)),
   };
 
   /** Host rows: what you typed (if it's not already listed), then matching ~/.ssh/config hosts. */
@@ -60,26 +66,35 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
     set.phase("dir");
   };
 
-  const check = () => {
-    const { host: h, dir: d } = s.current;
+  /** Connect and check the directory — with the password typed, once one was asked for. */
+  const check = (withPassword = false) => {
+    const { host: h, dir: d, password: pw } = s.current;
     const path = d.trim() || "~";
     set.phase("checking");
-    probeRemoteDir(h, path)
+    probeRemoteDir(h, path, withPassword ? { password: pw } : {})
       .then(async (found) => {
-        const id = await addRemoteDir(state, h, found);
+        const id = await addRemoteDir(state, h, found, { needsPassword: withPassword });
         const projects = await reconcile(state);
         onAdded(projects, { repoId: sshProjectId(h), worktreeId: id });
       })
       .catch((err) => {
+        if (err instanceof SshAuthError) {
+          // Refused: ask for the password (again, if the one typed was wrong).
+          setPasswordError(withPassword ? "That didn't work — try again." : "");
+          set.password("");
+          set.phase("password");
+          return;
+        }
         setError(err instanceof Error ? err.message : String(err));
         set.phase("error");
       });
   };
 
   const type = (text: string) => {
-    const { phase: p, hostInput: hi, dir: d } = s.current;
+    const { phase: p, hostInput: hi, dir: d, password: pw } = s.current;
     if (p === "host") set.hostInput(hi + text.replace(/\s/g, ""));
     else if (p === "dir") set.dir(d + text);
+    else if (p === "password") set.password(pw + text);
   };
 
   useKeyboard((key) => {
@@ -93,8 +108,20 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
       return;
     }
     if (n === "escape") {
-      if (p === "dir" && !preset) set.phase("host");
+      if (p === "password") set.phase("dir");
+      else if (p === "dir" && !preset) set.phase("host");
       else onClose();
+      return;
+    }
+    if (p === "password") {
+      const pw = s.current.password;
+      if (n === "return") check(true);
+      else if (n === "backspace") set.password(Array.from(pw).slice(0, -1).join(""));
+      else if (key.ctrl && n === "u") set.password("");
+      else {
+        const t = typedText(key);
+        if (t) type(t);
+      }
       return;
     }
     if (p === "host") {
@@ -196,6 +223,24 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
               {"Its terminal runs on the host, in tmux there — it keeps running if the connection drops."}
             </text>
             {hint(preset ? "⏎ add · esc cancel" : "⏎ add · esc back")}
+          </>
+        );
+      case "password":
+        return (
+          <>
+            <text fg={theme.fgMuted} marginBottom={1} wrapMode="none" truncate>
+              {`Password (or key passphrase) for ${host}`}
+            </text>
+            {input("•".repeat(Array.from(password).length), "")}
+            {passwordError && (
+              <text fg={theme.removed} marginTop={1}>
+                {passwordError}
+              </text>
+            )}
+            <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
+              {"Used for this one login, which agentree keeps open and reuses; never saved. After a restart, its terminal asks again."}
+            </text>
+            {hint("⏎ connect · esc back")}
           </>
         );
       case "checking":

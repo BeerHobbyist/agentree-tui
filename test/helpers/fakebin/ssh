@@ -7,15 +7,30 @@
 # socket, since agentree passes it `-L <socket>`. Every invocation is appended
 # to $FAKE_SSH_LOG. $FAKE_SSH_FAIL makes the connection fail; $FAKE_SSH_NO_TMUX
 # makes the host look like it has no tmux installed.
+#
+# $FAKE_SSH_PASSWORD makes it a host that logs in with that password. A login
+# then needs one of: an open shared connection (the file $FAKE_SSH_MASTER,
+# which a successful login creates and `-O check` reports on), SSH_ASKPASS
+# (with SSH_ASKPASS_REQUIRE=force) answering the password prompt, or — with -t
+# — the password typed at a prompt on the terminal. Batch mode refuses. Every
+# login attempt is appended to $FAKE_SSH_ATTEMPTS.
 
 if [ -n "$FAKE_SSH_LOG" ]; then
   printf '%s\n' "$*" >> "$FAKE_SSH_LOG"
 fi
 
+batch=""
+tty=""
+ctl=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --) shift; break ;;
-    -o|-p|-l|-F|-S|-O|-J|-i|-E|-L|-R|-D|-W|-c|-m|-b|-e|-B|-I|-w|-Q) shift 2 ;;
+    -o)
+      [ "$2" = "BatchMode=yes" ] && batch=1
+      shift 2 ;;
+    -O) ctl="$2"; shift 2 ;;
+    -p|-l|-F|-S|-J|-i|-E|-L|-R|-D|-W|-c|-m|-b|-e|-B|-I|-w|-Q) shift 2 ;;
+    -t) tty=1; shift ;;
     -*) shift ;;
     *) break ;;
   esac
@@ -24,9 +39,38 @@ done
 host="$1"
 shift
 
+if [ -n "$ctl" ]; then
+  # `-O check`: is there a shared connection? (Only password hosts track one.)
+  if [ -n "$FAKE_SSH_MASTER" ] && [ -f "$FAKE_SSH_MASTER" ]; then
+    echo "Master running (pid=1)" >&2
+    exit 0
+  fi
+  echo "Control socket connect: No such file or directory" >&2
+  exit 255
+fi
+
 if [ -n "$FAKE_SSH_FAIL" ]; then
   echo "ssh: connect to host $host port 22: Connection refused" >&2
   exit 255
+fi
+
+if [ -n "$FAKE_SSH_PASSWORD" ] && [ ! -f "$FAKE_SSH_MASTER" ]; then
+  [ -n "$FAKE_SSH_ATTEMPTS" ] && printf '%s\n' "$*" >> "$FAKE_SSH_ATTEMPTS"
+  typed=""
+  if [ -n "$SSH_ASKPASS" ] && [ "$SSH_ASKPASS_REQUIRE" = "force" ]; then
+    typed=$("$SSH_ASKPASS" "$host's password: ")
+  elif [ -n "$tty" ] && [ -z "$batch" ]; then
+    printf "%s's password: " "$host" > /dev/tty
+    stty -echo < /dev/tty 2>/dev/null
+    read -r typed < /dev/tty
+    stty echo < /dev/tty 2>/dev/null
+    printf '\n' > /dev/tty
+  fi
+  if [ "$typed" != "$FAKE_SSH_PASSWORD" ]; then
+    echo "$host: Permission denied (publickey,password)." >&2
+    exit 255
+  fi
+  : > "$FAKE_SSH_MASTER"
 fi
 
 cmd="$*"
