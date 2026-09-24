@@ -344,7 +344,11 @@ function hostProject(record: StoredHost): Project {
     id: sshProjectId(record.host),
     name: record.host,
     root: record.host,
-    ssh: { host: record.host, ...(record.needsPassword && { needsPassword: true }) },
+    ssh: {
+      host: record.host,
+      ...(record.needsPassword && { needsPassword: true }),
+      ...(record.home && { home: record.home }),
+    },
     worktrees: record.dirs.map((d) => {
       const label = labelFor(record, d.id);
       return toUiWorktree(
@@ -353,6 +357,7 @@ function hostProject(record: StoredHost): Project {
           host: record.host,
           subtitle: displayPath(d.path, record.home),
           ...(record.needsPassword && { hostNeedsPassword: true }),
+          ...(record.home && { hostHome: record.home }),
           ...(label && { label }),
         },
       );

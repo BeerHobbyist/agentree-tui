@@ -136,7 +136,8 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - **Sidebar**: `↑↓`/`j k` move · `g`/`G` first/last · `space` or `h`/`l` fold ·
   `Enter` open terminal (worktree) / fold (project) · `a` add worktree to project ·
   `R` rename worktree (label only) · `d` close (delete) worktree · `n` add
-  project · `s` add SSH host · `[`/`]` narrower/wider sidebar · `=` reset
+  project · `s` add SSH host · `Tab` next agent that needs you · `H` track
+  every claude · `[`/`]` narrower/wider sidebar · `=` reset
   width · `b` hide/show sidebar · `p` PR panel ·
   `o` open PR · `r` refresh PR · `m` merge PR · PgUp/PgDn scroll PR panel · `t` cycle theme ·
   `?` help · `q` or `Ctrl+C` quit.
@@ -146,7 +147,8 @@ the app polls those and cross-checks tmux (see **Agent status**).
   `⌥h/⌥j/⌥k/⌥l` (or `⌥←↓↑→`) move between **split panes** · `⌥,`/`⌥.` prev/next
   **tab** · `⌥1`–`9` jump tab · `⌥t` new tab · `⌥r` rename tab · `⌥a` open
   agent (new tab) · `⌥d` open a diff (`v` there: viewer) · `⌥p` PR panel · `⌥w` close pane ·
-  `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical · `Ctrl+C` →
+  `⌥W` close tab · `⌥\` split horizontal · `⌥-` split vertical · `⌥n` next
+  agent that needs you · `Ctrl+C` →
   shell · tmux-native `Ctrl+b …` works.
 - **Mouse** (everything is clickable): focus follows the click — anywhere on the
   sidebar gives it the keyboard, inside a terminal gives that terminal the
@@ -240,6 +242,35 @@ that worktree), ○ idle — from `src/services/agents.ts`:
   don't pass their own `--settings`); other agents run untouched and show no
   status. Claude only sends the permission notification after ~6s, so
   "needs action" can lag a fresh prompt by that much.
+- **Tracking every claude** (`H`, asks first): a `claude` typed by hand doesn't
+  get `--settings`, so agentree can put the same hooks in Claude's *user*
+  settings (`$CLAUDE_CONFIG_DIR` or `~/.claude/settings.json`), where any
+  claude loads them. They already do nothing outside an agentree session (no
+  `AGENTREE_*` in the environment). `withGlobalHooks` merges them in — other
+  hooks and keys untouched, idempotent — and takes out only its own (any hook
+  command mentioning `AGENTREE_AGENT_DIR`); a settings file that isn't valid
+  JSON is left alone. A `claude` shim on the session's PATH was the other
+  option, but shell rc files commonly put `~/.local/bin` (where Claude's own
+  installer puts it) in front of it.
+- **SSH hosts**: their terminals' sessions get `AGENTREE_AGENT_DIR` under the
+  host's home (`remoteSessionEnv`), and with tracking on, the host's Claude
+  settings get the hooks too (read over ssh, merged here, written back via
+  stdin) once one of its terminals is open. `readRemoteAgentStatuses` reads
+  the host's status files and its tmux panes in one ssh call, every 2s, for
+  hosts with a terminal open — a password host only while connected — and
+  combines them like local ones (`statusesFrom`, shared); stale files are
+  deleted on the host.
+- **Telling you**: when an agent turns "needs action" or "done" and you're not
+  looking at it (its terminal on screen in a focused window — TanStack's
+  focusManager, i.e. terminal focus reporting), a desktop notification
+  (`services/notify.ts`: osascript on macOS, notify-send on Linux,
+  `AGENTREE_NOTIFY_CMD` for your own, `AGENTREE_NOTIFY=off` to stop). Only for
+  changes whose report is newer than agentree's start — an old "done" found at
+  startup, or on a host opened later, isn't news.
+- **Going to it**: `Tab` (sidebar), `⌥n` (terminal), or clicking a footer
+  count opens the next worktree whose agent needs you (then: is done), after
+  the one on screen in sidebar order, unfolding its project; its terminal gets
+  the keys.
 
 Uncommitted changes are separate: `●3` on a worktree's branch line (files
 with changes, untracked included), refreshed every 5s and whenever an agent
@@ -508,7 +539,7 @@ each other.
 
 ## Tests
 
-`bun test` — 357 tests, ~50s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 380 tests, ~60s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -556,8 +587,9 @@ tmux's own `list-windows` for the result.
 - Test coverage for the rest of the terminal pane (panes, the ＋ menu) — its
   keys can be driven now (see **Tests**); the diff picker is covered.
 - Restore/list live sessions on startup; layout-restore JSON (reboot survival).
-- Agent status: a `claude` typed by hand in a shell pane doesn't load the hooks,
-  and "needs action" lags a permission prompt by Claude's ~6s notification delay.
+- Agent status: "needs action" lags a permission prompt by Claude's ~6s
+  notification delay. A `claude` typed by hand only reports with tracking on
+  (`H`) — agentree won't edit Claude's settings unasked.
 - Upstream: OpenTUI's `EmbeddedTerminal` re-mirrors the cursor every frame (its
   main renderer already dedupes — anomalyco/opentui #287, #794). Not filed yet;
   our subclass works around it.
@@ -565,9 +597,8 @@ tmux's own `list-windows` for the result.
   tabs the ones on the right (maybe the current one) are out of view.
 - Persistence layer stays on tmux (only JS lib with true persistence needs Node;
   `dtach` is a lighter binary alternative if ever wanted).
-- SSH projects: agent status for a `claude` running on the host (its hooks
-  write files there); git features for remote directories (status, worktrees,
-  PRs); a directory deleted on the host isn't noticed (no "missing" check).
+- SSH projects: git features for remote directories (status, worktrees, PRs);
+  a directory deleted on the host isn't noticed (no "missing" check).
 - PR panel sections fold by mouse only — keyboard folding needs a way to move
   through the panel's sections.
 
@@ -590,6 +621,10 @@ tmux's own `list-windows` for the result.
 
 ### 2026-09-24
 
+- Status for every agent: `H` puts the hooks in Claude's user settings (asks
+  first; merged, reversible) so a hand-typed claude reports too; SSH hosts
+  report over ssh. Notifications when an agent needs you elsewhere; `Tab` /
+  `⌥n` / a footer count jump to it
 - #39 `5eacad6` Diff viewers: hunk, diffnav, delta, difftastic, nvim diffview
   or plain git — the first installed, or the one picked with `v` in the diff
   picker (remembered); empty diffs say so; pagers can't quit on a short diff

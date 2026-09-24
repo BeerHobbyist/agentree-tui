@@ -32,6 +32,8 @@ interface SidebarProps {
   onHelp: () => void;
   /** Hide the sidebar (its footer's ⇤; also `b`). */
   onHide?: () => void;
+  /** Click a footer count (◆ 2) → go to the next agent in that state. */
+  onJump?: (state: AgentStatus) => void;
   width?: number;
   /** Dragging the right-edge divider: the width it's being dragged to. */
   onResize?: (width: number) => void;
@@ -183,6 +185,7 @@ export function Sidebar({
   onCycleTheme,
   onHelp,
   onHide,
+  onJump,
   width = DEFAULT_SIDEBAR_WIDTH,
   onResize,
   onResizeEnd,
@@ -193,6 +196,7 @@ export function Sidebar({
   const rootRef = useRef<BoxRenderable>(null);
   const worktrees = projects.flatMap((p) => p.worktrees);
   const agentCounts = URGENCY.map((state) => ({
+    state,
     look: agentLook(state, theme),
     count: worktrees.filter((w) => w.agent === state).length,
   })).filter((c) => c.count > 0);
@@ -252,17 +256,20 @@ export function Sidebar({
         >
           <box flexDirection="row" alignItems="center">
             {/* Agents across all projects: ◆ needs action · ◐ working · ✓ done. */}
-            <text flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
-              {agentCounts.length === 0 ? (
-                <span fg={theme.fgMuted}>{"○ no agent activity"}</span>
-              ) : (
-                agentCounts.map((c, i) => (
-                  <span key={c.look.glyph} fg={c.look.color}>
+            {agentCounts.length === 0 ? (
+              <text fg={theme.fgMuted} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
+                {"○ no agent activity"}
+              </text>
+            ) : (
+              // Each count takes you to the next agent in that state (also Tab).
+              <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
+                {agentCounts.map((c, i) => (
+                  <text key={c.state} fg={c.look.color} flexShrink={0} onMouseDown={() => onJump?.(c.state)}>
                     {(i > 0 ? "  " : "") + c.look.glyph + " " + c.count}
-                  </span>
-                ))
-              )}
-            </text>
+                  </text>
+                ))}
+              </box>
+            )}
             {/* Clickable footer controls (also keys t / ?). */}
             <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onCycleTheme}>
               {" ◑ " + theme.name + " "}

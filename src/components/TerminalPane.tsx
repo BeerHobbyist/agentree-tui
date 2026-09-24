@@ -21,7 +21,7 @@ import {
   tmuxWindowsQuery,
 } from "../queries";
 import { useTerminalSession } from "../hooks/useTerminalSession";
-import { agentLaunchCommand, agentSessionEnv } from "../services/agents";
+import { agentLaunchCommand, agentSessionEnv, remoteSessionEnv } from "../services/agents";
 import { remoteAgentCommand } from "../config";
 import { TabBar } from "./TabBar";
 import { MenuOverlay, type MenuItem } from "./MenuOverlay";
@@ -65,6 +65,8 @@ interface TerminalPaneProps {
   /** The diff viewer picked in the diff picker (`v`); unset = the first installed. */
   diffViewer?: DiffViewerId;
   onDiffViewer?: (id: DiffViewerId) => void;
+  /** ⌥n: go to the next agent that needs you. */
+  onJumpNext?: () => void;
 }
 
 function Centered({
@@ -132,6 +134,7 @@ function TerminalView({
   onTogglePrPanel,
   diffViewer,
   onDiffViewer,
+  onJumpNext,
 }: TerminalPaneProps) {
   const theme = useTheme();
   const session = useMemo(
@@ -157,14 +160,15 @@ function TerminalView({
           border: theme.border,
           borderActive: theme.accent,
         },
-        // A remote directory starts a plain shell: the agent's status hooks
-        // live on this machine.
+        // A remote directory starts a plain shell (the agent's hooks file is on
+        // this machine); its session tells a claude started there — with
+        // tracking on — where on the host to report.
         host ? undefined : agentLaunchCommand(),
-        host ? {} : agentSessionEnv(session),
+        host ? (worktree.hostHome ? remoteSessionEnv(session, worktree.hostHome) : {}) : agentSessionEnv(session),
         host,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [session, worktree.path, host],
+    [session, worktree.path, host, worktree.hostHome],
   );
   const { ref, onData, onTerminalResize, status, error } =
     useTerminalSession(command);
@@ -408,6 +412,11 @@ function TerminalView({
     if (n === "r") {
       eat();
       if (activeWindow) openRename(activeWindow.index);
+      return;
+    }
+    if (n === "n") {
+      eat();
+      onJumpNext?.();
       return;
     }
     // Directional keys move between split panes (vim hjkl + arrows).

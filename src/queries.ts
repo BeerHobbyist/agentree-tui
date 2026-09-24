@@ -14,7 +14,7 @@
  */
 import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import type { PrInfo } from "./data/model";
-import { readAgentStatuses, type AgentReport } from "./services/agents";
+import { readAgentStatuses, readRemoteAgentStatuses, trackingEveryClaude, type AgentReport } from "./services/agents";
 import { fetchRepoPage, listOpenPrs, prForBranch } from "./services/gh";
 import { baseRef, status as gitStatus } from "./services/git";
 import { availableViewers } from "./services/diff";
@@ -30,6 +30,8 @@ export const PR_LOOKUP_MS = 60_000;
 export const GIT_STATUS_MS = 5_000;
 /** How often agent status is read (local files — cheap). */
 export const AGENT_STATUS_MS = 1_000;
+/** An SSH host's agents: a little less often — each read is an ssh round trip. */
+export const REMOTE_AGENT_STATUS_MS = 2_000;
 /** How often the visible terminal's tab bar re-reads tmux windows. */
 export const TMUX_WINDOWS_MS = 1_000;
 /** How long the list of your GitHub repos counts as fresh. */
@@ -46,6 +48,8 @@ export const queryKeys = {
   gitStatus: (path: string) => ["git-status", path] as const,
   allGitStatus: ["git-status"] as const,
   agentStatus: ["agent-status"] as const,
+  remoteAgentStatus: (host: string) => ["agent-status", "ssh", host] as const,
+  tracking: ["tracking-every-claude"] as const,
   repos: ["repos"] as const,
   openPrs: (repo: string) => ["open-prs", repo] as const,
   tmuxAvailable: ["tmux-available"] as const,
@@ -103,6 +107,29 @@ export const agentStatusQuery = () =>
     refetchInterval: AGENT_STATUS_MS,
     refetchIntervalInBackground: true,
     retry: false,
+  });
+
+/**
+ * The agents on an SSH host whose terminals are open — read over its shared
+ * connection; a password host only while connected.
+ */
+export const remoteAgentStatusQuery = (host: string, home: string, onlyIfConnected: boolean) =>
+  queryOptions({
+    queryKey: queryKeys.remoteAgentStatus(host),
+    queryFn: async (): Promise<Record<string, AgentReport>> =>
+      Object.fromEntries(await readRemoteAgentStatuses(host, home, { onlyIfConnected })),
+    staleTime: 0,
+    refetchInterval: REMOTE_AGENT_STATUS_MS,
+    refetchIntervalInBackground: true,
+    retry: false,
+  });
+
+/** Whether every claude started in an agentree terminal reports (hooks in Claude's user settings). */
+export const trackingQuery = () =>
+  queryOptions({
+    queryKey: queryKeys.tracking,
+    queryFn: async () => trackingEveryClaude(),
+    staleTime: Infinity,
   });
 
 /** Every repo `gh` can see, a page at a time (the modal loads the rest in the background). */
