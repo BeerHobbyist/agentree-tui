@@ -91,6 +91,10 @@ export interface Sandbox {
    * host keeps it: a `tmux` first on PATH that fails unless run "on the host".
    */
   hideLocalTmux(): void;
+  /** Claude's user settings file here (CLAUDE_CONFIG_DIR in the sandbox). */
+  claudeSettings: string;
+  /** Notifications shown so far, as "title | body". */
+  notifications(): string[];
   cleanup(): void;
 }
 
@@ -146,6 +150,8 @@ export function createSandbox(): Sandbox {
   const sshConfig = join(root, "ssh-config");
   const sshMaster = join(root, "ssh-master");
   const sshAttempts = join(root, "ssh-attempts.log");
+  const claudeConfig = join(root, "claude-config");
+  const notifyLog = join(root, "notify.log");
   for (const d of [workspace, configHome, remotes, fixtures, sshHome]) {
     mkdirSync(d, { recursive: true });
   }
@@ -195,6 +201,12 @@ export function createSandbox(): Sandbox {
     FAKE_SSH_MASTER: sshMaster,
     FAKE_SSH_ATTEMPTS: sshAttempts,
     AGENTREE_SSH_CONFIG: sshConfig,
+    // Claude's user settings (tracking every claude edits them), and
+    // notifications recorded instead of shown.
+    CLAUDE_CONFIG_DIR: claudeConfig,
+    AGENTREE_NOTIFY_CMD: join(FAKEBIN, "fake-notify"),
+    AGENTREE_NOTIFY: "",
+    FAKE_NOTIFY_LOG: notifyLog,
     // Diff viewers "installed": plain git only, whatever this machine has.
     AGENTREE_DIFF_VIEWERS: "git",
     // ssh's shared-connection sockets go here rather than the real runtime dir.
@@ -288,6 +300,14 @@ export function createSandbox(): Sandbox {
     },
     dropSshConnection() {
       rmSync(sshMaster, { force: true });
+    },
+    claudeSettings: join(claudeConfig, "settings.json"),
+    notifications() {
+      try {
+        return readFileSync(notifyLog, "utf8").split("\n").filter(Boolean);
+      } catch {
+        return [];
+      }
     },
     hideLocalTmux() {
       const real = Bun.which("tmux");

@@ -11,7 +11,13 @@ import {
   hookCommand,
   hooksSettingsPath,
   readAgentStatuses,
+  readRemoteAgentStatuses,
+  remoteAgentDir,
+  setRemoteTracking,
+  setTrackingEveryClaude,
+  trackingEveryClaude,
 } from "../../src/services/agents";
+import { dirname } from "node:path";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
 let sandbox: Sandbox;
@@ -136,5 +142,87 @@ describe("readAgentStatuses", () => {
     report("agentree_a", pane, `working ${t}\n`);
     // Pretend it's much later: nothing has printed since the pane started.
     expect((await readAgentStatuses(t + 60)).get("agentree_a")?.state).toBe("idle");
+  });
+});
+
+describe("tracking every claude (Claude's user settings)", () => {
+  test("turning it on adds the hooks to existing settings; off takes only them out", () => {
+    mkdirSync(dirname(sandbox.claudeSettings), { recursive: true });
+    const mine = { model: "opus", hooks: { Stop: [{ hooks: [{ type: "command", command: "say done" }] }] } };
+    writeFileSync(sandbox.claudeSettings, JSON.stringify(mine));
+    expect(trackingEveryClaude()).toBe(false);
+
+    setTrackingEveryClaude(true);
+    expect(trackingEveryClaude()).toBe(true);
+    const on = JSON.parse(readFileSync(sandbox.claudeSettings, "utf8"));
+    expect(on.model).toBe("opus");
+    expect(JSON.stringify(on.hooks.Stop)).toContain("say done");
+    expect(JSON.stringify(on.hooks.Stop)).toContain("AGENTREE_AGENT_DIR");
+
+    setTrackingEveryClaude(false);
+    expect(JSON.parse(readFileSync(sandbox.claudeSettings, "utf8"))).toEqual(mine);
+  });
+
+  test("a settings file that isn't valid JSON is left alone", () => {
+    mkdirSync(dirname(sandbox.claudeSettings), { recursive: true });
+    writeFileSync(sandbox.claudeSettings, "{ oops");
+    expect(() => setTrackingEveryClaude(true)).toThrow("isn't valid JSON");
+    expect(readFileSync(sandbox.claudeSettings, "utf8")).toBe("{ oops");
+  });
+
+  test("the hooks, run by any process in an agentree session, report its status", async () => {
+    setTrackingEveryClaude(true);
+    const settings = JSON.parse(readFileSync(sandbox.claudeSettings, "utf8"));
+    const permission = settings.hooks.Notification[0].hooks[0].command;
+    expect(runHook(permission, agentEnv()).code).toBe(0);
+    expect(readFileSync(join(agentStatusDir(), "agentree_widget_x.7"), "utf8")).toStartWith("needs-action ");
+    // Outside an agentree session they do nothing.
+    expect(runHook(permission, { TMUX_PANE: "%7" }).code).toBe(0);
+  });
+});
+
+describe("agents on an SSH host", () => {
+  const tmux = () => ["tmux", "-L", sandbox.tmuxSocket];
+  /** A session on the "host" (the fake ssh runs everything here); returns its pane number. */
+  function remotePane(session: string): string {
+    Bun.spawnSync([...tmux(), "new-session", "-d", "-s", session, "sleep 300"]);
+    const out = Bun.spawnSync([...tmux(), "display", "-p", "-t", session, "#{pane_id}"]);
+    return new TextDecoder().decode(out.stdout).trim().replace("%", "");
+  }
+
+  test("their reports are read on the host, in one ssh call", async () => {
+    const pane = remotePane("remote_s");
+    const dir = remoteAgentDir(sandbox.sshHome);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `remote_s.${pane}`), `needs-action ${Math.floor(Date.now() / 1000)}\n`);
+    writeFileSync(join(dir, "gone_s.99"), `working ${Math.floor(Date.now() / 1000)}\n`);
+    const before = sandbox.sshCalls().length;
+
+    const statuses = await readRemoteAgentStatuses("dev-box", sandbox.sshHome);
+    expect(statuses.get("remote_s")?.state).toBe("needs-action");
+    expect(statuses.has("gone_s")).toBe(false);
+    expect(existsSync(join(dir, "gone_s.99"))).toBe(false); // stale: deleted on the host
+    expect(sandbox.sshCalls().length - before).toBe(2); // the read, and that delete
+  });
+
+  test("a password host that isn't connected isn't asked (no login from a poll)", async () => {
+    sandbox.requireSshPassword("hunter2");
+    expect((await readRemoteAgentStatuses("dev-box", sandbox.sshHome, { onlyIfConnected: true })).size).toBe(0);
+    expect(sandbox.sshLoginAttempts()).toEqual([]);
+  });
+
+  test("tracking on the host merges the hooks into its Claude settings", async () => {
+    const remote = join(sandbox.sshHome, ".claude", "settings.json");
+    mkdirSync(dirname(remote), { recursive: true });
+    writeFileSync(remote, JSON.stringify({ theme: "dark" }));
+    expect(await setRemoteTracking("dev-box", true)).toBe("changed");
+    expect(await setRemoteTracking("dev-box", true)).toBe("unchanged");
+    const on = JSON.parse(readFileSync(remote, "utf8"));
+    expect(on.theme).toBe("dark");
+    expect(JSON.stringify(on.hooks)).toContain("AGENTREE_AGENT_DIR");
+    expect(await setRemoteTracking("dev-box", false)).toBe("changed");
+    expect(JSON.parse(readFileSync(remote, "utf8"))).toEqual({ theme: "dark" });
+    // …and never touched this machine's.
+    expect(existsSync(sandbox.claudeSettings)).toBe(false);
   });
 });

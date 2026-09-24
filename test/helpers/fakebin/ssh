@@ -79,5 +79,10 @@ if [ -n "$FAKE_SSH_NO_TMUX" ]; then
 fi
 
 cd "${FAKE_SSH_HOME:-$HOME}" || exit 1
+# A real ssh session doesn't carry this machine's environment across. And the
+# "host" has plain sh as its login shell, so tmux panes there don't start the
+# developer's own shell (zsh would open its first-run wizard in this $HOME).
+unset CLAUDE_CONFIG_DIR
+export SHELL=/bin/sh
 # Marks what runs "on the host" (see the sandbox's hideLocalTmux).
 FAKE_SSH_REMOTE=1 HOME="${FAKE_SSH_HOME:-$HOME}" exec sh -c "$cmd"

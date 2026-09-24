@@ -1,0 +1,4 @@
+#!/bin/sh
+# Fake notifier for the test suite: records "title | body" to $FAKE_NOTIFY_LOG.
+[ -n "$FAKE_NOTIFY_LOG" ] && printf '%s | %s\n' "$1" "$2" >> "$FAKE_NOTIFY_LOG"
+exit 0

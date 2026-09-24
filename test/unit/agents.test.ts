@@ -4,8 +4,12 @@ import {
   WORKING_SILENCE_S,
   combineReports,
   effectiveState,
+  hasGlobalHooks,
   hooksSettings,
+  parseClaudeSettings,
   parseReport,
+  statusesFrom,
+  withGlobalHooks,
   withStatusHooks,
 } from "../../src/services/agents";
 
@@ -124,5 +128,66 @@ describe("hooksSettings", () => {
     const [notification] = hooks.Notification as { matcher: string }[];
     expect(notification!.matcher).toContain("permission_prompt");
     expect(notification!.matcher).not.toContain("idle_prompt");
+  });
+});
+
+describe("statusesFrom", () => {
+  const now = 1_000_000;
+  test("combines each session's panes; a report whose pane is gone is stale", () => {
+    const files = [
+      { name: "s1.1", content: `working ${now}` },
+      { name: "s1.2", content: `needs-action ${now}` },
+      { name: "s2.5", content: `done ${now}` },
+      { name: "s3.9", content: `working ${now}` }, // no such pane
+      { name: "s1.3.tmp", content: `idle ${now}` }, // a hook mid-write
+    ];
+    const panes = new Map([["s1.1", now], ["s1.2", now], ["s2.5", now]]);
+    const { statuses, stale } = statusesFrom(files, panes, now);
+    expect(Object.fromEntries(statuses)).toEqual({
+      s1: { state: "needs-action", since: now },
+      s2: { state: "done", since: now },
+    });
+    expect(stale).toEqual(["s3.9"]);
+  });
+
+  test("without tmux to ask, reports are taken as they are", () => {
+    const { statuses, stale } = statusesFrom([{ name: "s.1", content: `working ${now}` }], null, now);
+    expect(statuses.get("s")?.state).toBe("working");
+    expect(stale).toEqual([]);
+  });
+});
+
+describe("tracking every claude: agentree's hooks in Claude's user settings", () => {
+  const mine = {
+    model: "opus",
+    permissions: { allow: ["Bash(ls:*)"] },
+    hooks: { Stop: [{ hooks: [{ type: "command", command: "say done" }] }] },
+  };
+
+  test("installing adds a hook per event, keeping everything that was there", () => {
+    const next = withGlobalHooks(mine, true);
+    expect(hasGlobalHooks(next)).toBe(true);
+    expect(next.model).toBe("opus");
+    expect(next.permissions).toEqual(mine.permissions);
+    expect(JSON.stringify(next.hooks!.Stop)).toContain("say done");
+    for (const { event } of HOOK_EVENTS) expect(next.hooks![event]!.length).toBeGreaterThan(0);
+  });
+
+  test("installing twice doesn't duplicate; removing gives back exactly what was there", () => {
+    const twice = withGlobalHooks(withGlobalHooks(mine, true), true);
+    expect(twice).toEqual(withGlobalHooks(mine, true));
+    expect(withGlobalHooks(twice, false)).toEqual(mine);
+  });
+
+  test("removing from settings that only had ours leaves no empty hooks behind", () => {
+    expect(withGlobalHooks(withGlobalHooks({}, true), false)).toEqual({});
+    expect(hasGlobalHooks({})).toBe(false);
+  });
+
+  test("a settings file is parsed carefully: missing is empty, non-objects are refused", () => {
+    expect(parseClaudeSettings(null)).toEqual({});
+    expect(parseClaudeSettings("  ")).toEqual({});
+    expect(() => parseClaudeSettings("{ not json")).toThrow();
+    expect(() => parseClaudeSettings("[1, 2]")).toThrow();
   });
 });

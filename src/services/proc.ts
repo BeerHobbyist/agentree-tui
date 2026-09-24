@@ -13,6 +13,8 @@ export interface RunOptions {
   cwd?: string;
   /** Child environment. Defaults to the live `process.env`. */
   env?: Record<string, string | undefined>;
+  /** Text to feed the command on stdin. */
+  stdin?: string;
 }
 
 /** Run a command, capturing stdout/stderr. Never throws on non-zero exit. */
@@ -25,6 +27,7 @@ export async function run(
   const proc = Bun.spawn(cmd, {
     cwd: opts.cwd,
     env: opts.env ?? process.env,
+    stdin: opts.stdin === undefined ? "ignore" : new Blob([opts.stdin]),
     stdout: "pipe",
     stderr: "pipe",
   });

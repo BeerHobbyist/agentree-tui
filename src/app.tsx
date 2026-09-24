@@ -3,6 +3,7 @@ import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import { existsSync } from "node:fs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  focusManager,
   QueryClientProvider,
   useQueries,
   useQuery,
@@ -15,7 +16,16 @@ import {
   gitStatusQuery,
   prForBranchQuery,
   queryKeys,
+  remoteAgentStatusQuery,
+  trackingQuery,
 } from "./queries";
+import {
+  claudeSettingsPath,
+  setRemoteTracking,
+  setTrackingEveryClaude,
+  type AgentReport,
+} from "./services/agents";
+import { notify } from "./services/notify";
 import { useTheme, cycleTheme } from "./theme";
 import { displayName, type AgentStatus, type Project, type Worktree } from "./data/model";
 import { removeWorktree } from "./services/git";
@@ -268,6 +278,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   } | null>(null);
   const confirmForgetRef = useRef(confirmForget);
   confirmForgetRef.current = confirmForget;
+  // Turning "track every claude" on or off (H) — asked first: it edits Claude's settings.
+  const [confirmTracking, setConfirmTracking] = useState<boolean | null>(null);
+  const confirmTrackingRef = useRef(confirmTracking);
+  confirmTrackingRef.current = confirmTracking;
   // The PR being merged (m / the PR panel's Merge button).
   const [merging, setMerging] = useState<{ repo: string; pr: PrInfo } | null>(null);
   const mergingRef = useRef(merging);
@@ -339,7 +353,46 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
 
   // Live agent status per tmux session (services/agents), shown with "done"
   // turned into "idle" once that worktree's terminal has been on screen.
-  const agentReports = useQuery(agentStatusQuery()).data;
+  const localReports = useQuery(agentStatusQuery()).data;
+  // SSH hosts with a terminal open here: their agents report on the host, and
+  // are read over ssh (see services/agents).
+  const remoteHosts = projects
+    .filter((p) => p.ssh?.home && opened.some((o) => o.repoId === p.id))
+    .map((p) => ({ host: p.ssh!.host, home: p.ssh!.home!, needsPassword: !!p.ssh!.needsPassword }));
+  const remoteReports = useQueries({
+    queries: remoteHosts.map((h) => remoteAgentStatusQuery(h.host, h.home, h.needsPassword)),
+  });
+  const remoteSig = remoteReports.map((q) => JSON.stringify(q.data ?? null)).join("|");
+  const agentReports = useMemo(() => {
+    const all: Record<string, AgentReport> = { ...localReports };
+    for (const q of remoteReports) Object.assign(all, q.data);
+    return all;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localReports, remoteSig]);
+
+  // Tracking every claude (H): agentree's hooks in Claude's user settings, here
+  // and — once one of their terminals is open — on SSH hosts.
+  const tracking = useQuery(trackingQuery()).data ?? false;
+  const hookedHosts = useRef(new Set<string>());
+  const hookingHosts = useRef(new Set<string>());
+  const remotePolls = remoteReports.map((q) => q.dataUpdatedAt).join(",");
+  useEffect(() => {
+    if (!tracking) {
+      hookedHosts.current.clear();
+      return;
+    }
+    for (const h of remoteHosts) {
+      if (hookedHosts.current.has(h.host) || hookingHosts.current.has(h.host)) continue;
+      hookingHosts.current.add(h.host);
+      void setRemoteTracking(h.host, true, { onlyIfConnected: h.needsPassword })
+        .then((result) => {
+          if (result !== "unreachable") hookedHosts.current.add(h.host);
+        })
+        .finally(() => hookingHosts.current.delete(h.host));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracking, remotePolls]);
+
   const openSession = open ? tmuxSessionName(open.repoId, open.worktreeId) : null;
   /** When each session's terminal was last on screen (epoch seconds). */
   const [seenAt, setSeenAt] = useState<Record<string, number>>({});
@@ -353,6 +406,30 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     const seen = session === openSession || (seenAt[session] ?? 0) >= r.since;
     agentStatus[session] = r.state === "done" && seen ? "idle" : r.state;
   }
+  // Tell the user when an agent starts needing them or finishes — unless
+  // they're looking at it (its terminal on screen, in a focused window). Only
+  // for changes since agentree started watching: an old "done" found at
+  // startup, or on a host opened later, isn't news.
+  const [watchingSince] = useState(() => Math.floor(Date.now() / 1000));
+  const notified = useRef<Record<string, AgentStatus>>({});
+  const statusSig = JSON.stringify(agentStatus);
+  useEffect(() => {
+    for (const [session, state] of Object.entries(agentStatus)) {
+      const before = notified.current[session];
+      notified.current[session] = state;
+      if (state !== "needs-action" && state !== "done") continue;
+      if (before === state || (agentReports[session]?.since ?? 0) < watchingSince) continue;
+      if (session === openSession && focusManager.isFocused()) continue;
+      const where = projectsRef.current
+        .flatMap((p) => p.worktrees.map((w) => ({ p, w })))
+        .find(({ p, w }) => tmuxSessionName(p.id, w.id) === session);
+      if (!where) continue;
+      const name = displayName(where.w);
+      notify(state === "needs-action" ? `${name} needs you` : `${name} is done`, where.p.name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusSig]);
+
   // An agent changing state has probably touched files, and may have opened
   // or pushed to a PR.
   const reportsSig = JSON.stringify(agentReports ?? null);
@@ -562,6 +639,49 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       return;
     }
     openAdd({ nameWithOwner: proj.id, name: proj.name, root: proj.root });
+  };
+
+  /**
+   * Go to the next agent that needs you — or, with none, the next that's done —
+   * after the one on screen, in sidebar order (Tab, ⌥n, or a footer count for
+   * that state). Its terminal opens with the keys, ready for an answer.
+   */
+  const jumpToNext = (only?: AgentStatus) => {
+    const all = projectsRef.current.flatMap((p) =>
+      p.worktrees.filter((w) => !w.missing).map((w) => ({ repoId: p.id, worktreeId: w.id, agent: w.agent })),
+    );
+    const here = openRef.current;
+    const from = here ? all.findIndex((o) => o.repoId === here.repoId && o.worktreeId === here.worktreeId) : -1;
+    for (const state of only ? [only] : (["needs-action", "done"] as AgentStatus[])) {
+      const candidates = all.map((o, i) => ({ o, i })).filter(({ o }) => o.agent === state);
+      if (candidates.length === 0) continue;
+      const { o } = candidates.find(({ i }) => i > from) ?? candidates[0]!;
+      if (collapsedRef.current.has(o.repoId)) {
+        const next = new Set(collapsedRef.current);
+        next.delete(o.repoId);
+        applyCollapsed(next);
+      }
+      openWorktreeTerminal(o.repoId, o.worktreeId);
+      return;
+    }
+  };
+
+  /** Track every claude, or stop: agentree's hooks in Claude's user settings, here and on open SSH hosts. */
+  const performTracking = (on: boolean) => {
+    setConfirmTracking(null);
+    try {
+      setTrackingEveryClaude(on);
+    } catch (err) {
+      setNotice({ title: "Couldn't change Claude's settings", message: errText(err) });
+      return;
+    }
+    hookedHosts.current.clear();
+    for (const h of remoteHosts) {
+      void setRemoteTracking(h.host, on, { onlyIfConnected: h.needsPassword }).then((result) => {
+        if (on && result !== "unreachable") hookedHosts.current.add(h.host);
+      });
+    }
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tracking });
   };
 
   /** Open (mount + focus) a worktree's terminal — used by click and Enter. */
@@ -793,6 +913,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (
       confirmCloseRef.current ||
       confirmForgetRef.current ||
+      confirmTrackingRef.current !== null ||
       noticeRef.current ||
       renamingRef.current ||
       mergingRef.current ||
@@ -869,6 +990,15 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     }
     if (key.name === "t") {
       cycleTheme();
+      return;
+    }
+    if (key.name === "tab") {
+      jumpToNext();
+      return;
+    }
+    if (key.name === "h" && key.shift) {
+      // H: track every claude (or stop) — asks first.
+      setConfirmTracking(!tracking);
       return;
     }
     if (key.name === "b") {
@@ -965,6 +1095,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           onResizeEnd={() => persistSidebarWidth()}
           onResetWidth={resetSidebarWidth}
           onHide={hideSidebar}
+          onJump={jumpToNext}
         />
       )}
       <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
@@ -983,6 +1114,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
               onTogglePrPanel={togglePrPanel}
               diffViewer={diffViewer}
               onDiffViewer={chooseDiffViewer}
+              onJumpNext={jumpToNext}
             />
           );
         })}
@@ -1030,6 +1162,23 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           }
           onConfirm={() => void performCloseWorktree()}
           onCancel={() => setConfirmClose(null)}
+        />
+      )}
+      {confirmTracking !== null && (
+        <ConfirmModal
+          title={confirmTracking ? "Track every claude" : "Stop tracking every claude"}
+          message={
+            confirmTracking
+              ? `Show the status of any claude you start in an agentree terminal — not just the ones agentree starts? This adds agentree's hooks to ${claudeSettingsPath()} (and on SSH hosts, once you open one).`
+              : `Take agentree's hooks out of ${claudeSettingsPath()} (and SSH hosts you have open)? The agents agentree starts keep reporting.`
+          }
+          detail={
+            confirmTracking
+              ? "They do nothing outside agentree terminals, and your other settings are left as they are. H again takes them out."
+              : undefined
+          }
+          onConfirm={() => performTracking(confirmTracking)}
+          onCancel={() => setConfirmTracking(null)}
         />
       )}
       {confirmForget && (

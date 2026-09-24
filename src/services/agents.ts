@@ -15,10 +15,13 @@
  * alive, and when its window last printed anything.
  */
 import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { agentCommand, stateFilePath } from "../config";
 import type { AgentStatus } from "../data/model";
-import { listPaneActivity } from "./tmux";
+import { run } from "./proc";
+import { isConnected, remoteArgv, shq } from "./ssh";
+import { listPaneActivity, socketName } from "./tmux";
 
 /** A state a hook can report (everything but "none"). */
 export type ReportedState = Exclude<AgentStatus, "none">;
@@ -195,8 +198,44 @@ export function combineReports(reports: AgentReport[]): AgentReport | undefined 
 }
 
 /**
- * Every tmux session's current agent status. Reports from panes that no longer
- * exist are deleted (their agent is gone and fired no SessionEnd).
+ * Status files (name + content) and what tmux says about the panes (null: tmux
+ * couldn't be asked) → each session's status, plus the files whose pane is
+ * gone (their agent died without a SessionEnd), to delete.
+ */
+export function statusesFrom(
+  files: { name: string; content: string }[],
+  panes: Map<string, number> | null,
+  now: number,
+): { statuses: Map<string, AgentReport>; stale: string[] } {
+  const bySession = new Map<string, AgentReport[]>();
+  const stale: string[] = [];
+  for (const { name, content } of files) {
+    const report = parseReport(name, content);
+    if (!report) continue;
+    let state = report.state;
+    if (panes) {
+      const lastOutput = panes.get(`${report.session}.${report.pane}`);
+      if (lastOutput === undefined) {
+        stale.push(name);
+        continue;
+      }
+      state = effectiveState(report, lastOutput, now);
+    }
+    const list = bySession.get(report.session) ?? [];
+    list.push({ state, since: report.since });
+    bySession.set(report.session, list);
+  }
+  const statuses = new Map<string, AgentReport>();
+  for (const [session, reports] of bySession) {
+    const combined = combineReports(reports);
+    if (combined) statuses.set(session, combined);
+  }
+  return { statuses, stale };
+}
+
+/**
+ * Every local tmux session's current agent status. Reports from panes that no
+ * longer exist are deleted (their agent is gone and fired no SessionEnd).
  */
 export async function readAgentStatuses(
   now = Math.floor(Date.now() / 1000),
@@ -210,35 +249,186 @@ export async function readAgentStatuses(
   }
   if (names.length === 0) return new Map();
 
-  const panes = await listPaneActivity();
-  const bySession = new Map<string, AgentReport[]>();
+  const files: { name: string; content: string }[] = [];
   for (const name of names) {
-    let content: string;
     try {
-      content = readFileSync(join(dir, name), "utf8");
+      files.push({ name, content: readFileSync(join(dir, name), "utf8") });
     } catch {
-      continue; // raced with a hook's rename, or removed
+      // raced with a hook's rename, or removed
     }
-    const report = parseReport(name, content);
-    if (!report) continue;
-    let state = report.state;
-    if (panes) {
-      const lastOutput = panes.get(`${report.session}.${report.pane}`);
-      if (lastOutput === undefined) {
-        rmSync(join(dir, name), { force: true });
-        continue;
-      }
-      state = effectiveState(report, lastOutput, now);
-    }
-    const list = bySession.get(report.session) ?? [];
-    list.push({ state, since: report.since });
-    bySession.set(report.session, list);
   }
+  const { statuses, stale } = statusesFrom(files, await listPaneActivity(), now);
+  for (const name of stale) rmSync(join(dir, name), { force: true });
+  return statuses;
+}
 
-  const result = new Map<string, AgentReport>();
-  for (const [session, reports] of bySession) {
-    const combined = combineReports(reports);
-    if (combined) result.set(session, combined);
+// --- agents on SSH hosts ---
+
+/** Where the hooks on an SSH host write (the same place as here, under its home). */
+export function remoteAgentDir(home: string): string {
+  return `${home}/.config/agentree/agents`;
+}
+
+/** The session environment for an SSH host's terminal, so its hooks report there. */
+export function remoteSessionEnv(session: string, home: string): Record<string, string> {
+  return { AGENTREE_AGENT_DIR: remoteAgentDir(home), AGENTREE_SESSION: session };
+}
+
+const PANES_MARK = "--agentree-panes--";
+const NO_TMUX_MARK = "--agentree-no-tmux-server--";
+
+/**
+ * The agents' status on an SSH host: its status files and its tmux panes, read
+ * in one ssh call (over the host's shared connection), combined as locally;
+ * files whose pane is gone are deleted there. `onlyIfConnected` (a password
+ * host): nothing unless connected — never a login from a poll.
+ */
+export async function readRemoteAgentStatuses(
+  host: string,
+  home: string,
+  opts: { onlyIfConnected?: boolean; now?: number } = {},
+): Promise<Map<string, AgentReport>> {
+  if (opts.onlyIfConnected && !(await isConnected(host))) return new Map();
+  const dir = remoteAgentDir(home);
+  const script = [
+    `d=${shq(dir)}`,
+    `if [ -d "$d" ]; then for f in "$d"/*; do [ -f "$f" ] || continue; printf '%s\\t%s\\n' "\${f##*/}" "$(cat "$f" 2>/dev/null)"; done; fi`,
+    `echo ${PANES_MARK}`,
+    `tmux -u -L ${shq(socketName())} list-panes -a -F '#{session_name}	#{pane_id}	#{window_activity}' 2>/dev/null || echo ${NO_TMUX_MARK}`,
+  ].join("; ");
+  const { code, stdout } = await run(remoteArgv(host, ["sh", "-c", script]));
+  if (code !== 0 && !stdout.includes(PANES_MARK)) return new Map(); // couldn't connect
+  const [filePart = "", panePart = ""] = stdout.split(PANES_MARK + "\n");
+  const files = filePart
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const tab = line.indexOf("\t");
+      return { name: line.slice(0, tab), content: line.slice(tab + 1) };
+    });
+  let panes: Map<string, number> | null = new Map();
+  if (!panePart.includes(NO_TMUX_MARK)) {
+    for (const line of panePart.split("\n")) {
+      const [session, paneId, activity] = line.split("\t");
+      if (session && paneId) panes.set(`${session}.${paneId.replace(/^%/, "")}`, parseInt(activity || "0", 10) || 0);
+    }
   }
-  return result;
+  const { statuses, stale } = statusesFrom(files, panes, opts.now ?? Math.floor(Date.now() / 1000));
+  if (stale.length > 0) {
+    await run(remoteArgv(host, ["rm", "-f", ...stale.map((n) => `${dir}/${n}`)])).catch(() => {});
+  }
+  return statuses;
+}
+
+// --- tracking every claude: the hooks in Claude's user settings ---
+
+/** Claude Code's user settings file (`$CLAUDE_CONFIG_DIR`, else ~/.claude). */
+export function claudeSettingsPath(): string {
+  return join(process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude"), "settings.json");
+}
+
+type ClaudeSettings = Record<string, unknown> & { hooks?: Record<string, unknown[]> };
+
+/** One of our hook commands (they all read AGENTREE_AGENT_DIR). */
+function isOurs(entry: unknown): boolean {
+  const hooks = (entry as { hooks?: { command?: unknown }[] } | null)?.hooks;
+  return Array.isArray(hooks) && hooks.some((h) => typeof h?.command === "string" && h.command.includes("AGENTREE_AGENT_DIR"));
+}
+
+/**
+ * Claude settings with agentree's hooks taken out — and, with `install`, put
+ * back in, current. Everything else (other hooks, other keys) is kept as it was.
+ */
+export function withGlobalHooks(settings: ClaudeSettings, install: boolean): ClaudeSettings {
+  const hooks: Record<string, unknown[]> = {};
+  for (const [event, entries] of Object.entries(settings.hooks ?? {})) {
+    const kept = Array.isArray(entries) ? entries.filter((e) => !isOurs(e)) : entries;
+    if (!Array.isArray(kept) || kept.length > 0) hooks[event] = kept as unknown[];
+  }
+  if (install) {
+    for (const [event, entries] of Object.entries(hooksSettings().hooks)) {
+      hooks[event] = [...(hooks[event] ?? []), ...entries];
+    }
+  }
+  const { hooks: _, ...rest } = settings;
+  return Object.keys(hooks).length > 0 ? { ...rest, hooks } : rest;
+}
+
+/** Whether settings carry agentree's hooks for every event (i.e. tracking is on). */
+export function hasGlobalHooks(settings: ClaudeSettings): boolean {
+  return HOOK_EVENTS.every(({ event }) => (settings.hooks?.[event] ?? []).some?.((e: unknown) => isOurs(e)));
+}
+
+/** Parse a settings file's text; missing → {}; not a JSON object → throws, so nothing gets overwritten. */
+export function parseClaudeSettings(text: string | null): ClaudeSettings {
+  if (text === null || !text.trim()) return {};
+  const parsed = JSON.parse(text) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not a JSON object");
+  return parsed as ClaudeSettings;
+}
+
+function readText(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+/** Whether any claude started in an agentree terminal reports its status (hooks in the user settings). */
+export function trackingEveryClaude(): boolean {
+  try {
+    return hasGlobalHooks(parseClaudeSettings(readText(claudeSettingsPath())));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Turn tracking every claude on or off here: add agentree's hooks to (or take
+ * them out of) Claude's user settings. They only act inside agentree
+ * terminals. A settings file that isn't valid JSON is left alone (throws).
+ */
+export function setTrackingEveryClaude(on: boolean): void {
+  const path = claudeSettingsPath();
+  let settings: ClaudeSettings;
+  try {
+    settings = parseClaudeSettings(readText(path));
+  } catch (err) {
+    throw new Error(`${path} isn't valid JSON, so it was left alone (${err instanceof Error ? err.message : err})`);
+  }
+  const next = withGlobalHooks(settings, on);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path + ".agentree.tmp", JSON.stringify(next, null, 2) + "\n", "utf8");
+  renameSync(path + ".agentree.tmp", path);
+}
+
+/**
+ * The same on an SSH host: its Claude user settings are read, merged here and
+ * written back over the shared connection. "unreachable": not connected (a
+ * password host), couldn't connect, or its settings aren't JSON to merge into.
+ */
+export async function setRemoteTracking(
+  host: string,
+  on: boolean,
+  opts: { onlyIfConnected?: boolean } = {},
+): Promise<"changed" | "unchanged" | "unreachable"> {
+  if (opts.onlyIfConnected && !(await isConnected(host))) return "unreachable";
+  const where = `f="\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"`;
+  const read = await run(remoteArgv(host, ["sh", "-c", `${where}; cat "$f" 2>/dev/null; true`]));
+  if (read.code !== 0) return "unreachable";
+  let settings: ClaudeSettings;
+  try {
+    settings = parseClaudeSettings(read.stdout);
+  } catch {
+    return "unreachable"; // not ours to repair
+  }
+  const next = withGlobalHooks(settings, on);
+  if (JSON.stringify(next) === JSON.stringify(settings)) return "unchanged";
+  const content = JSON.stringify(next, null, 2) + "\n";
+  const write = await run(
+    remoteArgv(host, ["sh", "-c", `${where}; mkdir -p "$(dirname "$f")" && cat > "$f.agentree.tmp" && mv -f "$f.agentree.tmp" "$f"`]),
+    { stdin: content },
+  );
+  return write.code === 0 ? "changed" : "unreachable";
 }
