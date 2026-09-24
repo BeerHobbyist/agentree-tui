@@ -53,7 +53,7 @@ import { ConfirmModal } from "./components/ConfirmModal";
 import { RenameModal } from "./components/RenameModal";
 import { MergeModal } from "./components/MergeModal";
 
-function MainPane({ row }: { row: Row | undefined }) {
+function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?: boolean }) {
   const theme = useTheme();
   const label = !row
     ? "agentree"
@@ -78,7 +78,7 @@ function MainPane({ row }: { row: Row | undefined }) {
       <ascii-font font="tiny" text={label} />
       <text fg={theme.fgMuted}>{subtitle}</text>
       <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-        {"tmux session would render here"}
+        {sidebarHidden ? "The sidebar is hidden — b shows it" : "tmux session would render here"}
       </text>
     </box>
   );
@@ -206,6 +206,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   // The PR panel on the right, for the worktree on screen when it has a PR:
   // shown unless switched off with `p`. Both that and its width are remembered.
   const [prPanelHidden, setPrPanelHidden] = useState(() => state.ui?.prPanelHidden ?? false);
+  // The sidebar can be hidden (b) to give the terminal the whole width; remembered.
+  const [sidebarHidden, setSidebarHidden] = useState(() => state.ui?.sidebarHidden ?? false);
   const [prPanelWidth, setPrPanelWidth] = useState(
     () => state.ui?.prPanelWidth ?? DEFAULT_PR_PANEL_WIDTH,
   );
@@ -249,6 +251,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   screenWidthRef.current = screenWidth;
   const prPanelHiddenRef = useRef(prPanelHidden);
   prPanelHiddenRef.current = prPanelHidden;
+  const sidebarHiddenRef = useRef(sidebarHidden);
+  sidebarHiddenRef.current = sidebarHidden;
   const prPanelWidthRef = useRef(prPanelWidth);
   prPanelWidthRef.current = prPanelWidth;
   const prCollapsedRef = useRef(prCollapsed);
@@ -391,6 +395,28 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (Object.keys(ui).length > 0) state.ui = ui as UiState;
     else delete state.ui;
     void saveState(state).catch(() => {});
+  };
+
+  /** Show / hide the sidebar, and remember it. */
+  const applySidebarHidden = (hidden: boolean) => {
+    sidebarHiddenRef.current = hidden;
+    setSidebarHidden(hidden);
+    saveUi({ sidebarHidden: hidden || undefined });
+  };
+
+  /**
+   * Hide the sidebar (`b`, its ⇤): the keys go to the terminal on screen, if
+   * there is one. Shown again by `b`, or by going back to it (Ctrl+g, ‹).
+   */
+  const hideSidebar = () => {
+    applySidebarHidden(true);
+    if (openRef.current) setFocusMode("terminal");
+  };
+
+  /** Back to the sidebar (Ctrl+g, the tab bar's ‹) — showing it if it was hidden. */
+  const exitToSidebar = () => {
+    if (sidebarHiddenRef.current) applySidebarHidden(false);
+    setFocusMode("sidebar");
   };
 
   /** Show / hide the PR panel (`p`, ⌥p, its ✕, or the tab bar's PR button). */
@@ -756,6 +782,11 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       cycleTheme();
       return;
     }
+    if (key.name === "b") {
+      if (sidebarHiddenRef.current) applySidebarHidden(false);
+      else hideSidebar();
+      return;
+    }
     if (key.name === "?") {
       setHelpOpen(true);
       return;
@@ -823,27 +854,30 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     ? { repo: onScreen.repoId, pr: onScreen.worktree.pr }
     : null;
   currentPrRef.current = currentPr;
-  const layout = fitPanels(screenWidth, sidebarWidth, prPanelWidth, !prPanelHidden && !!currentPr);
+  const layout = fitPanels(screenWidth, sidebarWidth, prPanelWidth, !prPanelHidden && !!currentPr, sidebarHidden);
   layoutRef.current = layout;
 
   return (
     <box flexDirection="row" flexGrow={1} backgroundColor={theme.bg}>
-      <Sidebar
-        projects={viewProjects}
-        collapsed={collapsed}
-        activeKey={activeKey}
-        onAddWorktree={openAddForProject}
-        onClickWorktree={clickWorktree}
-        onRenameWorktree={requestRename}
-        onFocus={() => setFocusMode("sidebar")}
-        onSelectProject={selectProject}
-        onCycleTheme={() => cycleTheme()}
-        onHelp={() => setHelpOpen(true)}
-        width={layout.sidebar}
-        onResize={applySidebarWidth}
-        onResizeEnd={() => persistSidebarWidth()}
-        onResetWidth={resetSidebarWidth}
-      />
+      {!sidebarHidden && (
+        <Sidebar
+          projects={viewProjects}
+          collapsed={collapsed}
+          activeKey={activeKey}
+          onAddWorktree={openAddForProject}
+          onClickWorktree={clickWorktree}
+          onRenameWorktree={requestRename}
+          onFocus={() => setFocusMode("sidebar")}
+          onSelectProject={selectProject}
+          onCycleTheme={() => cycleTheme()}
+          onHelp={() => setHelpOpen(true)}
+          width={layout.sidebar}
+          onResize={applySidebarWidth}
+          onResizeEnd={() => persistSidebarWidth()}
+          onResetWidth={resetSidebarWidth}
+          onHide={hideSidebar}
+        />
+      )}
       <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
         {mounted.map((m) => {
           const isActive = m.key === activeTermKey;
@@ -855,13 +889,13 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
               visible={isActive}
               focused={isActive && focusMode === "terminal"}
               onRequestFocus={() => setFocusMode("terminal")}
-              onExit={() => setFocusMode("sidebar")}
+              onExit={exitToSidebar}
               prPanelShown={layout.panel > 0}
               onTogglePrPanel={togglePrPanel}
             />
           );
         })}
-        {showMain && <MainPane row={active} />}
+        {showMain && <MainPane row={active} sidebarHidden={sidebarHidden} />}
       </box>
       {layout.panel > 0 && currentPr && (
         <PrPanel

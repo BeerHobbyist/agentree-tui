@@ -42,6 +42,8 @@ export interface StoredRepo {
 export interface UiState {
   /** Sidebar width the user dragged/resized to; omitted = default. */
   sidebarWidth?: number;
+  /** The sidebar was hidden (`b`); omitted = shown. */
+  sidebarHidden?: boolean;
   /** The PR panel was switched off (`p`); omitted = shown. */
   prPanelHidden?: boolean;
   /** PR panel width the user dragged to; omitted = default. */
@@ -62,7 +64,7 @@ export interface State {
 /** Keep only well-formed ui fields from a parsed state file. */
 function sanitizeUi(raw: unknown): UiState | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const { sidebarWidth, prPanelHidden, prPanelWidth, mergeMethod, prPanelCollapsed } = raw as Record<
+  const { sidebarWidth, sidebarHidden, prPanelHidden, prPanelWidth, mergeMethod, prPanelCollapsed } = raw as Record<
     string,
     unknown
   >;
@@ -72,6 +74,7 @@ function sanitizeUi(raw: unknown): UiState | undefined {
   if (width(sidebarWidth)) ui.sidebarWidth = width(sidebarWidth);
   if (width(prPanelWidth)) ui.prPanelWidth = width(prPanelWidth);
   if (prPanelHidden === true) ui.prPanelHidden = true;
+  if (sidebarHidden === true) ui.sidebarHidden = true;
   if (mergeMethod === "squash" || mergeMethod === "merge" || mergeMethod === "rebase") {
     ui.mergeMethod = mergeMethod;
   }

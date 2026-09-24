@@ -30,6 +30,8 @@ interface SidebarProps {
   onCycleTheme: () => void;
   /** Open the help overlay. */
   onHelp: () => void;
+  /** Hide the sidebar (its footer's ⇤; also `b`). */
+  onHide?: () => void;
   width?: number;
   /** Dragging the right-edge divider: the width it's being dragged to. */
   onResize?: (width: number) => void;
@@ -180,6 +182,7 @@ export function Sidebar({
   onSelectProject,
   onCycleTheme,
   onHelp,
+  onHide,
   width = DEFAULT_SIDEBAR_WIDTH,
   onResize,
   onResizeEnd,
@@ -205,8 +208,17 @@ export function Sidebar({
       onMouseDown={() => onFocus?.()}
     >
       <box flexDirection="column" flexGrow={1} minWidth={0}>
+        {/* Top row (it used to be padding): the hide button, in the corner where
+            a collapse control is looked for. */}
+        <box flexDirection="row" flexShrink={0} height={1} justifyContent="flex-end" paddingRight={1}>
+          {onHide && (
+            <text fg={theme.fgMuted} onMouseDown={onHide}>
+              {"⇤"}
+            </text>
+          )}
+        </box>
         {/* Project groups */}
-        <box flexDirection="column" flexGrow={1} paddingTop={1}>
+        <box flexDirection="column" flexGrow={1}>
           {projects.length === 0 ? (
             <box flexDirection="column" paddingLeft={2} paddingRight={2}>
               <text fg={theme.fgMuted}>{"No projects yet."}</text>
@@ -260,7 +272,7 @@ export function Sidebar({
             </text>
           </box>
           <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-            {"↑↓ move  ⏎ terminal  a +wt  R rename  d close  n new  p PR  t theme  ? help  q quit"}
+            {"↑↓ move  ⏎ terminal  a +wt  R rename  d close  n new  p PR  b hide  t theme  ? help  q quit"}
           </text>
         </box>
       </box>

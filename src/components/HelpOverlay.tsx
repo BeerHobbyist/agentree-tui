@@ -25,6 +25,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["m", "merge the PR (pick a method, then confirm)"],
       ["PgUp  /  PgDn", "scroll the PR panel"],
       ["[  /  ]", "narrower / wider sidebar"],
+      ["b", "hide / show the sidebar"],
       ["=", "reset sidebar width"],
       ["?", "toggle this help"],
       ["q  /  Ctrl+C", "quit"],
@@ -33,7 +34,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Terminal (focused)",
     rows: [
-      ["Ctrl+G", "back to sidebar"],
+      ["Ctrl+G", "back to sidebar (shows it if hidden)"],
       ["⌥ h j k l  /  ⌥ ← ↓ ↑ →", "move between split panes"],
       ["⌥ ,  /  ⌥ .", "previous / next tab"],
       ["⌥ 1–9", "jump to tab"],
@@ -71,6 +72,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["click project header", "select + fold"],
       ["click ＋", "add worktree"],
       ["drag sidebar edge", "resize · double-click to reset"],
+      ["click ⇤ / ‹", "hide the sidebar / back to it"],
       ["⇡#N in the tab bar", "show / hide the PR panel"],
       ["PR panel", "click a check → its log · a comment → GitHub"],
       ["＋ menu", "new shell · new agent · new diff (hunk)"],

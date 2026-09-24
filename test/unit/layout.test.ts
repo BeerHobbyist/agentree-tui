@@ -52,4 +52,11 @@ describe("fitPanels", () => {
   test("on a screen too narrow for all three, the panel hides", () => {
     expect(fitPanels(80, 38, 46, true).panel).toBe(0);
   });
+
+  test("a hidden sidebar takes no room, which the panel can then use", () => {
+    expect(fitPanels(140, 38, 46, false, true)).toEqual({ sidebar: 0, panel: 0 });
+    expect(fitPanels(140, 38, 46, true, true)).toEqual({ sidebar: 0, panel: 46 });
+    // The narrow screen that had no room for the panel now does.
+    expect(fitPanels(80, 38, 46, true, true).panel).toBeGreaterThanOrEqual(MIN_PR_PANEL_WIDTH);
+  });
 });
