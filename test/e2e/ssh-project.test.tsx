@@ -137,8 +137,10 @@ describe("adding an SSH host", () => {
 
   test("＋ on the host adds another directory, straight to the directory step", async () => {
     await addApi();
-    const plus = locate("＋");
-    await app.mockMouse.click(plus.x, plus.y);
+    // The host header's ＋ (the tab bar has one too, for a new tab).
+    const header = locate("⌁ dev-box");
+    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf("＋");
+    await app.mockMouse.click(plusX, header.y);
     await waitForText(app, "Add a directory on dev-box");
     app.mockInput.pressEnter(); // the default: ~
     await waitForText(app, "· ~");

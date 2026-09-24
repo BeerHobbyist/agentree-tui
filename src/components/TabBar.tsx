@@ -52,8 +52,10 @@ export function TabBar({
 }: TabBarProps) {
   const theme = useTheme();
   return (
+    // Never squeezed out: on a short screen the terminal below would take its row.
     <box
       flexDirection="row"
+      flexShrink={0}
       alignItems="center"
       backgroundColor={theme.panel}
       paddingLeft={1}
@@ -127,7 +129,7 @@ export function TabBar({
           {`  ⇡#${pr.number}${pr.checks ? " " + checkLook(pr.checks, theme).glyph : ""} `}
         </text>
       )}
-      {/* The key hints give way first, so tab names aren't cut short. */}
+      {/* The one key worth always showing: the way back. The rest are in `?`. */}
       <text
         fg={theme.fgFaint}
         attributes={TextAttributes.DIM}
@@ -136,7 +138,7 @@ export function TabBar({
         wrapMode="none"
         truncate
       >
-        {"  ⌥t tab · ⌥r rename · ⌥a agent · ⌥d diff · ⌥p PR · ⌥w pane · ⌥hjkl pane · ^g sidebar"}
+        {"  ^g sidebar"}
       </text>
     </box>
   );
