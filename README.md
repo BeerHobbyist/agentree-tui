@@ -1,23 +1,156 @@
-# react
+# agentree
 
-Requires [Bun](https://bun.sh/) 1.3.0 or later.
+**A terminal workspace for running coding agents in parallel — one git worktree each.**
 
-To install dependencies:
+agentree keeps every branch you're working on in its own [git worktree](https://git-scm.com/docs/git-worktree), each with its own terminal (tabs, splits, and an agent like Claude Code running in it). A sidebar shows all of them at once — which agent is working, which one needs you, what's changed, and the state of each branch's pull request — so you can keep several agents busy without losing track of any.
 
-```bash
+```text
+                                   ⇤ │ ‹  ● claude ×  ○ dev ×     ⬌ ⬍  ✕  ⇡#42 ◌   ^g sidebar │
+  ▾ ◈ webapp                  3  ＋  │> Add a login screen with OAuth                         │ ⇡ #42 Open                             ◌  ✕
+    ~/agentree/webapp                │                                                        │ Add login screen
+                                     │  Reading src/auth.ts …                                 │ ignacy · main ← feature/login
+  │   · main                         │  Writing src/login.tsx …                               │ +212 −18 · 6 files · updated 20m ago
+  │   main                           │$                                                       │ ───────────────────────────────────────────
+  │   · Login screen            ⇡#42 │                                                        │
+  │   feature/login               ●1 │                                                        │  ▾ Merge
+  │   ◆ checkout-total  needs action │                                                        │  ● Blocked: review required
+  │   fix/checkout-total             │                                                        │   Merge…  m
+                                     │                                                        │
+  ▾ ◈ api                     2  ＋  │                                                        │  ▾ Reviews  review required
+    ~/agentree/api                   │                                                        │  ✓ alice · approved
+                                     │                                                        │  ◌ bob · review requested
+  │   · main                         │                                                        │
+  │   main                           │                                                        │  ▾ Checks  ◌ 1  ✓ 1
+  │   ◐ rate-limits          working │                                                        │  ◌ e2e · CI
+  │   feat/rate-limits               │                                                        │  ✓ build · CI
+                                     │                                                        │
+                                     │                                                        │  ▾ Description
+                                     │                                                        │  │ Adds the login screen and session
+                                     │                                                        │  │ handling.
+                                     │                                                        │
+                                     │                                                        │  ▾ Comments  1 · newest first
+                                     │                                                        │  alice · 30m ago
+                                     │                                                        │  │ Looks good — one nit on the redirect.
+                                     │                                                        │
+─────────────────────────────────────│                                                        │
+  ◆ 1  ◐ 1            ◑ onedark  ?   │                                                        │ ───────────────────────────────────────────
+  Tab next agent · ⏎ open · ? keys   │                                                        │ updated just now · m...· o open · r refresh
+```
+
+<sub>An agent is building the login screen in its worktree (a dev server in the next tab); another one is waiting for an answer (◆) and a third is working (◐). On the right, the pull request for the branch on screen.</sub>
+
+## Features
+
+- **Worktrees, not branches you switch between.** Add one from any repo `gh` can see (cloned if needed), from an open pull request (forks included), or on a new branch. Each gets its own directory, terminal and agent.
+- **Terminals that stay alive.** Every worktree's terminal runs in tmux, with tabs and splits — close agentree, come back, and everything is still running where you left it.
+- **See what every agent is doing.** ◆ needs you · ◐ working · ✓ done — for the agents agentree starts, and (opt-in) any `claude` you start in its terminals. A desktop notification when one needs you while you're elsewhere, and `Tab` jumps straight to it.
+- **Pull requests in view.** A badge on each worktree coloured by CI, and a panel with checks, reviews, merge status and comments. Merge from it, too — with a confirm step, pinned to the commit you're looking at.
+- **Diffs your way.** Working changes, staged, against the base branch, or any ref — in hunk, diffnav, delta, difftastic, nvim diffview or plain git, whichever you have.
+- **Remote machines as projects.** Add an SSH host and a directory on it; its terminals run there, in tmux there, so they survive a dropped connection. Key or password login.
+- **A CLI for the agents themselves.** Inside an agentree terminal, `agentree tab new --name dev -- npm run dev` starts a dev server in its own tab and `agentree tab read dev` shows its output — so an agent can run and watch long-lived processes without blocking itself. Comes with a Claude Code skill that teaches it when and how.
+- **Keyboard first, mouse everywhere.** Every action has a key; everything is also clickable, and the sidebar and PR panel resize by dragging.
+
+## Requirements
+
+- **[Bun](https://bun.sh) ≥ 1.3.5** (its native PTY runs the terminals)
+- **[tmux](https://github.com/tmux/tmux) 3.x** — locally, and on any SSH host you add
+- **git**, and the **[GitHub CLI](https://cli.github.com)** (`gh`, logged in) for repos and pull requests
+- Linux or macOS
+- Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (started in new worktrees by default), a diff viewer ([hunk](https://www.npmjs.com/package/hunkdiff), [delta](https://github.com/dandavison/delta), [difftastic](https://difftastic.wilfred.me.uk), [diffnav](https://github.com/dlvhdr/diffnav)), `notify-send` on Linux for notifications
+
+## Install
+
+```sh
+git clone https://github.com/BeerHobbyist/agentree-tui.git
+cd agentree-tui
 bun install
+bun run install:bin        # builds a single binary into ~/.local/bin/agentree
 ```
 
-To run:
+Or run it straight from the checkout with `bun run dev`.
 
-```bash
-bun dev
+## Getting started
+
+```sh
+agentree
 ```
 
-To typecheck:
+1. Press **`n`** and pick a repo — agentree clones it (into `~/agentree/`) and shows it in the sidebar.
+2. Press **`a`** on it to add a worktree: a new branch, an existing one, or one of the repo's open pull requests. Its terminal opens, with an agent started in it.
+3. Press **`Enter`** on a worktree to type in its terminal; **`Ctrl+g`** takes you back to the sidebar.
+4. Press **`?`** any time for every key.
 
-```bash
+To have an agent drive its own tabs, install the skill once:
+
+```sh
+agentree skill install     # into ~/.claude/skills/agentree/
+```
+
+## Keys
+
+| In the sidebar | | In a terminal | |
+|---|---|---|---|
+| `↑` `↓` / `j` `k` | move | `Ctrl+g` | back to the sidebar |
+| `Enter` | open the terminal | `⌥t` / `⌥w` | new tab / close pane |
+| `n` / `a` / `s` | add a repo / worktree / SSH host | `⌥,` `⌥.` / `⌥1`–`9` | switch tabs |
+| `d` | close a worktree | `⌥\` / `⌥-` | split |
+| `R` | rename (label only) | `⌥h` `⌥j` `⌥k` `⌥l` | move between panes |
+| `Tab` | next agent that needs you | `⌥r` | rename the tab |
+| `p` / `m` | PR panel / merge | `⌥d` | open a diff |
+| `b` | hide the sidebar | `⌥n` | next agent that needs you |
+| `H` | track every `claude` | `⌥a` | a new agent in a new tab |
+| `?` | all keys | `Ctrl+b …` | tmux's own keys still work |
+
+## The agent CLI
+
+Inside an agentree terminal, `agentree` knows which worktree it's in:
+
+```text
+agentree tab list [--json]
+agentree tab new [--name N] [--select] [-- COMMAND...]
+agentree tab read TAB [--lines N]
+agentree tab send TAB TEXT... [--key C-c]
+agentree tab select|rename|close TAB
+agentree diff [working|staged|base|REF]
+agentree notify MESSAGE...
+agentree status [--json]
+agentree skill install|uninstall|show
+```
+
+Tabs are tmux windows, so the app's tab bar follows along. New tabs open in the background, so an agent never pulls your view away. See `agentree --help`.
+
+## Configuration
+
+agentree keeps its state in `~/.config/agentree/state.json` (it follows `$XDG_CONFIG_HOME`) and remembers layout choices there too. A few environment variables change its behaviour:
+
+| Variable | What it does |
+|---|---|
+| `AGENTREE_HOME` | where repos are cloned and worktrees created (default `~/agentree`) |
+| `AGENTREE_AGENT_CMD` | the agent started in a new worktree (default `claude`) |
+| `AGENTREE_NOTIFY` | `off` turns desktop notifications off |
+| `AGENTREE_NOTIFY_CMD` | your own notifier, given the title and message |
+| `AGENTREE_TMUX_SOCKET` | the tmux server agentree uses (default: its own, `-L agentree`) |
+| `AGENTREE_OPEN_CMD` | how links are opened (default: `xdg-open` / `open`) |
+| `CLAUDE_CONFIG_DIR` | where Claude Code's settings and skills live (default `~/.claude`) |
+
+## How it works
+
+agentree is a [Bun](https://bun.sh) + TypeScript app drawn with [OpenTUI](https://github.com/anomalyco/opentui) (React). Each worktree's terminal is a tmux session on agentree's own tmux server, shown in an embedded terminal emulator — so sessions outlive the app, and your own tmux is never touched. GitHub data comes from `gh` through a [TanStack Query](https://tanstack.com/query) cache. Agents report their status through Claude Code hooks that write a line to a file per tmux pane; agentree reads those, cross-checked with tmux.
+
+The design, the decisions behind it and the gotchas found along the way are written up in [`docs/DEVLOG.md`](docs/DEVLOG.md).
+
+## Development
+
+```sh
+bun install
+bun run dev          # run from source, reloading on changes
 bun run typecheck
+bun run test         # unit, integration and end-to-end tests
+bun run build        # a single binary in dist/agentree
 ```
 
-This project was created using `bun create tui`. [create-tui](https://github.com/msmps/create-tui) is the easiest way to get started with OpenTUI.
+The end-to-end tests drive the whole app headlessly — keys, mouse, and a real tmux server — inside a sandbox that never touches your own config, tmux sessions or SSH setup; fakes stand in for `gh`, `ssh` and the notifier. See [`docs/TESTING.md`](docs/TESTING.md).
+
+## License
+
+No license has been chosen yet.
