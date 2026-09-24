@@ -48,6 +48,8 @@ export interface UiState {
   prPanelWidth?: number;
   /** The merge method used last (`m` in the PR panel), offered first next time. */
   mergeMethod?: "squash" | "merge" | "rebase";
+  /** PR panel sections folded away (by name, e.g. "description"). */
+  prPanelCollapsed?: string[];
 }
 
 export interface State {
@@ -60,7 +62,10 @@ export interface State {
 /** Keep only well-formed ui fields from a parsed state file. */
 function sanitizeUi(raw: unknown): UiState | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const { sidebarWidth, prPanelHidden, prPanelWidth, mergeMethod } = raw as Record<string, unknown>;
+  const { sidebarWidth, prPanelHidden, prPanelWidth, mergeMethod, prPanelCollapsed } = raw as Record<
+    string,
+    unknown
+  >;
   const width = (v: unknown) =>
     typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : undefined;
   const ui: UiState = {};
@@ -69,6 +74,10 @@ function sanitizeUi(raw: unknown): UiState | undefined {
   if (prPanelHidden === true) ui.prPanelHidden = true;
   if (mergeMethod === "squash" || mergeMethod === "merge" || mergeMethod === "rebase") {
     ui.mergeMethod = mergeMethod;
+  }
+  if (Array.isArray(prPanelCollapsed)) {
+    const names = prPanelCollapsed.filter((s): s is string => typeof s === "string");
+    if (names.length > 0) ui.prPanelCollapsed = names;
   }
   return Object.keys(ui).length > 0 ? ui : undefined;
 }
