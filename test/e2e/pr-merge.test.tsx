@@ -67,6 +67,16 @@ async function start(opts: { view?: Record<string, unknown>; settings?: Record<s
 
 const merges = () => sandbox.ghCalls().filter((c) => c.startsWith("pr merge "));
 
+/**
+ * Wait for a merge to finish, including the app saving the method it used.
+ * A test that ends as soon as gh is called lets that save land in the *next*
+ * test's sandbox (the state path comes from the environment at write time).
+ */
+async function settled() {
+  await waitForText(app, "✓ ");
+  await waitUntil(app, () => !!sandbox.readState()?.ui?.mergeMethod, "the merge method to be saved");
+}
+
 /** Where `text` first appears on screen. */
 function locate(text: string): { x: number; y: number } {
   const lines = app.captureCharFrame().split("\n");
@@ -117,6 +127,7 @@ describe("merging from the PR panel", () => {
     await waitForText(app, "Rebase and merge #42 into main?");
     app.mockInput.pressEnter();
     await waitUntil(app, () => merges().some((c) => c.includes("--rebase")), "the rebase merge");
+    await settled();
   });
 
   test("only the methods the repo allows are offered", async () => {
@@ -129,6 +140,7 @@ describe("merging from the PR panel", () => {
     await waitForText(app, "Merge #42 into main with a merge commit?");
     app.mockInput.pressKey("y");
     await waitUntil(app, () => merges().some((c) => c.includes("--merge")), "the merge");
+    await settled();
   });
 
   test("the method used last is offered first next time", async () => {
