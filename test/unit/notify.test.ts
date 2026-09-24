@@ -8,7 +8,10 @@ afterEach(() => {
 });
 
 describe("notifyCommand", () => {
-  const has = (...cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);
+  const has =
+    (...cmds: string[]) =>
+    (cmd: string) =>
+      cmds.includes(cmd) ? `/usr/bin/${cmd}` : null;
 
   test("macOS: osascript, with the text quoted for AppleScript", () => {
     delete process.env.AGENTREE_NOTIFY_CMD;
@@ -21,7 +24,12 @@ describe("notifyCommand", () => {
 
   test("Linux: notify-send when it's there, else nothing", () => {
     delete process.env.AGENTREE_NOTIFY_CMD;
-    expect(notifyCommand("t", "b", "linux", has("notify-send"))).toEqual(["notify-send", "--app-name=agentree", "t", "b"]);
+    expect(notifyCommand("t", "b", "linux", has("notify-send"))).toEqual([
+      "notify-send",
+      "--app-name=agentree",
+      "t",
+      "b",
+    ]);
     expect(notifyCommand("t", "b", "linux", has())).toBeNull();
   });
 

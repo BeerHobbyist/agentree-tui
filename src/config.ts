@@ -15,8 +15,7 @@ export function workspaceRoot(): string {
 
 /** Absolute path to the persisted app state (XDG-aware). */
 export function stateFilePath(): string {
-  const base =
-    process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+  const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
   return join(base, "agentree", "state.json");
 }
 
@@ -35,10 +34,12 @@ export function worktreePath(root: string, branch: string): string {
  * directory is sanitized — the real branch keeps its slashes.
  */
 export function sanitizeBranchForPath(branch: string): string {
-  return branch
-    .replace(/[^A-Za-z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "") || "worktree";
+  return (
+    branch
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "") || "worktree"
+  );
 }
 
 /** Leaf segment of a branch, used as the display name (e.g. feature/x → x). */

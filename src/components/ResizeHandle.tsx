@@ -28,9 +28,7 @@ interface ResizeHandleProps {
  */
 function capturePointer(renderer: CliRenderer, renderable: Renderable | null): void {
   if (!renderable) return;
-  (renderer as unknown as { setCapturedRenderable(r: Renderable): void }).setCapturedRenderable(
-    renderable,
-  );
+  (renderer as unknown as { setCapturedRenderable(r: Renderable): void }).setCapturedRenderable(renderable);
 }
 
 /**

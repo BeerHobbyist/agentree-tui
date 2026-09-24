@@ -21,7 +21,7 @@ function throughShell(line: string, env: Record<string, string> = {}): string[] 
 
 describe("shq / shellJoin", () => {
   test("every argument survives the remote shell as-is", () => {
-    const args = ["plain", "two words", "it's", ";", "$HOME", "`id`", "a\"b", "", "#{window_name}\t#{pane_id}"];
+    const args = ["plain", "two words", "it's", ";", "$HOME", "`id`", 'a"b', "", "#{window_name}\t#{pane_id}"];
     expect(throughShell(shellJoin(args))).toEqual(args);
   });
 

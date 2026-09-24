@@ -267,9 +267,7 @@ export function statusesFrom(
  * Every local tmux session's current agent status. Reports from panes that no
  * longer exist are deleted (their agent is gone and fired no SessionEnd).
  */
-export async function readAgentStatuses(
-  now = Math.floor(Date.now() / 1000),
-): Promise<Map<string, AgentReport>> {
+export async function readAgentStatuses(now = Math.floor(Date.now() / 1000)): Promise<Map<string, AgentReport>> {
   const dir = agentStatusDir();
   let names: string[];
   try {
@@ -460,7 +458,11 @@ export async function setRemoteTracking(
   if (JSON.stringify(next) === JSON.stringify(settings)) return "unchanged";
   const content = JSON.stringify(next, null, 2) + "\n";
   const write = await run(
-    remoteArgv(host, ["sh", "-c", `${where}; mkdir -p "$(dirname "$f")" && cat > "$f.agentree.tmp" && mv -f "$f.agentree.tmp" "$f"`]),
+    remoteArgv(host, [
+      "sh",
+      "-c",
+      `${where}; mkdir -p "$(dirname "$f")" && cat > "$f.agentree.tmp" && mv -f "$f.agentree.tmp" "$f"`,
+    ]),
     { stdin: content },
   );
   return write.code === 0 ? "changed" : "unreachable";

@@ -63,7 +63,10 @@ describe("the viewers' commands", () => {
 });
 
 describe("which viewer", () => {
-  const installed = (...cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);
+  const installed =
+    (...cmds: string[]) =>
+    (cmd: string) =>
+      cmds.includes(cmd) ? `/usr/bin/${cmd}` : null;
 
   test("installed means all its programs are on PATH", () => {
     const prev = process.env.AGENTREE_DIFF_VIEWERS;
@@ -72,7 +75,12 @@ describe("which viewer", () => {
       expect(availableViewers(installed("git", "delta"))).toEqual(["delta", "git"]);
       // diffnav renders with delta, so it needs both.
       expect(availableViewers(installed("git", "diffnav"))).toEqual(["git"]);
-      expect(availableViewers(installed("git", "diffnav", "delta", "nvim"))).toEqual(["diffnav", "delta", "diffview", "git"]);
+      expect(availableViewers(installed("git", "diffnav", "delta", "nvim"))).toEqual([
+        "diffnav",
+        "delta",
+        "diffview",
+        "git",
+      ]);
     } finally {
       process.env.AGENTREE_DIFF_VIEWERS = prev;
     }

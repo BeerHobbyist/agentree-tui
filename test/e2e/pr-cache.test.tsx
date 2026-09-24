@@ -62,7 +62,10 @@ async function start(opts: RenderAppOptions = {}) {
 
 /** Select a worktree row: find its place in the sidebar, then g + that many j. */
 async function select(name: "main" | "login" | "billing") {
-  const sidebar = app.captureCharFrame().split("\n").map((l) => l.slice(0, 38));
+  const sidebar = app
+    .captureCharFrame()
+    .split("\n")
+    .map((l) => l.slice(0, 38));
   const row = (n: string) => sidebar.findIndex((l) => l.includes(`· ${n}`));
   const order = (["main", "login", "billing"] as const).slice().sort((a, b) => row(a) - row(b));
   app.mockInput.pressKey("g"); // the project header

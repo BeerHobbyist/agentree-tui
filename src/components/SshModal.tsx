@@ -257,7 +257,9 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
               </text>
             )}
             <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
-              {"Used for this one login, which agentree keeps open and reuses; never saved. After a restart, its terminal asks again."}
+              {
+                "Used for this one login, which agentree keeps open and reuses; never saved. After a restart, its terminal asks again."
+              }
             </text>
             {hint("⏎ connect · esc back")}
           </>

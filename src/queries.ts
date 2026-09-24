@@ -101,8 +101,7 @@ export const gitStatusQuery = (path: string) =>
 export const agentStatusQuery = () =>
   queryOptions({
     queryKey: queryKeys.agentStatus,
-    queryFn: async (): Promise<Record<string, AgentReport>> =>
-      Object.fromEntries(await readAgentStatuses()),
+    queryFn: async (): Promise<Record<string, AgentReport>> => Object.fromEntries(await readAgentStatuses()),
     staleTime: 0,
     refetchInterval: AGENT_STATUS_MS,
     refetchIntervalInBackground: true,

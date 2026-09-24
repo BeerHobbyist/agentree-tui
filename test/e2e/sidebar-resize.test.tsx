@@ -4,12 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import {
-  DEFAULT_SIDEBAR_WIDTH,
-  MIN_CONTENT_WIDTH,
-  MIN_SIDEBAR_WIDTH,
-  SIDEBAR_WIDTH_STEP,
-} from "../../src/layout";
+import { DEFAULT_SIDEBAR_WIDTH, MIN_CONTENT_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH_STEP } from "../../src/layout";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForText, waitUntil } from "../helpers/frame";
@@ -126,11 +121,7 @@ describe("keyboard", () => {
     app.mockInput.pressKey("[");
     app.mockInput.pressKey("[");
     await waitForDivider(app, DEFAULT_COL - SIDEBAR_WIDTH_STEP);
-    await waitUntil(
-      app,
-      () => storedWidth() === DEFAULT_SIDEBAR_WIDTH - SIDEBAR_WIDTH_STEP,
-      "the width to be saved",
-    );
+    await waitUntil(app, () => storedWidth() === DEFAULT_SIDEBAR_WIDTH - SIDEBAR_WIDTH_STEP, "the width to be saved");
   });
 
   test("a burst of ] presses moves one step each", async () => {

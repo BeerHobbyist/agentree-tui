@@ -33,9 +33,7 @@ function type(text: string) {
 
 /** tmux's view of a session: whether it exists, and where its pane is. */
 function tmuxPath(session: string): string | null {
-  const out = Bun.spawnSync([
-    "tmux", "-L", sandbox.tmuxSocket, "display", "-p", "-t", session, "#{pane_current_path}",
-  ]);
+  const out = Bun.spawnSync(["tmux", "-L", sandbox.tmuxSocket, "display", "-p", "-t", session, "#{pane_current_path}"]);
   return out.exitCode === 0 ? new TextDecoder().decode(out.stdout).trim() : null;
 }
 
@@ -193,7 +191,11 @@ describe("what SSH projects leave out", () => {
     await Bun.sleep(300);
     expect(sandbox.ghCalls().filter((c) => c.includes("--head"))).toEqual([]);
     // No changed-files marker in the sidebar (the tab bar's "● tab" is fine).
-    const sidebar = app.captureCharFrame().split("\n").map((l) => l.slice(0, 36)).join("\n");
+    const sidebar = app
+      .captureCharFrame()
+      .split("\n")
+      .map((l) => l.slice(0, 36))
+      .join("\n");
     expect(sidebar).not.toContain("●");
   });
 });

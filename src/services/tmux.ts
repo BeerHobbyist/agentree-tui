@@ -160,12 +160,7 @@ const CURSOR_RESET_OVERRIDE_INDEX = 90;
  * the user's configured cursor (usually blinking) comes back.
  */
 export function preAttachOptions(): string[] {
-  return [
-    "set-option",
-    "-g",
-    `terminal-overrides[${CURSOR_RESET_OVERRIDE_INDEX}]`,
-    "*:Se=\\E[0 q",
-  ];
+  return ["set-option", "-g", `terminal-overrides[${CURSOR_RESET_OVERRIDE_INDEX}]`, "*:Se=\\E[0 q"];
 }
 
 /**
@@ -249,13 +244,7 @@ export interface PaneGeom {
 /** Geometry of the active window's panes (cells, 0-based, matching the emulator grid). */
 export async function listPaneGeometry(session: string): Promise<PaneGeom[]> {
   const { code, stdout } = await run(
-    tx(
-      "list-panes",
-      "-t",
-      session,
-      "-F",
-      "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_right}\t#{pane_bottom}",
-    ),
+    tx("list-panes", "-t", session, "-F", "#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_right}\t#{pane_bottom}"),
   );
   if (code !== 0) return [];
   return stdout
@@ -422,7 +411,15 @@ export function tmuxOn(host?: string, opts: { onlyIfConnected?: boolean } = {}) 
 
     /** The last `lines` lines a pane shows (scrollback included), wrapped lines joined. */
     async capturePane(target: string, lines = 50): Promise<string> {
-      const { code, stdout, stderr } = await exec("capture-pane", "-p", "-J", "-t", target, "-S", `-${Math.max(1, lines)}`);
+      const { code, stdout, stderr } = await exec(
+        "capture-pane",
+        "-p",
+        "-J",
+        "-t",
+        target,
+        "-S",
+        `-${Math.max(1, lines)}`,
+      );
       if (code !== 0) throw new Error(stderr.trim() || `couldn't read ${target}`);
       return stdout.replace(/\s+$/, "");
     },

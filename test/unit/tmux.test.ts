@@ -120,14 +120,7 @@ describe("attachCommand", () => {
 
   test("runs a startup command right after -c, as new-session's shell-command", () => {
     const cmd = fromNewSession(attachCommand("s", "/tmp", undefined, "claude"));
-    expect(cmd.slice(0, 6)).toEqual([
-      "new-session",
-      "-A",
-      "-s",
-      "s",
-      "-c",
-      "/tmp",
-    ]);
+    expect(cmd.slice(0, 6)).toEqual(["new-session", "-A", "-s", "s", "-c", "/tmp"]);
     expect(cmd[6]).toBe("claude");
   });
 
@@ -148,9 +141,7 @@ describe("attachCommand", () => {
 
   test("enables mouse so clicks reach programs inside tmux (vim, pagers)", () => {
     // With a theme…
-    expect(attachCommand("s", "/tmp", { bg: "#000", fg: "#fff" }).join(" ")).toContain(
-      "set-option -g mouse on",
-    );
+    expect(attachCommand("s", "/tmp", { bg: "#000", fg: "#fff" }).join(" ")).toContain("set-option -g mouse on");
     // …and without one.
     expect(attachCommand("s", "/tmp").join(" ")).toContain("set-option -g mouse on");
   });
@@ -166,12 +157,7 @@ describe("preAttachOptions", () => {
   test("makes tmux reset the cursor to the terminal default, not a steady block", () => {
     // terminfo's Se is \E[2 q (steady block); \E[0 q hands back the user's own
     // (usually blinking) cursor when a program like nvim stops setting a shape.
-    expect(preAttachOptions()).toEqual([
-      "set-option",
-      "-g",
-      "terminal-overrides[90]",
-      "*:Se=\\E[0 q",
-    ]);
+    expect(preAttachOptions()).toEqual(["set-option", "-g", "terminal-overrides[90]", "*:Se=\\E[0 q"]);
   });
 
   test("runs before new-session, since tmux reads overrides when the client attaches", () => {
@@ -183,7 +169,10 @@ describe("preAttachOptions", () => {
 });
 
 describe("tmuxInstallHint", () => {
-  const has = (...cmds: string[]) => (cmd: string) => (cmds.includes(cmd) ? `/usr/bin/${cmd}` : null);
+  const has =
+    (...cmds: string[]) =>
+    (cmd: string) =>
+      cmds.includes(cmd) ? `/usr/bin/${cmd}` : null;
 
   test("Homebrew on a Mac", () => {
     expect(tmuxInstallHint("darwin", has())).toBe("brew install tmux");

@@ -54,11 +54,7 @@ export async function makeRepo(root: string, opts: MakeRepoOptions = {}): Promis
  * A fixture remote the fake `gh repo clone` can clone from, standing in for
  * the repo as it exists on GitHub.
  */
-export async function makeRemote(
-  sandbox: Sandbox,
-  nameWithOwner: string,
-  opts: MakeRepoOptions = {},
-): Promise<string> {
+export async function makeRemote(sandbox: Sandbox, nameWithOwner: string, opts: MakeRepoOptions = {}): Promise<string> {
   const path = join(sandbox.remotes, nameWithOwner.replace(/\//g, "_"));
   await makeRepo(path, opts);
   return path;

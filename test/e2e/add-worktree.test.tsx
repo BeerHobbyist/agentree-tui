@@ -178,11 +178,7 @@ describe("typing", () => {
     app.mockInput.pressEnter();
 
     await waitForModalClosed(app);
-    await waitUntil(
-      app,
-      () => sandbox.readState()?.repos[0]?.worktrees.length === 1,
-      "the worktree to be registered",
-    );
+    await waitUntil(app, () => sandbox.readState()?.repos[0]?.worktrees.length === 1, "the worktree to be registered");
     expect(sandbox.readState()!.repos[0]!.worktrees[0]!.branch).toBe("JIRA-12");
     expect(await git(["branch", "--list", "JIRA-12"], root)).toContain("JIRA-12");
   });

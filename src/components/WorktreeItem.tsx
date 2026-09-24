@@ -10,10 +10,7 @@ interface WorktreeItemProps {
 }
 
 /** How each agent status looks: a glyph for the row's first column, plus a label when it's worth your attention. */
-export function agentLook(
-  agent: Worktree["agent"],
-  theme: Theme,
-): { glyph: string; color: string; label?: string } {
+export function agentLook(agent: Worktree["agent"], theme: Theme): { glyph: string; color: string; label?: string } {
   switch (agent) {
     case "needs-action":
       return { glyph: "◆", color: theme.agentWaiting, label: "needs action" };
@@ -35,12 +32,7 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
   const hasSync = worktree.ahead > 0 || worktree.behind > 0;
 
   return (
-    <box
-      flexDirection="row"
-      backgroundColor={active ? theme.activeBg : theme.panel}
-      height={2}
-      onMouseDown={onClick}
-    >
+    <box flexDirection="row" backgroundColor={active ? theme.activeBg : theme.panel} height={2} onMouseDown={onClick}>
       {/* Accent bar for the active row */}
       <box width={1} backgroundColor={active ? theme.accent : theme.panel} />
 
@@ -102,19 +94,11 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
           {(worktree.changed > 0 || hasStats || hasSync) && (
             <text flexShrink={0}>
               {/* Uncommitted changes: how many files (untracked included). */}
-              {worktree.changed > 0 && (
-                <span fg={theme.dirty}>{" ●" + worktree.changed}</span>
-              )}
+              {worktree.changed > 0 && <span fg={theme.dirty}>{" ●" + worktree.changed}</span>}
               {hasStats && <span fg={theme.added}>{" +" + worktree.added}</span>}
-              {hasStats && (
-                <span fg={theme.removed}>{" −" + worktree.removed}</span>
-              )}
-              {hasSync && worktree.ahead > 0 && (
-                <span fg={theme.ahead}>{"  ↑" + worktree.ahead}</span>
-              )}
-              {hasSync && worktree.behind > 0 && (
-                <span fg={theme.behind}>{" ↓" + worktree.behind}</span>
-              )}
+              {hasStats && <span fg={theme.removed}>{" −" + worktree.removed}</span>}
+              {hasSync && worktree.ahead > 0 && <span fg={theme.ahead}>{"  ↑" + worktree.ahead}</span>}
+              {hasSync && worktree.behind > 0 && <span fg={theme.behind}>{" ↓" + worktree.behind}</span>}
             </text>
           )}
         </box>

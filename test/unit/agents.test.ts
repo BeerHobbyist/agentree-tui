@@ -54,9 +54,7 @@ describe("effectiveState", () => {
 
   test("needs-action turns back to working once the agent prints again", () => {
     expect(effectiveState({ state: "needs-action", since: now - 5 }, now, now)).toBe("working");
-    expect(effectiveState({ state: "needs-action", since: now - 5 }, now - 5, now)).toBe(
-      "needs-action",
-    );
+    expect(effectiveState({ state: "needs-action", since: now - 5 }, now - 5, now)).toBe("needs-action");
   });
 
   test("leaves done and idle alone", () => {
@@ -76,9 +74,12 @@ describe("combineReports", () => {
   });
 
   test("among equals, the latest wins", () => {
-    expect(combineReports([{ state: "done", since: 10 }, { state: "done", since: 30 }])?.since).toBe(
-      30,
-    );
+    expect(
+      combineReports([
+        { state: "done", since: 10 },
+        { state: "done", since: 30 },
+      ])?.since,
+    ).toBe(30);
   });
 
   test("nothing to combine", () => {
@@ -91,25 +92,17 @@ describe("withStatusHooks", () => {
 
   test("attaches the hooks to a claude launch", () => {
     expect(withStatusHooks("claude", path)).toBe(`claude --settings '${path}'`);
-    expect(withStatusHooks("caffeinate -is claude", path)).toBe(
-      `caffeinate -is claude --settings '${path}'`,
-    );
-    expect(withStatusHooks("claude --model opus", path)).toBe(
-      `claude --model opus --settings '${path}'`,
-    );
+    expect(withStatusHooks("caffeinate -is claude", path)).toBe(`caffeinate -is claude --settings '${path}'`);
+    expect(withStatusHooks("claude --model opus", path)).toBe(`claude --model opus --settings '${path}'`);
   });
 
   test("leaves other agents and explicit --settings alone", () => {
     expect(withStatusHooks("codex", path)).toBe("codex");
-    expect(withStatusHooks("claude --settings mine.json", path)).toBe(
-      "claude --settings mine.json",
-    );
+    expect(withStatusHooks("claude --settings mine.json", path)).toBe("claude --settings mine.json");
   });
 
   test("quotes the settings path for the shell", () => {
-    expect(withStatusHooks("claude", "/it's/here.json")).toBe(
-      `claude --settings '/it'\\''s/here.json'`,
-    );
+    expect(withStatusHooks("claude", "/it's/here.json")).toBe(`claude --settings '/it'\\''s/here.json'`);
   });
 });
 
@@ -141,7 +134,11 @@ describe("statusesFrom", () => {
       { name: "s3.9", content: `working ${now}` }, // no such pane
       { name: "s1.3.tmp", content: `idle ${now}` }, // a hook mid-write
     ];
-    const panes = new Map([["s1.1", now], ["s1.2", now], ["s2.5", now]]);
+    const panes = new Map([
+      ["s1.1", now],
+      ["s1.2", now],
+      ["s2.5", now],
+    ]);
     const { statuses, stale } = statusesFrom(files, panes, now);
     expect(Object.fromEntries(statuses)).toEqual({
       s1: { state: "needs-action", since: now },

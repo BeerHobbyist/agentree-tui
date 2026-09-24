@@ -21,15 +21,7 @@ interface MenuOverlayProps {
 }
 
 /** Small centered overlay list, driven by the parent's keyboard + mouse. */
-export function MenuOverlay({
-  title,
-  items,
-  index,
-  onPick,
-  onClose,
-  note,
-  width = 44,
-}: MenuOverlayProps) {
+export function MenuOverlay({ title, items, index, onPick, onClose, note, width = 44 }: MenuOverlayProps) {
   const theme = useTheme();
   return (
     <box
@@ -61,12 +53,7 @@ export function MenuOverlay({
         {items.map((item, i) => {
           const active = i === index;
           return (
-            <box
-              key={String(i)}
-              flexDirection="row"
-              alignItems="center"
-              onMouseDown={() => onPick(i)}
-            >
+            <box key={String(i)} flexDirection="row" alignItems="center" onMouseDown={() => onPick(i)}>
               <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
                 {active ? "▶ " : "  "}
               </text>

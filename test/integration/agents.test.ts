@@ -52,9 +52,7 @@ describe("hookCommand", () => {
     const before = Math.floor(Date.now() / 1000);
     const res = runHook(hookCommand("needs-action"), agentEnv());
     expect(res).toEqual({ code: 0, stdout: "", stderr: "" }); // stdout would reach Claude's context
-    const [state, since] = readFileSync(join(agentStatusDir(), "agentree_widget_x.7"), "utf8")
-      .trim()
-      .split(" ");
+    const [state, since] = readFileSync(join(agentStatusDir(), "agentree_widget_x.7"), "utf8").trim().split(" ");
     expect(state).toBe("needs-action");
     expect(Number(since)).toBeGreaterThanOrEqual(before);
   });
@@ -97,7 +95,17 @@ describe("readAgentStatuses", () => {
   }
   function splitPane(session: string): string {
     const out = Bun.spawnSync([
-      "tmux", "-L", sandbox.tmuxSocket, "split-window", "-d", "-P", "-F", "#{pane_id}", "-t", session, "sleep 300",
+      "tmux",
+      "-L",
+      sandbox.tmuxSocket,
+      "split-window",
+      "-d",
+      "-P",
+      "-F",
+      "#{pane_id}",
+      "-t",
+      session,
+      "sleep 300",
     ]);
     return new TextDecoder().decode(out.stdout).trim().replace("%", "");
   }

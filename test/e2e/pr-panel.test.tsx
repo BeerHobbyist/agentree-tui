@@ -26,7 +26,14 @@ const LINT_URL = "https://github.com/acme/widget/actions/runs/2";
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 const CHECKS = [
   { __typename: "CheckRun", name: "build", workflowName: "CI", status: "COMPLETED", conclusion: "SUCCESS" },
-  { __typename: "CheckRun", name: "lint", workflowName: "CI", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: LINT_URL },
+  {
+    __typename: "CheckRun",
+    name: "lint",
+    workflowName: "CI",
+    status: "COMPLETED",
+    conclusion: "FAILURE",
+    detailsUrl: LINT_URL,
+  },
   { __typename: "CheckRun", name: "e2e", workflowName: "E2E", status: "IN_PROGRESS", conclusion: null },
 ];
 
@@ -73,7 +80,13 @@ async function setup(opts: { prView?: boolean; branchPr?: boolean } = {}) {
       body: "Adds a login screen.",
     });
     sandbox.setPrComments(42, [
-      { user: { login: "bob" }, body: "Guard this with the lock.", created_at: ago(20), path: "src/session.ts", line: 57 },
+      {
+        user: { login: "bob" },
+        body: "Guard this with the lock.",
+        created_at: ago(20),
+        path: "src/session.ts",
+        line: 57,
+      },
     ]);
   }
 }

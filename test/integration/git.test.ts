@@ -69,9 +69,7 @@ describe("addWorktree", () => {
   test("fails loudly when the branch is already checked out", async () => {
     const path = join(repo, ".worktrees", "dup");
     await addWorktree(repo, path, "dup", { newBranch: true });
-    expect(
-      addWorktree(repo, join(repo, ".worktrees", "dup2"), "dup", { newBranch: false }),
-    ).rejects.toThrow();
+    expect(addWorktree(repo, join(repo, ".worktrees", "dup2"), "dup", { newBranch: false })).rejects.toThrow();
   });
 });
 

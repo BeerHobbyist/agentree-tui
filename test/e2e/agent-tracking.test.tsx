@@ -80,7 +80,11 @@ describe("tracking every claude (H)", () => {
     await waitForText(app, "Track every claude");
     expect(readFileSync(sandbox.claudeSettings, "utf8")).not.toContain("AGENTREE"); // not before yes
     app.mockInput.pressKey("y");
-    await waitUntil(app, () => readFileSync(sandbox.claudeSettings, "utf8").includes("AGENTREE_AGENT_DIR"), "the hooks");
+    await waitUntil(
+      app,
+      () => readFileSync(sandbox.claudeSettings, "utf8").includes("AGENTREE_AGENT_DIR"),
+      "the hooks",
+    );
     expect(JSON.parse(readFileSync(sandbox.claudeSettings, "utf8")).model).toBe("opus");
     await waitForTextGone(app, "Track every claude");
 

@@ -17,7 +17,19 @@ describe("isCliInvocation", () => {
 
 describe("parseArgs", () => {
   test("positionals, valued flags (both spellings), switches, repeats, and the command after --", () => {
-    const a = parseArgs(["tab", "new", "--name", "dev", "--select", "--cwd=/srv", "--", "npm", "run", "--port", "3000"]);
+    const a = parseArgs([
+      "tab",
+      "new",
+      "--name",
+      "dev",
+      "--select",
+      "--cwd=/srv",
+      "--",
+      "npm",
+      "run",
+      "--port",
+      "3000",
+    ]);
     expect(a.positional).toEqual(["tab", "new"]);
     expect(a.flags.get("name")).toEqual(["dev"]);
     expect(a.flags.get("cwd")).toEqual(["/srv"]);
@@ -33,14 +45,26 @@ describe("parseArgs", () => {
 
 describe("what agents are told", () => {
   test("help lists every command", () => {
-    for (const cmd of ["tab list", "tab new", "tab read", "tab send", "tab close", "diff", "notify", "status", "skill"]) {
+    for (const cmd of [
+      "tab list",
+      "tab new",
+      "tab read",
+      "tab send",
+      "tab close",
+      "diff",
+      "notify",
+      "status",
+      "skill",
+    ]) {
       expect(HELP).toContain(`agentree ${cmd}`);
     }
   });
 
   test("the SessionStart context hook speaks only inside an agentree terminal", () => {
     const run = (env: Record<string, string>) =>
-      new TextDecoder().decode(Bun.spawnSync(["sh", "-c", contextHookCommand()], { env: { PATH: "/usr/bin:/bin", ...env } }).stdout);
+      new TextDecoder().decode(
+        Bun.spawnSync(["sh", "-c", contextHookCommand()], { env: { PATH: "/usr/bin:/bin", ...env } }).stdout,
+      );
     expect(run({})).toBe("");
     expect(run({ AGENTREE_CLI: "/x/agentree" })).toBe(""); // no session
     expect(run({ AGENTREE_CLI: "/x/agentree", AGENTREE_SESSION: "s" })).toBe(AGENT_CONTEXT + "\n");

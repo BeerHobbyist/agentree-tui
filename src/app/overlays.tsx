@@ -84,7 +84,9 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
   const close = () => overlays.close(o.kind);
   switch (o.kind) {
     case "add":
-      return <AddWorktreeModal state={actions.state} preselect={o.preselect} onClose={close} onApplied={actions.onApplied} />;
+      return (
+        <AddWorktreeModal state={actions.state} preselect={o.preselect} onClose={close} onApplied={actions.onApplied} />
+      );
     case "ssh":
       return <SshModal state={actions.state} host={o.host} onClose={close} onAdded={actions.onApplied} />;
     case "help":

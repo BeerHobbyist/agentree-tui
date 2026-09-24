@@ -145,8 +145,7 @@ class StableCursorEmbeddedTerminal extends EmbeddedTerminalRenderable {
         // blinks per the user's terminal config) instead of forcing the
         // emulator's steady-block fallback. Explicit shapes (nvim's steady
         // block, a blinking bar, …) pass through untouched.
-        const eff: CursorStyleOptions =
-          this.childCursorStyle === null ? { style: "default" } : o;
+        const eff: CursorStyleOptions = this.childCursorStyle === null ? { style: "default" } : o;
         const k = `${eff.style ?? ""}|${eff.blinking ?? ""}`;
         if (k === this.lastStyle) return;
         this.lastStyle = k;
@@ -206,8 +205,6 @@ declare module "@opentui/react" {
   }
 }
 
-export type EmbeddedTerminalProps = ExtendedComponentProps<
-  typeof EmbeddedTerminalRenderable
->;
+export type EmbeddedTerminalProps = ExtendedComponentProps<typeof EmbeddedTerminalRenderable>;
 
 export { EmbeddedTerminalRenderable, StableCursorEmbeddedTerminal };

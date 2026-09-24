@@ -89,7 +89,8 @@ export const DIFF_VIEWERS: DiffViewer[] = [
     label: "nvim diffview",
     needs: ["nvim"],
     auto: false,
-    command: (args) => shellJoin(["nvim", "-c", ["DiffviewOpen", ...args.map((a) => (a === "--staged" ? "--cached" : a))].join(" ")]),
+    command: (args) =>
+      shellJoin(["nvim", "-c", ["DiffviewOpen", ...args.map((a) => (a === "--staged" ? "--cached" : a))].join(" ")]),
   },
   {
     id: "git",

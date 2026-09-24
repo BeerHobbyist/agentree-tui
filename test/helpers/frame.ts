@@ -32,12 +32,7 @@ export async function settle(t: TestRendererSetup): Promise<void> {
 }
 
 function spanHex(color: { buffer: ArrayLike<number> }): string {
-  return (
-    "#" +
-    [0, 1, 2]
-      .map((i) => Number(color.buffer[i]).toString(16).padStart(2, "0"))
-      .join("")
-  );
+  return "#" + [0, 1, 2].map((i) => Number(color.buffer[i]).toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -50,18 +45,19 @@ export function selection(t: TestRendererSetup): string {
   return t
     .captureSpans()
     .lines.filter((line) => line.spans.some((s) => spanHex(s.bg) === accent))
-    .map((line) => line.spans.map((s) => s.text).join("").trim())
+    .map((line) =>
+      line.spans
+        .map((s) => s.text)
+        .join("")
+        .trim(),
+    )
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 /** Wait until the selected row's text contains `text`. */
-export function waitForSelection(
-  t: TestRendererSetup,
-  text: string,
-  opts?: WaitOptions,
-): Promise<string> {
+export function waitForSelection(t: TestRendererSetup, text: string, opts?: WaitOptions): Promise<string> {
   return poll(
     t,
     () => selection(t).includes(text),
@@ -89,29 +85,17 @@ async function poll(
 }
 
 /** Wait until `text` appears on screen; returns the frame that showed it. */
-export function waitForText(
-  t: TestRendererSetup,
-  text: string,
-  opts?: WaitOptions,
-): Promise<string> {
+export function waitForText(t: TestRendererSetup, text: string, opts?: WaitOptions): Promise<string> {
   return poll(t, (f) => f.includes(text), `text ${JSON.stringify(text)}`, opts);
 }
 
 /** Wait until every one of `texts` is on screen at the same time. */
-export function waitForAll(
-  t: TestRendererSetup,
-  texts: string[],
-  opts?: WaitOptions,
-): Promise<string> {
+export function waitForAll(t: TestRendererSetup, texts: string[], opts?: WaitOptions): Promise<string> {
   return poll(t, (f) => texts.every((x) => f.includes(x)), `texts ${JSON.stringify(texts)}`, opts);
 }
 
 /** Wait until `text` is gone from the screen. */
-export function waitForTextGone(
-  t: TestRendererSetup,
-  text: string,
-  opts?: WaitOptions,
-): Promise<string> {
+export function waitForTextGone(t: TestRendererSetup, text: string, opts?: WaitOptions): Promise<string> {
   return poll(t, (f) => !f.includes(text), `absence of ${JSON.stringify(text)}`, opts);
 }
 
@@ -121,10 +105,7 @@ export function waitForTextGone(
  * says nothing about whether the modal still owns the keyboard — its border
  * title does.
  */
-export function waitForModalClosed(
-  t: TestRendererSetup,
-  opts?: WaitOptions,
-): Promise<string> {
+export function waitForModalClosed(t: TestRendererSetup, opts?: WaitOptions): Promise<string> {
   return waitForTextGone(t, "Add worktree", opts);
 }
 
