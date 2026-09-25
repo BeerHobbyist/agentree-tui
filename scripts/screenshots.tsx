@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { agentStatusDir } from "../src/services/agents";
 import { sessionName } from "../src/services/tmux";
-import { loadState, reconcile, saveState, setWorktreeLabel, type UiState, upsertRepo } from "../src/store";
+import { loadState, reconcile, saveState, setWorktreeLabel, upsertRepo } from "../src/store";
 import { getTheme } from "../src/theme";
 import { renderApp, type RenderedApp } from "../test/helpers/app";
 import { waitForSelection, waitForText } from "../test/helpers/frame";
@@ -21,8 +21,9 @@ import { makeRepo, writeFile } from "../test/helpers/repo";
 import { createSandbox, type Sandbox } from "../test/helpers/sandbox";
 
 const OUT = resolve(import.meta.dir, "../docs/screenshots");
-const COLS = 140;
-const ROWS = 34;
+// Wide enough for a dialog to sit between the sidebar and the PR panel.
+const COLS = 160;
+const ROWS = 40;
 
 /** What the harness captures: every line's spans of text, with colours and attributes. */
 type Frame = ReturnType<RenderedApp["captureSpans"]>;
@@ -50,11 +51,8 @@ const CHECKS = [
   { __typename: "CheckRun", name: "e2e", workflowName: "CI", status: "IN_PROGRESS", conclusion: null },
 ];
 
-/**
- * acme/webapp (a labelled login worktree with PR #42, a checkout fix waiting on
- * you) and acme/api (an agent working). `ui`: layout preferences, as state.json keeps them.
- */
-async function sampleWorkspace(sb: Sandbox, ui?: UiState) {
+/** acme/webapp (a labelled login worktree with PR #42, a checkout fix waiting on you) and acme/api (an agent working). */
+async function sampleWorkspace(sb: Sandbox) {
   const web = await makeRepo(join(sb.workspace, "webapp"), {
     worktrees: [{ branch: "feature/login" }, { branch: "fix/checkout-total" }],
   });
@@ -62,7 +60,6 @@ async function sampleWorkspace(sb: Sandbox, ui?: UiState) {
   const state = loadState();
   upsertRepo(state, { nameWithOwner: "acme/webapp", name: "webapp", root: web });
   upsertRepo(state, { nameWithOwner: "acme/api", name: "api", root: api });
-  if (ui) state.ui = ui;
   await saveState(state);
   await reconcile(state);
   await setWorktreeLabel(state, "acme/webapp", "feature-login", "Login screen");
@@ -176,8 +173,7 @@ const scenes: Record<string, { title: string; shoot(sb: Sandbox): Promise<Frame>
   merge: {
     title: "agentree — merging a PR",
     async shoot(sb) {
-      // A narrower PR panel, so the dialog doesn't cover the start of its lines.
-      await sampleWorkspace(sb, { prPanelWidth: 38 });
+      await sampleWorkspace(sb);
       const app = await renderApp({ width: COLS, height: ROWS });
       await loginTerminal(sb, app);
       await waitForText(app, "Merge…");
@@ -192,7 +188,7 @@ const scenes: Record<string, { title: string; shoot(sb: Sandbox): Promise<Frame>
   "add-worktree": {
     title: "agentree — adding a worktree",
     async shoot(sb) {
-      await sampleWorkspace(sb, { prPanelHidden: true }); // the dialog is wide; the PR panel isn't needed here
+      await sampleWorkspace(sb);
       sb.setOpenPrs([
         { number: 51, title: "Fix flaky checkout test", headRefName: "fix/flaky-checkout" },
         { number: 49, title: "Dark mode for settings", headRefName: "feat/settings-dark" },
@@ -314,7 +310,7 @@ async function photograph(html: string, png: string) {
     "--enable-unsafe-swiftshader",
     "--hide-scrollbars",
     "--force-device-scale-factor=2",
-    "--window-size=1600,1100",
+    "--window-size=1800,1200",
     "--virtual-time-budget=5000", // let the font load and xterm draw first
     `--screenshot=${png}`,
     `file://${join(dir, "page.html")}`,
