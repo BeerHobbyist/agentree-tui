@@ -1,5 +1,6 @@
-import { TextAttributes } from "@opentui/core";
 import { useTheme } from "../theme";
+import { Dialog, rowLook } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 
 export interface MenuItem {
   label: string;
@@ -20,70 +21,41 @@ interface MenuOverlayProps {
   width?: number;
 }
 
-/** Small centered overlay list, driven by the parent's keyboard + mouse. */
-export function MenuOverlay({ title, items, index, onPick, onClose, note, width = 44 }: MenuOverlayProps) {
+/** A small list in a dialog, driven by the parent's keyboard + mouse. */
+export function MenuOverlay({ title, items, index, onPick, onClose, note, width = 48 }: MenuOverlayProps) {
   const theme = useTheme();
   return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      width="100%"
-      height="100%"
-      zIndex={150}
-      alignItems="center"
-      justifyContent="center"
-      shouldFill={false}
-      onMouseDown={onClose}
-    >
-      <box
-        width={width}
-        borderStyle="rounded"
-        border
-        borderColor={theme.accent}
-        backgroundColor={theme.panel}
-        title={` ${title} `}
-        titleAlignment="center"
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-      >
-        {items.map((item, i) => {
-          const active = i === index;
-          return (
-            <box key={String(i)} flexDirection="row" alignItems="center" onMouseDown={() => onPick(i)}>
-              <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
-                {active ? "▶ " : "  "}
+    <Dialog title={title} width={width} onClose={onClose} zIndex={150}>
+      {items.map((item, i) => {
+        const look = rowLook(theme, i === index);
+        return (
+          <box
+            key={String(i)}
+            flexDirection="row"
+            alignItems="center"
+            backgroundColor={look.bg}
+            onMouseDown={() => onPick(i)}
+          >
+            <text fg={look.marker} flexShrink={0}>
+              {i === index ? " ▶ " : "   "}
+            </text>
+            <text fg={look.fg} attributes={look.bold} flexShrink={0}>
+              {item.label}
+            </text>
+            {item.hint ? (
+              <text fg={look.muted} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
+                {"  " + item.hint}
               </text>
-              <text
-                fg={active ? theme.fg : theme.fgMuted}
-                attributes={active ? TextAttributes.BOLD : undefined}
-                flexShrink={0}
-              >
-                {item.label}
-              </text>
-              {item.hint ? (
-                <text
-                  fg={theme.fgFaint}
-                  attributes={TextAttributes.DIM}
-                  flexGrow={1}
-                  flexShrink={1}
-                  minWidth={0}
-                  wrapMode="none"
-                  truncate
-                >
-                  {"  " + item.hint}
-                </text>
-              ) : null}
-            </box>
-          );
-        })}
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-          {note ?? "↑↓ move · ⏎ select · esc cancel"}
+            ) : null}
+          </box>
+        );
+      })}
+      {note && (
+        <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
+          {note}
         </text>
-      </box>
-    </box>
+      )}
+      <Hints marginTop={1} hints={hintsFrom("↑↓ move · ⏎ select · esc cancel")} />
+    </Dialog>
   );
 }

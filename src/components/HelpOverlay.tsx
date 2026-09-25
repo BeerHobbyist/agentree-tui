@@ -2,6 +2,8 @@ import { useRef } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
+import { Dialog } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 
 interface HelpOverlayProps {
   themeName: string;
@@ -30,6 +32,8 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["[  /  ]", "narrower / wider sidebar"],
       ["b", "hide / show the sidebar"],
       ["=", "reset sidebar width"],
+      ["Ctrl+P", "command palette: every action, searchable"],
+      ["esc", "dismiss a toast"],
       ["?", "toggle this help (every key is here)"],
       ["q  /  Ctrl+C", "quit"],
     ],
@@ -58,8 +62,8 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Agent status",
     rows: [
-      ["◆  needs action", "waiting on you: approve or answer"],
-      ["◐  working", "busy with your prompt"],
+      ["◆  needs action", "waiting on you: approve or answer (it pulses)"],
+      ["⠹  working", "busy with your prompt (it spins)"],
       ["✓  done", "finished; clears once you look"],
       ["○  idle", "running, nothing to do"],
       ["●3", "3 files with uncommitted changes"],
@@ -106,63 +110,30 @@ export function HelpOverlay({ themeName, onClose }: HelpOverlayProps) {
     else if (n === "g" && key.shift) box.scrollTo(box.scrollHeight);
   });
   return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      width="100%"
-      height="100%"
-      zIndex={200}
-      alignItems="center"
-      justifyContent="center"
-      shouldFill={false}
-      onMouseDown={onClose}
-    >
-      <box
-        width={66}
-        maxHeight="90%"
-        borderStyle="rounded"
-        border
-        borderColor={theme.accent}
-        backgroundColor={theme.panel}
-        title=" Keyboard & mouse "
-        titleAlignment="center"
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-      >
-        <scrollbox
-          ref={scrollRef}
-          flexGrow={1}
-          flexShrink={1}
-          minHeight={0}
-          scrollY
-          contentOptions={{ paddingRight: 1 }}
-        >
-          {SECTIONS.map((section) => (
-            <box key={section.title} flexDirection="column" flexShrink={0} marginBottom={1}>
-              <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-                {section.title}
-              </text>
-              {section.rows.map(([keys, desc], i) => (
-                <box key={String(i)} flexDirection="row" alignItems="center" flexShrink={0}>
-                  <text fg={theme.fg} flexShrink={0}>
-                    {keys.padEnd(24)}
-                  </text>
-                  <text fg={theme.fgMuted} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
-                    {desc}
-                  </text>
-                </box>
-              ))}
-            </box>
-          ))}
-        </scrollbox>
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={0}>
-          {`theme: ${themeName}  ·  ↑↓ scroll  ·  esc / ? / click to close`}
-        </text>
+    <Dialog title="Keyboard & mouse" width={70} onClose={onClose} top={2} zIndex={200}>
+      <scrollbox ref={scrollRef} flexGrow={1} flexShrink={1} minHeight={0} scrollY contentOptions={{ paddingRight: 1 }}>
+        {SECTIONS.map((section) => (
+          <box key={section.title} flexDirection="column" flexShrink={0} marginBottom={1}>
+            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+              {section.title}
+            </text>
+            {section.rows.map(([keys, desc], i) => (
+              <box key={String(i)} flexDirection="row" alignItems="center" flexShrink={0}>
+                <text fg={theme.fg} flexShrink={0}>
+                  {keys.padEnd(24)}
+                </text>
+                <text fg={theme.fgMuted} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
+                  {desc}
+                </text>
+              </box>
+            ))}
+          </box>
+        ))}
+      </scrollbox>
+      <box flexDirection="row" flexShrink={0}>
+        <text fg={theme.fgMuted} flexShrink={0}>{`theme ${themeName} · `}</text>
+        <Hints hints={hintsFrom("↑↓ scroll · esc / ? close")} />
       </box>
-    </box>
+    </Dialog>
   );
 }

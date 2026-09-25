@@ -217,8 +217,8 @@ describe("worktrees that vanished", () => {
     app.mockInput.pressEnter();
     await settle(app);
 
-    // No terminal pane: the placeholder main pane is still there.
-    expect(app.captureCharFrame()).toContain("tmux session would render here");
+    // No terminal pane: the placeholder says why, and what to do.
+    expect(app.captureCharFrame()).toContain("gone from disk · d forget it");
   });
 });
 
@@ -279,6 +279,9 @@ describe("themes", () => {
 
     app.mockInput.pressKey("t");
     await waitForText(app, "midnight");
+
+    app.mockInput.pressKey("t");
+    await waitForText(app, "opencode");
 
     app.mockInput.pressKey("t");
     await waitForText(app, "onedark");

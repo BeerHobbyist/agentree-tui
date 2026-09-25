@@ -24,18 +24,18 @@ describe("keyIds", () => {
 
 describe("the pop-up stack", () => {
   const help: Overlay = { kind: "help" };
-  const notice = (message: string): Overlay => ({ kind: "notice", title: "Oops", message });
+  const tracking = (on: boolean): Overlay => ({ kind: "tracking", on });
   const add: Overlay = { kind: "add", preselect: null };
 
   test("opening puts it on top; one of the same kind is replaced, not stacked", () => {
-    const s = withOpened(withOpened([add], notice("a")), notice("b"));
-    expect(s).toEqual([add, notice("b")]);
+    const s = withOpened(withOpened([add], tracking(true)), tracking(false));
+    expect(s).toEqual([add, tracking(false)]);
   });
 
   test("closing takes the top off, or a given kind wherever it is", () => {
-    const s = [add, help, notice("x")];
+    const s = [add, help, tracking(true)];
     expect(withClosed(s)).toEqual([add, help]);
-    expect(withClosed(s, "help")).toEqual([add, notice("x")]);
+    expect(withClosed(s, "help")).toEqual([add, tracking(true)]);
     expect(withClosed([])).toEqual([]);
   });
 });

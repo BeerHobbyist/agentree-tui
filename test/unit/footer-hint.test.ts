@@ -1,7 +1,10 @@
 /** The sidebar footer's one line of keys, for what's selected. */
 import { describe, expect, test } from "bun:test";
-import { footerHint, projectKey, worktreeKey } from "../../src/components/Sidebar";
+import { hintText } from "../../src/components/Hints";
+import { footerHint as hints, projectKey, worktreeKey } from "../../src/components/Sidebar";
 import type { Project, Worktree } from "../../src/data/model";
+
+const footerHint = (...args: Parameters<typeof hints>) => hintText(hints(...args));
 
 const wt = (id: string): Worktree => ({
   id,
@@ -28,24 +31,24 @@ const host: Project = {
 
 describe("footerHint", () => {
   test("says what you can do with the selected row", () => {
-    expect(footerHint([repo], projectKey(repo.id), false)).toBe("⏎ fold · a new worktree · ? keys");
-    expect(footerHint([repo], worktreeKey(repo.id, "x"), false)).toBe("⏎ open · a new · d close · ? keys");
-    expect(footerHint([repo], worktreeKey(repo.id, "main"), false)).toBe("⏎ open · a new worktree · ? keys");
-    expect(footerHint([host], projectKey(host.id), false)).toBe("a add dir · d remove · ? keys");
-    expect(footerHint([host], worktreeKey(host.id, "api"), false)).toBe("⏎ open · d remove · ? keys");
+    expect(footerHint([repo], projectKey(repo.id), false)).toBe("⏎ fold · a new · ^p commands");
+    expect(footerHint([repo], worktreeKey(repo.id, "x"), false)).toBe("⏎ open · d close · ^p commands");
+    expect(footerHint([repo], worktreeKey(repo.id, "main"), false)).toBe("⏎ open · a new · ^p commands");
+    expect(footerHint([host], projectKey(host.id), false)).toBe("a dir · d remove · ^p commands");
+    expect(footerHint([host], worktreeKey(host.id, "api"), false)).toBe("⏎ open · d remove · ^p commands");
   });
 
   test("a worktree whose PR is merged: closing it comes first", () => {
-    expect(footerHint([repo], worktreeKey(repo.id, "done"), false)).toBe("merged: d close · ⏎ open · ? keys");
+    expect(footerHint([repo], worktreeKey(repo.id, "done"), false)).toBe("d close (merged) · ^p commands");
   });
 
   test("nothing yet: how to add something", () => {
-    expect(footerHint([], "", false)).toBe("n add repo · s add host · ? keys");
+    expect(footerHint([], "", false)).toBe("n repo · s host · ^p commands");
   });
 
   test("an agent waiting comes first", () => {
-    expect(footerHint([repo], worktreeKey(repo.id, "x"), true)).toBe("Tab next agent · ⏎ open · ? keys");
-    expect(footerHint([repo], projectKey(repo.id), true)).toBe("Tab next agent · ? keys");
+    expect(footerHint([repo], worktreeKey(repo.id, "x"), true)).toBe("Tab next agent · ^p commands");
+    expect(footerHint([repo], projectKey(repo.id), true)).toBe("Tab next agent · ^p commands");
   });
 
   test("short enough for the default sidebar", () => {

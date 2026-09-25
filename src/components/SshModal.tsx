@@ -1,11 +1,13 @@
 import { useRef, useState } from "react";
-import { TextAttributes, type ParsedKey } from "@opentui/core";
+import type { ParsedKey } from "@opentui/core";
 import { useKeyboard, usePaste } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { addRemoteDir, reconcile, sshProjectId, type State } from "../store";
 import { configuredHosts, isValidHost, probeRemoteDir, SshAuthError } from "../services/ssh";
 import type { Selection } from "./AddWorktreeModal";
+import { Dialog, rowLook } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 
 interface SshModalProps {
   state: State;
@@ -175,11 +177,7 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
     if (text) type(text);
   });
 
-  const hint = (text: string) => (
-    <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-      {text}
-    </text>
-  );
+  const hint = (text: string) => <Hints marginTop={1} hints={hintsFrom(text)} />;
   const input = (value: string, placeholder: string) => (
     <box flexDirection="row" alignItems="center">
       <text fg={theme.accent} flexShrink={0}>
@@ -190,7 +188,7 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
           {value}
         </text>
       ) : (
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={1} wrapMode="none" truncate>
+        <text fg={theme.fgFaint} flexShrink={1} wrapMode="none" truncate>
           {placeholder}
         </text>
       )}
@@ -212,19 +210,17 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
             {input(hostInput, "dev-box")}
             {rows.length > 0 && (
               <box flexDirection="column" marginTop={1}>
-                {rows.map((h, i) => (
-                  <box
-                    key={h}
-                    flexDirection="row"
-                    backgroundColor={i === index ? theme.activeBg : undefined}
-                    onMouseDown={() => chooseHost(h)}
-                  >
-                    <text fg={i === index ? theme.accent : theme.fgMuted}>{i === index ? "▶ " : "  "}</text>
-                    <text fg={i === index ? theme.fg : theme.fgMuted} wrapMode="none" truncate>
-                      {"⌁ " + h}
-                    </text>
-                  </box>
-                ))}
+                {rows.map((h, i) => {
+                  const look = rowLook(theme, i === index);
+                  return (
+                    <box key={h} flexDirection="row" backgroundColor={look.bg} onMouseDown={() => chooseHost(h)}>
+                      <text fg={look.marker}>{i === index ? " ▶ " : "   "}</text>
+                      <text fg={look.fg} attributes={look.bold} wrapMode="none" truncate>
+                        {"⌁ " + h}
+                      </text>
+                    </box>
+                  );
+                })}
               </box>
             )}
             {hint("type or ↑↓ · ⏎ next · esc cancel")}
@@ -238,7 +234,7 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
               {`Directory on ${host}`}
             </text>
             {input(dir, "~")}
-            <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
+            <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
               {"Its terminal runs on the host, in tmux there — it keeps running if the connection drops."}
             </text>
             {hint(preset ? "⏎ add · esc cancel" : "⏎ add · esc back")}
@@ -256,7 +252,7 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
                 {passwordError}
               </text>
             )}
-            <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
+            <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
               {
                 "Used for this one login, which agentree keeps open and reuses; never saved. After a restart, its terminal asks again."
               }
@@ -279,38 +275,15 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
   };
 
   return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      width="100%"
-      height="100%"
+    <Dialog
+      title={preset ? `Add a directory on ${preset}` : "Add an SSH host"}
+      width={66}
+      // Not while it's connecting.
+      onClose={phase === "checking" ? undefined : onClose}
       zIndex={150}
-      alignItems="center"
-      justifyContent="center"
-      shouldFill={false}
-      onMouseDown={() => {
-        if (s.current.phase !== "checking") onClose();
-      }}
     >
-      <box
-        width={64}
-        borderStyle="rounded"
-        border
-        borderColor={theme.accent}
-        backgroundColor={theme.panel}
-        title={preset ? ` Add a directory on ${preset} ` : " Add an SSH host "}
-        titleAlignment="center"
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        {body()}
-      </box>
-    </box>
+      {body()}
+    </Dialog>
   );
 }
 

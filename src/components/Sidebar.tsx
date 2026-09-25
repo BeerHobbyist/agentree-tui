@@ -3,8 +3,9 @@ import { MouseButton, TextAttributes, type BoxRenderable, type ScrollBoxRenderab
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { DEFAULT_SIDEBAR_WIDTH } from "../layout";
+import { type Hint, Hints } from "./Hints";
 import { ResizeHandle } from "./ResizeHandle";
-import { WorktreeItem, agentLook } from "./WorktreeItem";
+import { AgentGlyph, WorktreeItem, agentLook } from "./WorktreeItem";
 import type { AgentStatus } from "../data/model";
 
 /** Most urgent first — what a folded project shows for its worktrees. */
@@ -56,26 +57,32 @@ function rowId(key: string): string {
   return `sidebar-row:${key}`;
 }
 
+const COMMANDS: Hint = { key: "^p", text: "commands" };
+const NEXT_AGENT: Hint = { key: "Tab", text: "next agent" };
+
 /**
  * The footer's one line of keys: what you can do with the selected row, not a
- * list of everything (that's `?`). An agent needing you comes first.
+ * list of everything (that's the command palette, `^p`, always last). An agent
+ * needing you comes first.
  */
-export function footerHint(projects: Project[], activeKey: string, agentWaiting: boolean): string {
-  if (projects.length === 0) return "n add repo · s add host · ? keys";
+export function footerHint(projects: Project[], activeKey: string, agentWaiting: boolean): Hint[] {
+  if (projects.length === 0) return [{ key: "n", text: "repo" }, { key: "s", text: "host" }, COMMANDS];
   for (const p of projects) {
     if (activeKey === projectKey(p.id)) {
-      if (agentWaiting) return "Tab next agent · ? keys";
-      return p.ssh ? "a add dir · d remove · ? keys" : "⏎ fold · a new worktree · ? keys";
+      if (agentWaiting) return [NEXT_AGENT, COMMANDS];
+      return p.ssh
+        ? [{ key: "a", text: "dir" }, { key: "d", text: "remove" }, COMMANDS]
+        : [{ key: "⏎", text: "fold" }, { key: "a", text: "new" }, COMMANDS];
     }
     const w = p.worktrees.find((w) => activeKey === worktreeKey(p.id, w.id));
     if (!w) continue;
-    if (agentWaiting) return "Tab next agent · ⏎ open · ? keys";
-    if (p.ssh) return "⏎ open · d remove · ? keys";
-    if (w.id === "main") return "⏎ open · a new worktree · ? keys";
-    if (w.pr?.merged) return "merged: d close · ⏎ open · ? keys";
-    return "⏎ open · a new · d close · ? keys";
+    if (agentWaiting) return [NEXT_AGENT, COMMANDS];
+    if (p.ssh) return [{ key: "⏎", text: "open" }, { key: "d", text: "remove" }, COMMANDS];
+    if (w.id === "main") return [{ key: "⏎", text: "open" }, { key: "a", text: "new" }, COMMANDS];
+    if (w.pr?.merged) return [{ key: "d", text: "close (merged)" }, COMMANDS];
+    return [{ key: "⏎", text: "open" }, { key: "d", text: "close" }, COMMANDS];
   }
-  return agentWaiting ? "Tab next agent · ? keys" : "? keys";
+  return agentWaiting ? [NEXT_AGENT, COMMANDS] : [COMMANDS];
 }
 
 function ProjectGroup({
@@ -99,7 +106,6 @@ function ProjectGroup({
   const headerActive = activeKey === projectKey(project.id);
   const dirtyCount = project.worktrees.filter((w) => w.dirty).length;
   const urgent = URGENCY.find((s) => project.worktrees.some((w) => w.agent === s));
-  const urgentLook = urgent ? agentLook(urgent, theme) : undefined;
 
   const band = headerActive ? theme.activeBg : theme.panelAlt;
 
@@ -133,10 +139,10 @@ function ProjectGroup({
             {project.name}
           </text>
           {/* Folded: surface what's inside — an agent needing you first. */}
-          {collapsed && urgentLook && (
-            <text fg={urgentLook.color} flexShrink={0}>
-              {urgentLook.glyph + " "}
-            </text>
+          {collapsed && urgent && (
+            <box flexDirection="row" flexShrink={0} marginRight={1}>
+              <AgentGlyph agent={urgent} bg={band} />
+            </box>
           )}
           {collapsed && dirtyCount > 0 && (
             <text fg={theme.dirty} flexShrink={0}>
@@ -285,9 +291,16 @@ export function Sidebar({
               // Each count takes you to the next agent in that state (also Tab).
               <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
                 {agentCounts.map((c, i) => (
-                  <text key={c.state} fg={c.look.color} flexShrink={0} onMouseDown={() => onJump?.(c.state)}>
-                    {(i > 0 ? "  " : "") + c.look.glyph + " " + c.count}
-                  </text>
+                  <box
+                    key={c.state}
+                    flexDirection="row"
+                    flexShrink={0}
+                    marginLeft={i > 0 ? 2 : 0}
+                    onMouseDown={() => onJump?.(c.state)}
+                  >
+                    <AgentGlyph agent={c.state} bg={theme.panel} />
+                    <text fg={c.look.color}>{` ${c.count}`}</text>
+                  </box>
                 ))}
               </box>
             )}
@@ -299,13 +312,13 @@ export function Sidebar({
               {" ? "}
             </text>
           </box>
-          <text fg={theme.fgFaint} attributes={TextAttributes.DIM} wrapMode="none" truncate>
-            {footerHint(
+          <Hints
+            hints={footerHint(
               projects,
               activeKey,
               agentCounts.some((c) => c.state !== "working"),
             )}
-          </text>
+          />
         </box>
       </box>
       {/* Right edge: drag to resize (replaces the old right border). The

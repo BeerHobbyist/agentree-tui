@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "@opentui/core";
 import { useTheme, type Theme } from "../theme";
+import { Hints } from "./Hints";
 import type { CheckState, PrDetails, PrInfo, PrReviewer } from "../data/model";
 import { excerpt, mergeStatus, relativeTime, summarizeChecks, type Tone } from "../services/pr";
 import { useQuery } from "@tanstack/react-query";
@@ -493,17 +494,22 @@ export function PrPanel({
 
         {/* Footer */}
         <box flexShrink={0} border={["top"]} borderColor={theme.border}>
-          <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={0} wrapMode="none" truncate>
-            {(query.isFetching
-              ? "refreshing…"
-              : error && details
-                ? "refresh failed"
-                : query.dataUpdatedAt
-                  ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
-                  : "") +
-              (d?.state === "open" ? " · m merge" : "") +
-              " · o open · r refresh"}
-          </text>
+          <Hints
+            hints={[
+              {
+                text: query.isFetching
+                  ? "refreshing…"
+                  : error && details
+                    ? "refresh failed"
+                    : query.dataUpdatedAt
+                      ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
+                      : "",
+              },
+              ...(d?.state === "open" ? [{ key: "m", text: "merge" }] : []),
+              { key: "o", text: "open" },
+              { key: "r", text: "refresh" },
+            ].filter((h) => h.text)}
+          />
         </box>
       </box>
     </box>

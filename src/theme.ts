@@ -76,7 +76,42 @@ const onedark: Theme = {
   behind: "#e06c75",
 };
 
-export const themes: Record<string, Theme> = { onedark, midnight };
+/** OpenCode's default dark palette (github.com/sst/opencode, theme "opencode"). */
+const opencode: Theme = {
+  name: "opencode",
+  bg: "#0a0a0a",
+  panel: "#141414",
+  panelAlt: "#1e1e1e",
+  activeBg: "#282828",
+  border: "#3c3c3c",
+  fg: "#eeeeee",
+  fgMuted: "#808080",
+  fgFaint: "#5a5a5a",
+  accent: "#fab283",
+  accentDim: "#5a4636",
+  dirty: "#f5a742",
+  clean: "#5a5a5a",
+  added: "#7fd88f",
+  removed: "#e06c75",
+  agentWaiting: "#9d7cd8",
+  agentWorking: "#56b6c2",
+  ahead: "#7fd88f",
+  behind: "#e06c75",
+};
+
+export const themes: Record<string, Theme> = { onedark, midnight, opencode };
+
+/** `a` mixed with `b`: t = 0 is all `a`, 1 all `b`. Both `#rrggbb`. */
+export function mix(a: string, b: string, t: number): string {
+  const channel = (hex: string, i: number) => Number.parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+  return `#${[0, 1, 2]
+    .map((i) =>
+      Math.round(channel(a, i) * (1 - t) + channel(b, i) * t)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
 
 // --- observable active-theme store ---
 let current: Theme = onedark;

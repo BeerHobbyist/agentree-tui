@@ -1,6 +1,7 @@
-import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
+import { Dialog } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 
 interface ConfirmModalProps {
   title: string;
@@ -11,7 +12,7 @@ interface ConfirmModalProps {
   onCancel: () => void;
 }
 
-/** Centered modal: y/⏎ confirms, n/esc/click-outside cancels (or dismisses a notice). */
+/** y/⏎ confirms, n/esc/click-outside cancels (or, without onConfirm, dismisses). */
 export function ConfirmModal({ title, message, detail, onConfirm, onCancel }: ConfirmModalProps) {
   const theme = useTheme();
 
@@ -25,44 +26,16 @@ export function ConfirmModal({ title, message, detail, onConfirm, onCancel }: Co
   });
 
   return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      width="100%"
-      height="100%"
-      zIndex={150}
-      alignItems="center"
-      justifyContent="center"
-      shouldFill={false}
-      onMouseDown={onCancel}
-    >
-      <box
-        width={54}
-        borderStyle="rounded"
-        border
-        borderColor={onConfirm ? theme.removed : theme.accent}
-        backgroundColor={theme.panel}
-        title={` ${title} `}
-        titleAlignment="center"
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-      >
-        <text fg={theme.fg} wrapMode="word">
-          {message}
+    <Dialog title={title} width={58} onClose={onCancel} titleColor={onConfirm ? theme.removed : undefined} zIndex={150}>
+      <text fg={theme.fg} wrapMode="word">
+        {message}
+      </text>
+      {detail && (
+        <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
+          {detail}
         </text>
-        {detail && (
-          <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
-            {detail}
-          </text>
-        )}
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-          {onConfirm ? "y / ⏎ confirm · n / esc cancel" : "⏎ / esc dismiss"}
-        </text>
-      </box>
-    </box>
+      )}
+      <Hints marginTop={1} hints={hintsFrom(onConfirm ? "y / ⏎ confirm · n / esc cancel" : "⏎ / esc dismiss")} />
+    </Dialog>
   );
 }

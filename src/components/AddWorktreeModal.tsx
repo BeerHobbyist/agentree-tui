@@ -1,11 +1,13 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { TextAttributes, type ParsedKey } from "@opentui/core";
+import type { ParsedKey } from "@opentui/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openPrsQuery, reposQuery } from "../queries";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
+import { Dialog, rowLook } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 import type { OpenPr, Project, RepoSummary } from "../data/model";
 import { branchLeaf, repoDir, sanitizeBranchForPath, worktreePath } from "../config";
 import { clone } from "../services/gh";
@@ -63,7 +65,6 @@ interface AddWorktreeModalProps {
 const MAX_LIST_ROWS = 10;
 
 export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWorktreeModalProps) {
-  const theme = useTheme();
   const queryClient = useQueryClient();
   // Straight to the list when the repos are already cached (no loading flash).
   const [phase, setPhase] = useState<Phase>(() =>
@@ -460,64 +461,41 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
     }
   });
 
+  // Busy (loading, cloning, creating): it can't be closed until that's done.
+  const busy = phase === "repoLoading" || phase === "cloning" || phase === "creating";
   return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      width="100%"
-      height="100%"
-      zIndex={100}
-      alignItems="center"
-      justifyContent="center"
-      shouldFill={false}
-    >
-      <box
-        width={66}
-        borderStyle="rounded"
-        border
-        borderColor={theme.accent}
-        backgroundColor={theme.panel}
-        title=" Add worktree "
-        titleAlignment="center"
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-      >
-        {renderBody({
-          phase,
-          repo,
-          repos,
-          filtered: filteredRepos(),
-          query,
-          index,
-          existing,
-          prs: availablePrs,
-          branch,
-          errorMsg,
-          loadingMore,
-          onPick: (i: number) => {
-            if (phase === "repoList") {
-              const r = filteredRepos()[i];
-              if (r) chooseRepo(r);
-            } else if (phase === "actions") {
-              if (i === 0) {
-                setBranch("");
-                setPhase("branchInput");
-              } else if (i <= existing.length) {
-                const wt = existing[i - 1];
-                if (wt) void loadExisting(wt);
-              } else {
-                const pr = availablePrs[i - existing.length - 1];
-                if (pr) createFromPr(pr);
-              }
+    <Dialog title="Add worktree" width={70} onClose={busy ? undefined : onClose}>
+      {renderBody({
+        phase,
+        repo,
+        repos,
+        filtered: filteredRepos(),
+        query,
+        index,
+        existing,
+        prs: availablePrs,
+        branch,
+        errorMsg,
+        loadingMore,
+        onPick: (i: number) => {
+          if (phase === "repoList") {
+            const r = filteredRepos()[i];
+            if (r) chooseRepo(r);
+          } else if (phase === "actions") {
+            if (i === 0) {
+              setBranch("");
+              setPhase("branchInput");
+            } else if (i <= existing.length) {
+              const wt = existing[i - 1];
+              if (wt) void loadExisting(wt);
+            } else {
+              const pr = availablePrs[i - existing.length - 1];
+              if (pr) createFromPr(pr);
             }
-          },
-        })}
-      </box>
-    </box>
+          }
+        },
+      })}
+    </Dialog>
   );
 }
 
@@ -547,7 +525,8 @@ function renderBody(p: BodyProps) {
       return (
         <ErrorBlock
           message={p.errorMsg || "Could not list repositories."}
-          hint="Is `gh` authenticated? Run `gh auth login`.  r retry · esc close"
+          note="Is `gh` authenticated? Run `gh auth login`."
+          hint="r retry · esc close"
         />
       );
     case "cloning":
@@ -576,16 +555,19 @@ function StatusLine({ text }: { text: string }) {
   );
 }
 
-function ErrorBlock({ message, hint }: { message: string; hint: string }) {
+function ErrorBlock({ message, note, hint }: { message: string; note?: string; hint: string }) {
   const theme = useTheme();
   return (
     <box flexDirection="column">
       <text fg={theme.removed} wrapMode="word">
         {message}
       </text>
-      <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-        {hint}
-      </text>
+      {note && (
+        <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
+          {note}
+        </text>
+      )}
+      <Hints marginTop={1} hints={hintsFrom(hint)} />
     </box>
   );
 }
@@ -613,36 +595,34 @@ function RepoList(p: BodyProps) {
 
       {slice.map((r, i) => {
         const active = start + i === p.index;
+        const look = rowLook(theme, active);
         return (
-          <box key={r.nameWithOwner} flexDirection="row" alignItems="center" onMouseDown={() => p.onPick?.(start + i)}>
-            <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
-              {active ? "▶ " : "  "}
+          <box
+            key={r.nameWithOwner}
+            flexDirection="row"
+            alignItems="center"
+            backgroundColor={look.bg}
+            onMouseDown={() => p.onPick?.(start + i)}
+          >
+            <text fg={look.marker} flexShrink={0}>
+              {active ? " ▶ " : "   "}
             </text>
-            <text
-              fg={active ? theme.fg : theme.fgMuted}
-              attributes={active ? TextAttributes.BOLD : undefined}
-              flexShrink={0}
-            >
+            <text fg={look.fg} attributes={look.bold} flexShrink={0}>
               {r.isPrivate ? "🔒 " : ""}
             </text>
-            <text
-              fg={active ? theme.fg : theme.fgMuted}
-              attributes={active ? TextAttributes.BOLD : undefined}
-              flexGrow={1}
-              flexShrink={1}
-              minWidth={0}
-              wrapMode="none"
-              truncate
-            >
+            <text fg={look.fg} attributes={look.bold} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
               {r.nameWithOwner}
             </text>
           </box>
         );
       })}
 
-      <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-        {`${p.filtered.length} repos${p.loadingMore ? " · loading more…" : ""} · ↑↓ move · ⏎ select · esc cancel`}
-      </text>
+      <box flexDirection="row" marginTop={1}>
+        <text fg={theme.fgMuted} flexShrink={0}>
+          {`${p.filtered.length} repos${p.loadingMore ? " · loading more…" : ""} · `}
+        </text>
+        <Hints hints={hintsFrom("↑↓ move · ⏎ select · esc cancel")} />
+      </box>
     </box>
   );
 }
@@ -667,37 +647,30 @@ function Actions(p: BodyProps) {
       </text>
       {rows.map((row, i) => {
         const active = i === p.index;
+        const look = rowLook(theme, active);
         return (
-          <box key={String(i)} flexDirection="row" alignItems="center" onMouseDown={() => p.onPick?.(i)}>
-            <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
-              {active ? "▶ " : "  "}
+          <box
+            key={String(i)}
+            flexDirection="row"
+            alignItems="center"
+            backgroundColor={look.bg}
+            onMouseDown={() => p.onPick?.(i)}
+          >
+            <text fg={look.marker} flexShrink={0}>
+              {active ? " ▶ " : "   "}
             </text>
-            <text
-              fg={active ? theme.fg : theme.fgMuted}
-              attributes={active ? TextAttributes.BOLD : undefined}
-              flexShrink={0}
-            >
+            <text fg={look.fg} attributes={look.bold} flexShrink={0}>
               {row.label}
             </text>
             {row.hint ? (
-              <text
-                fg={theme.fgFaint}
-                attributes={TextAttributes.DIM}
-                flexGrow={1}
-                flexShrink={1}
-                minWidth={0}
-                wrapMode="none"
-                truncate
-              >
+              <text fg={look.muted} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
                 {"  " + row.hint}
               </text>
             ) : null}
           </box>
         );
       })}
-      <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-        {"↑↓ move · ⏎ select · esc back"}
-      </text>
+      <Hints marginTop={1} hints={hintsFrom("↑↓ move · ⏎ select · esc back")} />
     </box>
   );
 }
@@ -714,9 +687,7 @@ function BranchInput(p: BodyProps) {
         <text fg={theme.fg}>{p.branch.length ? p.branch : ""}</text>
         <text fg={theme.accent}>{"▏"}</text>
       </box>
-      <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-        {"⏎ create · esc back"}
-      </text>
+      <Hints marginTop={1} hints={hintsFrom("⏎ create · esc back")} />
     </box>
   );
 }
