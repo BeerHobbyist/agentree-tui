@@ -11,11 +11,13 @@ by tmux, with tabs and pane splitting.
 
 Working, at MVP+ level:
 
-- **Sidebar** — projects as foldable groups, worktrees indented under a guide rule
-  with live **agent status** (◆ needs action · ◐ working · ✓ done · ○ idle), an
-  uncommitted-changes count (`●3`), +/− and ahead/behind, and a PR badge
+- **Sidebar** — projects as foldable groups under header bands; each worktree
+  a two-line card (blank line between cards): status glyph, name and PR badge
   `⇡#N` via `gh` coloured by CI (`⇡#N merged` once merged, until the worktree
-  is closed); keyboard + mouse nav, and clicking it gives it
+  is closed); then the branch, an uncommitted-changes count (`●3`), +/− and
+  ahead/behind, and the **agent status** label (◆ needs action · ◐ working ·
+  ✓ done · ○ idle). Scrolls when it's taller than the screen, keeping the
+  selection in view; keyboard + mouse nav, and clicking it gives it
   the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered;
   **hideable** (`b` or its `⇤`; back with `b`, Ctrl+g or the tab bar's `‹`).
   Worktrees can be **renamed** (`R` / right-click): a label shown instead of the
@@ -421,6 +423,15 @@ Ctrl+g, the tab bar's `‹` — so there's no separate "show" to learn. Remember
 (`ui.sidebarHidden`); with nothing open, the placeholder says `b` shows it.
 `fitPanels(…, sidebarHidden)` gives it 0 columns, so the PR panel can use them.
 
+**Layout** (#50; it was crammed): project headers are bands (`theme.panelAlt`,
+like the PR panel's sections) with the path under them; worktrees are
+`WorktreeItem` cards two lines tall with a blank line between them and no tree
+rule. Line 1 — status, name, PR; line 2 — branch, changes, agent label (the
+label used to squeeze the name on line 1). The branch is `fgFaint` (muted on
+the selected card), not dimmed on top. The list is a `scrollbox`: every row
+has an id (`sidebar-row:<key>`) and `scrollChildIntoView` follows the
+selection; the footer is `flexShrink={0}` or the list squeezes it to one row.
+
 ## PR panel
 
 `src/components/PrPanel.tsx`, on the right of the content pane, for the
@@ -658,7 +669,7 @@ each other.
 
 ## Tests
 
-`bun test` — 426 tests, ~75s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 428 tests, ~75s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -772,6 +783,9 @@ changes. A scene that waits for text a hidden panel would show hangs.
 
 ### 2026-09-25
 
+- #50 `96ddd00` A roomier sidebar: project header bands, worktrees as spaced
+  two-line cards (agent label on line 2), and a list that scrolls to keep the
+  selection in view; README screenshots regenerated
 - #49 `461d88e` Merged PRs stay on their worktree (`⇡#N merged`; only a PR
   that was this branch's), and closing it is one key: `d`, the panel's
   `Close worktree…`, or `d` right after merging with `m`
