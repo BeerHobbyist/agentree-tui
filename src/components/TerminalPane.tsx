@@ -157,6 +157,14 @@ function TerminalView({
   );
   const { ref, onData, onTerminalResize, status, error } = useTerminalSession(command);
 
+  // The emulator's default colours are the theme's (OSC 10 / 11), set before
+  // tmux's first output: tmux clears the whole screen when it attaches, then
+  // repaints it row by row, and a cleared cell shows the default background —
+  // black, until now, so a new terminal flashed black at the bottom.
+  useEffect(() => {
+    ref.current?.write(`\x1b]10;${theme.fg}\x1b\\\x1b]11;${theme.bg}\x1b\\`);
+  }, [theme.bg, theme.fg, ref]);
+
   // Route focus to the emulator whenever the app hands it focus.
   useEffect(() => {
     if (status !== "running") return;
