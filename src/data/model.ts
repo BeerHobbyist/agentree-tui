@@ -25,7 +25,9 @@ export interface PrInfo {
   title: string;
   url: string;
   draft: boolean;
-  /** Its checks overall, when it has any. */
+  /** Merged — shown until the worktree is closed. Otherwise it's open. */
+  merged?: boolean;
+  /** Its checks overall, when it has any (an open PR's). */
   checks?: CheckState;
 }
 

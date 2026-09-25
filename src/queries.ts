@@ -74,11 +74,11 @@ export const mergeSettingsQuery = (repo: string) =>
     staleTime: 10 * 60_000,
   });
 
-/** A worktree branch's open PR (the sidebar badge), or null. */
-export const prForBranchQuery = (repo: string, branch: string) =>
+/** A worktree branch's PR — open, or else merged — for the sidebar badge; or null. */
+export const prForBranchQuery = (repo: string, branch: string, worktreePath: string) =>
   queryOptions({
     queryKey: queryKeys.prForBranch(repo, branch),
-    queryFn: (): Promise<PrInfo | null> => limited(() => prForBranch(repo, branch)),
+    queryFn: (): Promise<PrInfo | null> => limited(() => prForBranch(repo, branch, worktreePath)),
     staleTime: PR_LOOKUP_MS,
     refetchInterval: PR_LOOKUP_MS,
   });

@@ -32,6 +32,12 @@ export interface FakePr {
   isDraft?: boolean;
   /** Raw `statusCheckRollup` entries (the badge is coloured by them). */
   checks?: Record<string, unknown>[];
+  /** Default OPEN. */
+  state?: "OPEN" | "MERGED" | "CLOSED";
+  /** Its head commit, the commit its merge made, and its commits — how a merged PR is tied to a branch. */
+  headRefOid?: string;
+  mergeCommit?: string;
+  commits?: string[];
 }
 
 export interface Sandbox {
@@ -57,7 +63,7 @@ export interface Sandbox {
    * Publish the PR the sidebar's per-branch badge lookup should find — for
    * `branch` only when given, otherwise for every branch.
    */
-  setBranchPr(pr: FakePr | null, branch?: string): void;
+  setBranchPr(pr: FakePr | FakePr[] | null, branch?: string): void;
   /** Publish what `gh pr view <number> --json …` returns (raw GitHub shape). */
   setPrView(number: number, pr: Record<string, unknown>): void;
   /** Publish a PR's inline review comments (raw REST shape). */
@@ -106,6 +112,10 @@ function toApiPr(pr: FakePr) {
     isDraft: pr.isDraft ?? false,
     headRefName: pr.headRefName,
     statusCheckRollup: pr.checks ?? [],
+    state: pr.state ?? "OPEN",
+    headRefOid: pr.headRefOid ?? "",
+    mergeCommit: pr.mergeCommit ? { oid: pr.mergeCommit } : null,
+    commits: (pr.commits ?? []).map((oid) => ({ oid })),
   };
 }
 
@@ -246,7 +256,7 @@ export function createSandbox(): Sandbox {
     },
     setBranchPr(pr, branch) {
       const file = branch ? `prs-head-${branch.replace(/\//g, "_")}.json` : "prs.json";
-      writeFileSync(join(fixtures, file), JSON.stringify(pr ? [toApiPr(pr)] : []));
+      writeFileSync(join(fixtures, file), JSON.stringify((pr === null ? [] : [pr].flat()).map(toApiPr)));
     },
     setPrView(number, pr) {
       writeFileSync(join(fixtures, `pr-view-${number}.json`), JSON.stringify(pr));

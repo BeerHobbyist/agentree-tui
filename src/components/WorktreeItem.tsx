@@ -54,19 +54,23 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
             </text>
           </box>
 
-          {/* Open PR, coloured by its checks (red failing, yellow running). */}
+          {/* Its PR: open, coloured by its checks (red failing, yellow running); or merged. */}
           {worktree.pr && (
             <text
               fg={
-                worktree.pr.checks
-                  ? checkLook(worktree.pr.checks, theme).color
-                  : worktree.pr.draft
-                    ? theme.fgMuted
-                    : theme.added
+                worktree.pr.merged
+                  ? theme.agentWaiting
+                  : worktree.pr.checks
+                    ? checkLook(worktree.pr.checks, theme).color
+                    : worktree.pr.draft
+                      ? theme.fgMuted
+                      : theme.added
               }
               flexShrink={0}
             >
-              {` ⇡#${worktree.pr.number}${worktree.pr.draft ? "◌" : ""}`}
+              {worktree.pr.merged
+                ? ` ⇡#${worktree.pr.number} merged`
+                : ` ⇡#${worktree.pr.number}${worktree.pr.draft ? "◌" : ""}`}
             </text>
           )}
 

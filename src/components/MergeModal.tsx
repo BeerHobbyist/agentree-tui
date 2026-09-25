@@ -15,6 +15,8 @@ interface MergeModalProps {
   preferred?: MergeMethod;
   /** A merge (or auto-merge) went through with this method. */
   onMerged: (method: MergeMethod) => void;
+  /** After a merge: close the PR's worktree (`d`; that asks first). */
+  onCloseWorktree?: () => void;
   onClose: () => void;
 }
 
@@ -33,7 +35,7 @@ type Phase =
  * be set to merge once it's ready, when the repo allows auto-merge. Nothing is
  * merged without the confirm step. Owns the keyboard while open.
  */
-export function MergeModal({ repo, pr, preferred, onMerged, onClose }: MergeModalProps) {
+export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onClose }: MergeModalProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const detailsQ = useQuery(prDetailsQuery(repo, pr.number));
@@ -83,7 +85,7 @@ export function MergeModal({ repo, pr, preferred, onMerged, onClose }: MergeModa
       })
       .catch((err) => go({ kind: "error", message: err instanceof Error ? err.message : String(err) }))
       .finally(() => {
-        // The badge and the panel catch up (a merged PR's badge goes away).
+        // The badge and the panel catch up (a merged PR's badge says so).
         void queryClient.invalidateQueries({ queryKey: queryKeys.prDetails(repo, pr.number) });
         void queryClient.invalidateQueries({ queryKey: queryKeys.allPrForBranch });
       });
@@ -113,7 +115,8 @@ export function MergeModal({ repo, pr, preferred, onMerged, onClose }: MergeModa
       case "merging":
         return; // wait for gh
       case "done":
-        if (n === "return" || n === "escape" || n === "q") onClose();
+        if (n === "d" && !p.auto && onCloseWorktree) onCloseWorktree();
+        else if (n === "return" || n === "escape" || n === "q") onClose();
         return;
       case "error":
         if (n === "return" || n === "escape") go({ kind: "choose" });
@@ -212,12 +215,8 @@ export function MergeModal({ repo, pr, preferred, onMerged, onClose }: MergeModa
                 ? `✓ Auto-merge on: #${pr.number} will ${labelOf(phase.method).verb} into ${into} once it's ready.`
                 : `✓ Merged #${pr.number} into ${into}.`}
             </text>
-            {!phase.auto && (
-              <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
-                {"The worktree is still here — d closes it when you're done with it."}
-              </text>
-            )}
-            {hint("⏎ / esc close")}
+            {/* Done with the branch: its worktree can go too (that asks first). */}
+            {hint(!phase.auto && onCloseWorktree ? "d close the worktree · ⏎ / esc keep it" : "⏎ / esc close")}
           </>
         );
       case "error":

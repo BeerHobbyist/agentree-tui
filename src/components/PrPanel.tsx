@@ -33,6 +33,10 @@ interface PrPanelProps {
   onClose: () => void;
   /** Open the merge prompt for this PR (`m`, or the Merge button). */
   onMerge?: () => void;
+  /** Once it's merged: close the worktree it came from (the Close button). */
+  onCloseWorktree?: () => void;
+  /** The key that closes that worktree from the sidebar, when it's the one selected there. */
+  closeKey?: string;
   /** Sections folded away (click a section's header to fold / unfold it). */
   collapsed?: readonly PrSection[];
   onToggleSection?: (section: PrSection) => void;
@@ -192,6 +196,8 @@ export function PrPanel({
   onResetWidth,
   onClose,
   onMerge,
+  onCloseWorktree,
+  closeKey,
   collapsed = [],
   onToggleSection,
   handleRef,
@@ -358,6 +364,19 @@ export function PrPanel({
                   <text fg={theme.fgFaint} flexShrink={0}>
                     {" m"}
                   </text>
+                </box>
+              )}
+              {d.state === "merged" && onCloseWorktree && (
+                // Done with it: the worktree can go (it asks first).
+                <box flexDirection="row" flexShrink={0}>
+                  <text fg={theme.panel} bg={theme.accent} flexShrink={0} onMouseDown={onCloseWorktree}>
+                    {" Close worktree… "}
+                  </text>
+                  {closeKey && (
+                    <text fg={theme.fgFaint} flexShrink={0}>
+                      {` ${closeKey}`}
+                    </text>
+                  )}
                 </box>
               )}
             </Section>

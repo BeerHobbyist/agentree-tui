@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { clone, fetchRepoPage, isAuthenticated, prForBranch } from "../../src/services/gh";
 import { fetchMergeSettings, fetchPrDetails, mergePr } from "../../src/services/pr";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
-import { makeRemote } from "../helpers/repo";
+import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
 
 let sandbox: Sandbox;
 
@@ -74,7 +74,7 @@ describe("prForBranch", () => {
   test("returns the open PR for a branch", async () => {
     await Bun.write(
       join(process.env.FAKE_GH_DIR!, "prs.json"),
-      JSON.stringify([{ number: 42, title: "Add tests", url: "https://gh/42", isDraft: true }]),
+      JSON.stringify([{ number: 42, title: "Add tests", url: "https://gh/42", isDraft: true, state: "OPEN" }]),
     );
     expect(await prForBranch("acme/widget", "feature/x")).toEqual({
       number: 42,
@@ -84,10 +84,10 @@ describe("prForBranch", () => {
     });
   });
 
-  test("queries the branch as head, open only", async () => {
+  test("queries the branch as head, open and merged alike", async () => {
     await prForBranch("acme/widget", "feature/x");
     const call = sandbox.ghCalls().at(-1)!;
-    expect(call).toContain("pr list -R acme/widget --head feature/x --state open");
+    expect(call).toContain("pr list -R acme/widget --head feature/x --state all");
   });
 
   test("no PR is a null, not an error", async () => {
@@ -112,6 +112,73 @@ describe("prForBranch", () => {
     sandbox.setBranchPr({ number: 7, title: "t", headRefName: "feature/x" }, "feature/x");
     expect((await prForBranch("acme/widget", "feature/x"))?.number).toBe(7);
     expect(await prForBranch("acme/widget", "feature/y")).toBeNull();
+  });
+
+  describe("merged", () => {
+    /** A worktree on feature/x, and its commit. */
+    async function worktree() {
+      const root = await makeRepo(join(sandbox.workspace, "widget"), { worktrees: [{ branch: "feature/x" }] });
+      const path = join(root, ".worktrees", "feature-x");
+      return { root, path, head: (await git(["rev-parse", "HEAD"], path)).trim() };
+    }
+    const merged = (extra: Record<string, unknown>) => ({
+      number: 9,
+      title: "Merged one",
+      headRefName: "feature/x",
+      state: "MERGED" as const,
+      mergeCommit: "0".repeat(40),
+      ...extra,
+    });
+
+    test("with no open PR, the branch's merged one shows, marked merged", async () => {
+      const { path, head } = await worktree();
+      sandbox.setBranchPr(merged({ headRefOid: head }));
+      expect(await prForBranch("acme/widget", "feature/x", path)).toMatchObject({ number: 9, merged: true });
+    });
+
+    test("an open PR wins over a merged one", async () => {
+      const { path, head } = await worktree();
+      sandbox.setBranchPr([merged({ headRefOid: head }), { number: 11, title: "Open", headRefName: "feature/x" }]);
+      const pr = await prForBranch("acme/widget", "feature/x", path);
+      expect(pr?.number).toBe(11);
+      expect(pr?.merged).toBeUndefined();
+    });
+
+    test("committed on since the merge: still its PR", async () => {
+      const { path, head } = await worktree();
+      writeFile(path, "more.txt", "more\n");
+      await commitAll(path, "after the merge");
+      sandbox.setBranchPr(merged({ headRefOid: head }));
+      expect((await prForBranch("acme/widget", "feature/x", path))?.merged).toBe(true);
+    });
+
+    test("behind the PR (commits pushed on GitHub): at one of its commits, so still its PR", async () => {
+      const { path, head } = await worktree();
+      sandbox.setBranchPr(merged({ headRefOid: "f".repeat(40), commits: [head, "f".repeat(40)] }));
+      expect((await prForBranch("acme/widget", "feature/x", path))?.merged).toBe(true);
+    });
+
+    test("an older branch's PR with the same name isn't this one's", async () => {
+      const { path } = await worktree();
+      sandbox.setBranchPr(merged({ headRefOid: "e".repeat(40), commits: ["e".repeat(40)] }));
+      expect(await prForBranch("acme/widget", "feature/x", path)).toBeNull();
+    });
+
+    test("a branch that already has the merge (main, or one started after it) doesn't show it", async () => {
+      const { root, path, head } = await worktree();
+      // What the merge made is in the branch — here, its own tip.
+      sandbox.setBranchPr(merged({ headRefOid: head, mergeCommit: head }));
+      expect(await prForBranch("acme/widget", "feature/x", path)).toBeNull();
+      const mainHead = (await git(["rev-parse", "HEAD"], root)).trim();
+      sandbox.setBranchPr(merged({ headRefOid: mainHead, mergeCommit: mainHead }), "main");
+      expect(await prForBranch("acme/widget", "main", root)).toBeNull();
+    });
+
+    test("without the worktree to check against, a merged PR isn't shown", async () => {
+      const { head } = await worktree();
+      sandbox.setBranchPr(merged({ headRefOid: head }));
+      expect(await prForBranch("acme/widget", "feature/x")).toBeNull();
+    });
   });
 
   test('a failing gh is an error, not "no PR" — so a cache keeps the last good badge', async () => {

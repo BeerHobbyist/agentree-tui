@@ -129,6 +129,18 @@ export async function baseRef(path: string): Promise<string> {
   return "main";
 }
 
+/** The commit a worktree has checked out, or null. */
+export async function headCommit(path: string): Promise<string | null> {
+  const { code, stdout } = await run(["git", "rev-parse", "HEAD"], { cwd: path });
+  return code === 0 ? stdout.trim() : null;
+}
+
+/** True if `commit` is `head` or in its history — false if not, or if git doesn't have `commit`. */
+export async function isAncestor(path: string, commit: string, head: string): Promise<boolean> {
+  const { code } = await run(["git", "merge-base", "--is-ancestor", commit, head], { cwd: path });
+  return code === 0;
+}
+
 /** True if a local branch with this exact name exists. */
 export async function localBranchExists(root: string, branch: string): Promise<boolean> {
   const { code } = await run(["git", "rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: root });

@@ -29,7 +29,8 @@ export type Overlay =
   | { kind: "forget"; host: string; dirId?: string; what: string; needsPassword?: boolean }
   /** Turn tracking every claude on or off (`H`) — it edits Claude's settings, so it asks. */
   | { kind: "tracking"; on: boolean }
-  | { kind: "merge"; repo: string; pr: PrInfo }
+  /** Merge the PR on screen (`m`); `worktreeId` is its worktree, which `d` can close after. */
+  | { kind: "merge"; repo: string; pr: PrInfo; worktreeId: string }
   /** A worktree's label (`R`, right-click). */
   | { kind: "rename"; repoId: string; worktreeId: string; label: string; name: string; branch: string }
   /** Something went wrong, until dismissed. */
@@ -75,6 +76,8 @@ export interface OverlayActions {
   setTracking(on: boolean): void;
   saveLabel(target: Extract<Overlay, { kind: "rename" }>, label: string): void;
   merged(method: MergeMethod): void;
+  /** After a merge, `d`: ask to close the PR's worktree. */
+  closeMergedWorktree(target: Extract<Overlay, { kind: "merge" }>): void;
 }
 
 /** The pop-up on top of the stack, if any. */
@@ -150,6 +153,7 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
           pr={o.pr}
           preferred={actions.state.ui?.mergeMethod}
           onMerged={actions.merged}
+          onCloseWorktree={() => actions.closeMergedWorktree(o)}
           onClose={close}
         />
       );

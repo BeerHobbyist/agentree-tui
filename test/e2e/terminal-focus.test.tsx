@@ -149,7 +149,7 @@ describe("what pauses while the terminal isn't focused", () => {
   test("GitHub queries pause; local ones keep polling", () => {
     // GitHub: caught up on return.
     expect(prDetailsQuery("acme/widget", 1).refetchIntervalInBackground).toBeFalsy();
-    expect(prForBranchQuery("acme/widget", "x").refetchIntervalInBackground).toBeFalsy();
+    expect(prForBranchQuery("acme/widget", "x", "/tmp/x").refetchIntervalInBackground).toBeFalsy();
     // Local and cheap, and what you watch agentree for from another window.
     expect(agentStatusQuery().refetchIntervalInBackground).toBe(true);
     expect(gitStatusQuery("/tmp/x").refetchIntervalInBackground).toBe(true);

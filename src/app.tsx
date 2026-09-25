@@ -149,8 +149,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const overlays = useOverlays();
   const prefs = usePrefs(state, screenWidthRef, layoutRef);
   const prPanelRef = useRef<PrPanelHandle | null>(null);
-  /** The PR on screen (set while rendering), for the key handler. */
-  const currentPrRef = useRef<{ repo: string; pr: PrInfo } | null>(null);
+  /** The PR on screen and its worktree (set while rendering), for the key handler. */
+  const currentPrRef = useRef<{ repo: string; pr: PrInfo; worktreeId: string } | null>(null);
   /** The projects as shown — live status merged in — for the handlers. */
   const projectsRef = useRef(projects);
 
@@ -350,6 +350,15 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     });
   };
 
+  /** Ask to close a worktree by id: the PR panel's Close button, `d` right after a merge. */
+  const requestCloseWorktree = (repoId: string, worktreeId: string) => {
+    const project = projectsRef.current.find((p) => p.id === repoId);
+    const worktree = project?.worktrees.find((w) => w.id === worktreeId);
+    if (!project || !worktree) return;
+    setFocusMode("sidebar"); // keys go to the prompt, not a terminal
+    requestClose({ kind: "worktree", project, worktree });
+  };
+
   /**
    * After worktrees went away: the new project list, their terminals unmounted
    * (tearing down their PTYs), another one shown if one of them was on screen,
@@ -444,7 +453,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   /** Ask to merge the PR on screen; the prompt picks a method and confirms first. */
   const requestMerge = () => {
     const current = currentPrRef.current;
-    if (!current) return;
+    if (!current || current.pr.merged) return;
     setFocusMode("sidebar"); // keys go to the prompt, not a terminal
     overlays.open({ kind: "merge", ...current });
   };
@@ -563,7 +572,9 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const onScreen =
     mounted.find((m) => m.key === activeTermKey) ??
     (active?.kind === "worktree" ? { repoId: active.project.id, worktree: active.worktree } : null);
-  const currentPr = onScreen?.worktree.pr ? { repo: onScreen.repoId, pr: onScreen.worktree.pr } : null;
+  const currentPr = onScreen?.worktree.pr
+    ? { repo: onScreen.repoId, pr: onScreen.worktree.pr, worktreeId: onScreen.worktree.id }
+    : null;
   currentPrRef.current = currentPr;
   const layout = fitPanels(
     screenWidth,
@@ -583,6 +594,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     setTracking,
     saveLabel,
     merged: (method) => prefs.saveUi({ mergeMethod: method }),
+    closeMergedWorktree: (target) => {
+      overlays.close("merge");
+      requestCloseWorktree(target.repo, target.worktreeId);
+    },
   };
 
   return (
@@ -639,6 +654,15 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           onResetWidth={prefs.prPanel.resetWidth}
           onClose={prefs.prPanel.toggle}
           onMerge={requestMerge}
+          onCloseWorktree={() => requestCloseWorktree(currentPr.repo, currentPr.worktreeId)}
+          // `d` closes the selected row: only its key when that's this PR's worktree.
+          closeKey={
+            active?.kind === "worktree" &&
+            active.project.id === currentPr.repo &&
+            active.worktree.id === currentPr.worktreeId
+              ? "d"
+              : undefined
+          }
           collapsed={prefs.prPanel.collapsed}
           onToggleSection={prefs.prPanel.toggleSection}
           handleRef={prPanelRef}
