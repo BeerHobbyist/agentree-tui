@@ -1,6 +1,6 @@
 # agentree-tui — Dev Log & State
 
-_Last updated: 2026-09-24 · Repo: github.com/BeerHobbyist/agentree-tui (private)_
+_Last updated: 2026-09-25 · Repo: github.com/BeerHobbyist/agentree-tui (private)_
 
 A terminal-first workspace manager for parallel development across git worktrees.
 Built with **Bun + TypeScript + OpenTUI (React renderer)**. A sidebar lists your
@@ -13,8 +13,9 @@ Working, at MVP+ level:
 
 - **Sidebar** — projects as foldable groups, worktrees indented under a guide rule
   with live **agent status** (◆ needs action · ◐ working · ✓ done · ○ idle), an
-  uncommitted-changes count (`●3`), +/− and ahead/behind, and an open-PR badge
-  `⇡#N` via `gh` coloured by CI; keyboard + mouse nav, and clicking it gives it
+  uncommitted-changes count (`●3`), +/− and ahead/behind, and a PR badge
+  `⇡#N` via `gh` coloured by CI (`⇡#N merged` once merged, until the worktree
+  is closed); keyboard + mouse nav, and clicking it gives it
   the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered;
   **hideable** (`b` or its `⇤`; back with `b`, Ctrl+g or the tab bar's `‹`).
   Worktrees can be **renamed** (`R` / right-click): a label shown instead of the
@@ -24,11 +25,13 @@ Working, at MVP+ level:
   its hooks to Claude's user settings) for any claude started in its terminals,
   on SSH hosts too. A desktop notification when one needs you or finishes while
   you're elsewhere; `Tab` / `⌥n` / a footer count jump to it.
-- **PR panel** — on the right, for the worktree on screen when it has an open
-  PR: merge status, reviews, checks, labels, description and comments; `p` / ⌥p
-  toggles, `o` opens on GitHub, `r` refreshes, **`m` merges** (pick a method the
-  repo allows, then confirm; a blocked PR can be set to auto-merge). Sections
-  fold (click their header band), remembered.
+- **PR panel** — on the right, for the worktree on screen when it has a PR
+  (open, or merged): merge status, reviews, checks, labels, description and
+  comments; `p` / ⌥p toggles, `o` opens on GitHub, `r` refreshes, **`m`
+  merges** (pick a method the repo allows, then confirm; a blocked PR can be
+  set to auto-merge). Once merged, **closing the worktree** is one key: `d`
+  (the sidebar hint leads with it), the panel's `Close worktree…`, or `d` on the
+  merge dialog's done screen. Sections fold (click their header band), remembered.
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
   persisted; `＋` on a header or `a` preselects the project. The repo's open
@@ -56,6 +59,10 @@ Working, at MVP+ level:
   own tabs and read them; claude is told about it on start, and a Claude Code
   skill (`agentree skill install`) covers when and how.
 - **Ctrl+C reaches the shell**; app quit via `q` / Ctrl+C while the sidebar is focused.
+- **Docs and CI** — an OSS-style README with screenshots of the real app
+  (`bun scripts/screenshots.tsx` regenerates them); CI lints and checks
+  formatting (Biome), tests on Linux and macOS with a coverage minimum, and
+  checks PR titles (see **Quality checks**).
 
 ## Architecture
 
@@ -126,9 +133,11 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - `src/services/diff.ts` — diff viewers (hunk, diffnav, delta, difftastic, nvim
   diffview, git): which are installed, and `diffCommand(viewer, target, arg?)`.
 - `src/services/gh.ts` — `fetchRepoPage` (paginated `gh api user/repos`), cache,
-  `clone`, `isAuthenticated`, `prForBranch` (open PR for a branch, cached).
+  `clone`, `isAuthenticated`, `prForBranch` (a branch's PR: open, else merged
+  from this branch; cached).
 - `src/services/git.ts` — worktree add/list/status, `localBranchExists`,
-  `ignoreWorktreesDir` (adds `.worktrees/` to `.git/info/exclude`).
+  `ignoreWorktreesDir` (adds `.worktrees/` to `.git/info/exclude`),
+  `canonicalPath` (symlinks resolved, for comparing with git's paths).
 - `src/services/tmux.ts` — dedicated **`-L agentree`** socket; `attachCommand`
   (pre-attach cursor override, status off + global theme, `mouse on`, optional
   startup command and session `env`), window/pane helpers
@@ -150,6 +159,8 @@ the app polls those and cross-checks tmux (see **Agent status**).
   `StableCursorEmbeddedTerminal` subclass — see **Terminal fidelity**),
   `TerminalPane`, `TabBar`, `HelpOverlay`, `MenuOverlay` (＋ menu / diff picker).
 - `src/hooks/useTerminalSession.ts` — Bun PTY lifecycle wired to the emulator.
+- `scripts/` — `check-coverage.ts` (CI's coverage minimum) and
+  `screenshots.tsx` (the README's screenshots; see **Quality checks**).
 
 ## Keybindings
 
@@ -448,12 +459,26 @@ Nothing runs before a separate confirm step. `gh pr merge -R … --<method>
 haven't seen fails the merge instead of riding along. Never `--delete-branch` —
 the worktree still has the branch checked out, and the repo's own "delete head
 branch" setting handles the remote. Afterwards the PR's details and every
-branch's PR lookup are invalidated, so the badge goes.
+branch's PR lookup are invalidated, so the badge turns to `merged` — and the
+done screen offers `d` to close the worktree (the usual confirm follows).
 
 The sidebar's PR lookup (`prForBranch`) also asks for `statusCheckRollup` to
 colour the `⇡#N` badge, and is re-run every 60s, when an agent changes state
 (throttled), and on `r`. A failed lookup throws (it used to answer "no PR"), so
 the cache keeps the last good badge through a network hiccup.
+
+It asks for every state (`--state all`): an open PR wins; with none, a
+**merged** one shows (`⇡#N merged`, purple; the panel says Merged and offers
+`Close worktree…`) — but only if it was this branch's. `--head` matches a
+branch *name*, so an older branch's PR with the same name, or a fork's `main`
+merged into ours, would otherwise turn up. Its commits must be the worktree's
+(HEAD is its head or one of its commits — commits pushed on GitHub and never
+pulled — or HEAD is past its head) and the merge's commit must not be in the
+branch yet (it is in main, and in any branch started from main after). A
+`git rev-parse` and up to two `merge-base --is-ancestor`, only when no PR is
+open. Closed-unmerged PRs don't show. `d` on the panel is only labelled while
+the PR's worktree is the selected row — `d` closes the selected row, and the
+panel follows the worktree on screen.
 
 ## Agent CLI (`agentree <command>`)
 
@@ -619,10 +644,21 @@ each other.
   `permission_prompt` notification fires ~6s after the dialog; `Stop` doesn't
   fire on Esc and nothing fires on deny. Claude's spinner keeps output flowing
   while it works (gaps ≤1s, even during a long tool run).
+- **git reports worktree paths with symlinks resolved.** `path.resolve` doesn't
+  follow them, so a repo reached through one (a code folder on another disk,
+  `/home` → `/var/home` on Silverblue, macOS's `/tmp`) lost its main copy and
+  had its worktrees adopted twice. Paths compared with git's go through
+  `canonicalPath` (#46) — only for comparing; what's stored stays as given.
+  Found by the macOS CI job, whose temp dir is such a symlink; reproducible on
+  Linux with `TMPDIR` pointing through a symlink.
+- **A browser isn't a terminal**: laying a captured frame out as HTML text
+  gave the first README screenshots misaligned rows (symbols from fallback
+  fonts at other widths), stripes between rows, gappy box lines and boxes
+  behind dim text. They're drawn by xterm.js now (#48).
 
 ## Tests
 
-`bun test` — 410 tests, ~65s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 426 tests, ~75s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -653,6 +689,8 @@ that open a terminal used to start the real `claude` — and its cleanup stops t
 test's own tmux server and removes the socket file tmux leaves behind. It also
 puts a fake `ssh` on PATH (every host is this machine) and points
 `XDG_RUNTIME_DIR` and the `~/.ssh/config` agentree reads into the sandbox.
+Its root is the temp dir's real path: on macOS that dir is behind a symlink,
+and git and `pwd` report the resolved one.
 
 **A test must wait for the app's last write before it ends.** Paths like
 state.json's come from the environment at the moment of writing, and the next
@@ -683,6 +721,17 @@ Every PR, and every push to main (`.github/workflows/`):
   passed through the environment, so a title can't inject shell.
 - **`claude-code-review.yml`**: the review bot.
 
+The macOS job paid for itself on its first run: 18 failures, 16 of them a real
+bug with symlinked repo paths (#46; see **Key learnings**).
+
+**README screenshots** — `bun scripts/screenshots.tsx` renders the real app
+headlessly (the test sandbox, fakes and sample data: two repos, a labelled
+worktree with PR #42, agents waiting and working, an agent transcript in a
+terminal), replays each frame as ANSI into xterm.js (WebGL renderer) in
+headless Chrome, and trims the shot with ImageMagick →
+`docs/screenshots/*.png`. Needs Chrome and ImageMagick; re-run when the UI
+changes. A scene that waits for text a hidden panel would show hangs.
+
 ## Deferred / follow-ups
 
 - Test coverage for the rest of the terminal pane (panes, the ＋ menu) — its
@@ -702,6 +751,7 @@ Every PR, and every push to main (`.github/workflows/`):
   a directory deleted on the host isn't noticed (no "missing" check).
 - PR panel sections fold by mouse only — keyboard folding needs a way to move
   through the panel's sections.
+- No LICENSE yet (the README says so) — the owner's call.
 
 ## Caveats
 
@@ -720,12 +770,32 @@ Every PR, and every push to main (`.github/workflows/`):
 
 ## Commit history
 
+### 2026-09-25
+
+- #49 `461d88e` Merged PRs stay on their worktree (`⇡#N merged`; only a PR
+  that was this branch's), and closing it is one key: `d`, the panel's
+  `Close worktree…`, or `d` right after merging with `m`
+- #48 `289f4eb` README screenshots drawn by xterm.js instead of laid out as
+  HTML text (no more misaligned rows, stripes or gappy box lines); `4c07653`
+  in a 160×40 window, so a dialog fits between the sidebar and the PR panel
+- #47 `4f5d045` Real screenshots in the README (the overview, adding a
+  worktree, merging), made by `scripts/screenshots.tsx`; `15c7086` the
+  README's dev commands include check, format and coverage. (Pushed to #44
+  after it had been merged, so they came in again here.)
+- #46 `ce27969` Worktree paths compared with symlinks resolved: a repo reached
+  through a symlink kept its main copy and stopped getting duplicate worktrees
+- #45 `33773b2` Quality checks: Biome lint + format (`d5c1088`, whole codebase
+  formatted once in `3f2c57d`), CI on macOS too, a coverage minimum, and
+  Conventional Commits PR titles; `2bf7cea` the tests pass on macOS (resolved
+  sandbox paths, a resize check that doesn't assume a short temp path)
+
 ### 2026-09-24
 
-- Quality checks: Biome lint + format (whole codebase formatted once), CI on
-  macOS too, a coverage minimum, and Conventional Commits PR titles
-- Rework of `app.tsx`: pop-ups as one stack, `useLive` state, keys as a table,
-  preferences / agents / live git status in their own hooks (1,238 → 646 lines)
+- #44 `08e1185` A proper README: what agentree is, features, requirements,
+  install, keys, the agent CLI, configuration
+- #43 `46e6a58` Rework of `app.tsx`: pop-ups as one stack, `useLive` state,
+  keys as a table, preferences / agents / live git status in their own hooks
+  (1,238 → 646 lines)
 - #42 `8ec5aef` Agent CLI: `agentree tab new|read|send|list|select|rename|close`,
   `diff`, `notify`, `status` — on PATH in every agentree terminal, announced to
   claude by a SessionStart hook; plus a Claude Code skill (`agentree skill
