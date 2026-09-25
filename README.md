@@ -4,38 +4,7 @@
 
 agentree keeps every branch you're working on in its own [git worktree](https://git-scm.com/docs/git-worktree), each with its own terminal (tabs, splits, and an agent like Claude Code running in it). A sidebar shows all of them at once — which agent is working, which one needs you, what's changed, and the state of each branch's pull request — so you can keep several agents busy without losing track of any.
 
-```text
-                                   ⇤ │ ‹  ● claude ×  ○ dev ×     ⬌ ⬍  ✕  ⇡#42 ◌   ^g sidebar │
-  ▾ ◈ webapp                  3  ＋  │> Add a login screen with OAuth                         │ ⇡ #42 Open                             ◌  ✕
-    ~/agentree/webapp                │                                                        │ Add login screen
-                                     │  Reading src/auth.ts …                                 │ ignacy · main ← feature/login
-  │   · main                         │  Writing src/login.tsx …                               │ +212 −18 · 6 files · updated 20m ago
-  │   main                           │$                                                       │ ───────────────────────────────────────────
-  │   · Login screen            ⇡#42 │                                                        │
-  │   feature/login               ●1 │                                                        │  ▾ Merge
-  │   ◆ checkout-total  needs action │                                                        │  ● Blocked: review required
-  │   fix/checkout-total             │                                                        │   Merge…  m
-                                     │                                                        │
-  ▾ ◈ api                     2  ＋  │                                                        │  ▾ Reviews  review required
-    ~/agentree/api                   │                                                        │  ✓ alice · approved
-                                     │                                                        │  ◌ bob · review requested
-  │   · main                         │                                                        │
-  │   main                           │                                                        │  ▾ Checks  ◌ 1  ✓ 1
-  │   ◐ rate-limits          working │                                                        │  ◌ e2e · CI
-  │   feat/rate-limits               │                                                        │  ✓ build · CI
-                                     │                                                        │
-                                     │                                                        │  ▾ Description
-                                     │                                                        │  │ Adds the login screen and session
-                                     │                                                        │  │ handling.
-                                     │                                                        │
-                                     │                                                        │  ▾ Comments  1 · newest first
-                                     │                                                        │  alice · 30m ago
-                                     │                                                        │  │ Looks good — one nit on the redirect.
-                                     │                                                        │
-─────────────────────────────────────│                                                        │
-  ◆ 1  ◐ 1            ◑ onedark  ?   │                                                        │ ───────────────────────────────────────────
-  Tab next agent · ⏎ open · ? keys   │                                                        │ updated just now · m...· o open · r refresh
-```
+![agentree: projects and worktrees on the left, an agent's terminal in the middle, the branch's pull request on the right](docs/screenshots/overview.png)
 
 <sub>An agent is building the login screen in its worktree (a dev server in the next tab); another one is waiting for an answer (◆) and a third is working (◐). On the right, the pull request for the branch on screen.</sub>
 
@@ -49,6 +18,13 @@ agentree keeps every branch you're working on in its own [git worktree](https://
 - **Remote machines as projects.** Add an SSH host and a directory on it; its terminals run there, in tmux there, so they survive a dropped connection. Key or password login.
 - **A CLI for the agents themselves.** Inside an agentree terminal, `agentree tab new --name dev -- npm run dev` starts a dev server in its own tab and `agentree tab read dev` shows its output — so an agent can run and watch long-lived processes without blocking itself. Comes with a Claude Code skill that teaches it when and how.
 - **Keyboard first, mouse everywhere.** Every action has a key; everything is also clickable, and the sidebar and PR panel resize by dragging.
+
+<p>
+  <img src="docs/screenshots/add-worktree.png" width="49%" alt="The add-worktree dialog: a new branch, an existing worktree, or an open pull request">
+  <img src="docs/screenshots/merge.png" width="49%" alt="The merge dialog, opened from the pull request panel">
+</p>
+
+<sub>Adding a worktree — on a new branch, or from an open pull request — and merging a pull request from the panel.</sub>
 
 ## Requirements
 
@@ -144,9 +120,12 @@ The design, the decisions behind it and the gotchas found along the way are writ
 ```sh
 bun install
 bun run dev          # run from source, reloading on changes
-bun run typecheck
+bun run check        # lint, formatting (Biome) and types — what CI runs
+bun run format       # fix the formatting
 bun run test         # unit, integration and end-to-end tests
+bun run coverage     # the tests, with the coverage minimum CI enforces
 bun run build        # a single binary in dist/agentree
+bun scripts/screenshots.tsx   # regenerate the README's screenshots (needs Chrome and ImageMagick)
 ```
 
 The end-to-end tests drive the whole app headlessly — keys, mouse, and a real tmux server — inside a sandbox that never touches your own config, tmux sessions or SSH setup; fakes stand in for `gh`, `ssh` and the notifier. See [`docs/TESTING.md`](docs/TESTING.md).
