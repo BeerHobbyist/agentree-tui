@@ -6,6 +6,8 @@ import { checkLook } from "./PrPanel";
 interface WorktreeItemProps {
   worktree: Worktree;
   active: boolean;
+  /** The card's renderable id — the sidebar scrolls the selected one into view. */
+  id?: string;
   onClick?: (event: MouseEvent) => void;
 }
 
@@ -25,34 +27,40 @@ export function agentLook(agent: Worktree["agent"], theme: Theme): { glyph: stri
   }
 }
 
-export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
+/**
+ * A worktree as a two-line card: status, name and PR on the first line; the
+ * branch, its changes and what the agent is doing on the second. The sidebar
+ * puts a blank line between cards.
+ */
+export function WorktreeItem({ worktree, active, id, onClick }: WorktreeItemProps) {
   const theme = useTheme();
   const look = agentLook(worktree.agent, theme);
+  const bg = active ? theme.activeBg : theme.panel;
   const hasStats = worktree.added > 0 || worktree.removed > 0;
   const hasSync = worktree.ahead > 0 || worktree.behind > 0;
 
   return (
-    <box flexDirection="row" backgroundColor={active ? theme.activeBg : theme.panel} height={2} onMouseDown={onClick}>
-      {/* Accent bar for the active row */}
+    <box id={id} flexDirection="row" backgroundColor={bg} height={2} onMouseDown={onClick}>
+      {/* Accent bar for the selected card */}
       <box width={1} backgroundColor={active ? theme.accent : theme.panel} />
 
-      <box flexDirection="column" flexGrow={1} paddingLeft={1} paddingRight={1}>
-        {/* Line 1: agent status + name .......... PR, agent label */}
+      <box flexDirection="column" flexGrow={1} minWidth={0} paddingLeft={1} paddingRight={1}>
+        {/* Line 1: status + name .......... PR */}
         <box flexDirection="row" alignItems="center">
-          <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0}>
-            <text fg={look.color} flexShrink={0}>
-              {look.glyph}
-            </text>
-            <text
-              fg={theme.fg}
-              attributes={active ? TextAttributes.BOLD : undefined}
-              flexShrink={1}
-              wrapMode="none"
-              truncate
-            >
-              {" " + displayName(worktree)}
-            </text>
-          </box>
+          <text fg={look.color} flexShrink={0}>
+            {look.glyph}
+          </text>
+          <text
+            fg={theme.fg}
+            attributes={active ? TextAttributes.BOLD : undefined}
+            flexGrow={1}
+            flexShrink={1}
+            minWidth={0}
+            wrapMode="none"
+            truncate
+          >
+            {" " + displayName(worktree)}
+          </text>
 
           {/* Its PR: open, coloured by its checks (red failing, yellow running); or merged. */}
           {worktree.pr && (
@@ -73,19 +81,12 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
                 : ` ⇡#${worktree.pr.number}${worktree.pr.draft ? "◌" : ""}`}
             </text>
           )}
-
-          {look.label && (
-            <text fg={look.color} flexShrink={0}>
-              {" " + look.label}
-            </text>
-          )}
         </box>
 
-        {/* Line 2: branch (an SSH directory: its path) .......... ●changed-files +added −removed ↑ahead ↓behind */}
-        <box flexDirection="row" alignItems="center">
+        {/* Line 2, under the name: branch (an SSH directory: its path) .......... ●changed +added −removed ↑ahead ↓behind, agent */}
+        <box flexDirection="row" alignItems="center" paddingLeft={2}>
           <text
-            fg={theme.fgFaint}
-            attributes={TextAttributes.DIM}
+            fg={active ? theme.fgMuted : theme.fgFaint}
             flexGrow={1}
             flexShrink={1}
             minWidth={0}
@@ -101,8 +102,14 @@ export function WorktreeItem({ worktree, active, onClick }: WorktreeItemProps) {
               {worktree.changed > 0 && <span fg={theme.dirty}>{" ●" + worktree.changed}</span>}
               {hasStats && <span fg={theme.added}>{" +" + worktree.added}</span>}
               {hasStats && <span fg={theme.removed}>{" −" + worktree.removed}</span>}
-              {hasSync && worktree.ahead > 0 && <span fg={theme.ahead}>{"  ↑" + worktree.ahead}</span>}
+              {hasSync && worktree.ahead > 0 && <span fg={theme.ahead}>{" ↑" + worktree.ahead}</span>}
               {hasSync && worktree.behind > 0 && <span fg={theme.behind}>{" ↓" + worktree.behind}</span>}
+            </text>
+          )}
+
+          {look.label && (
+            <text fg={look.color} flexShrink={0}>
+              {"  " + look.label}
             </text>
           )}
         </box>

@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { MouseButton, TextAttributes, type BoxRenderable } from "@opentui/core";
+import { useEffect, useRef } from "react";
+import { MouseButton, TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { DEFAULT_SIDEBAR_WIDTH } from "../layout";
@@ -51,6 +51,11 @@ export function worktreeKey(projectId: string, worktreeId: string): string {
   return projectId + ":" + worktreeId;
 }
 
+/** A row's renderable id, from its key — for scrolling it into view. */
+function rowId(key: string): string {
+  return `sidebar-row:${key}`;
+}
+
 /**
  * The footer's one line of keys: what you can do with the selected row, not a
  * list of everything (that's `?`). An agent needing you comes first.
@@ -96,17 +101,20 @@ function ProjectGroup({
   const urgent = URGENCY.find((s) => project.worktrees.some((w) => w.agent === s));
   const urgentLook = urgent ? agentLook(urgent, theme) : undefined;
 
+  const band = headerActive ? theme.activeBg : theme.panelAlt;
+
   return (
-    <box flexDirection="column" marginBottom={1}>
-      {/* Project header */}
+    <box flexDirection="column" flexShrink={0} marginBottom={1}>
+      {/* Project header: a band across the sidebar, like the PR panel's sections */}
       <box
+        id={rowId(projectKey(project.id))}
         flexDirection="row"
-        backgroundColor={headerActive ? theme.activeBg : theme.panel}
+        backgroundColor={band}
         onMouseDown={() => onSelectProject(project.id)}
       >
         {/* accent gutter for the selected header */}
-        <box width={1} backgroundColor={headerActive ? theme.accent : theme.panel} />
-        <box flexDirection="row" alignItems="center" flexGrow={1} paddingLeft={1} paddingRight={2}>
+        <box width={1} backgroundColor={headerActive ? theme.accent : band} />
+        <box flexDirection="row" alignItems="center" flexGrow={1} paddingLeft={1} paddingRight={1}>
           <text fg={headerActive ? theme.accent : theme.fgMuted} flexShrink={0}>
             {collapsed ? "▸ " : "▾ "}
           </text>
@@ -147,36 +155,31 @@ function ProjectGroup({
 
       {/* Project root path (hidden while collapsed to stay compact) */}
       {!collapsed && (
-        <box paddingLeft={4} paddingRight={2}>
+        <box paddingLeft={3} paddingRight={2}>
           <text fg={theme.fgFaint} attributes={TextAttributes.DIM} wrapMode="none" truncate>
             {project.ssh ? `ssh ${project.ssh.host}` : project.root}
           </text>
         </box>
       )}
 
-      {/* Worktrees, indented under the project with a vertical guide rule */}
+      {/* Worktrees: cards with a blank line between them */}
       {!collapsed && (
-        <box
-          flexDirection="column"
-          marginTop={1}
-          marginLeft={2}
-          paddingLeft={1}
-          border={["left"]}
-          borderColor={theme.border}
-        >
-          {project.worktrees.map((wt) => (
-            <WorktreeItem
-              key={wt.id}
-              worktree={wt}
-              active={worktreeKey(project.id, wt.id) === activeKey}
-              onClick={(e) => {
-                // Handled here: a double-click hands focus to the terminal,
-                // which the sidebar's own click-to-focus mustn't undo.
-                e.stopPropagation();
-                if (e.button === MouseButton.RIGHT) onRenameWorktree?.(project.id, wt.id);
-                else onClickWorktree(project.id, wt.id);
-              }}
-            />
+        <box flexDirection="column" flexShrink={0} marginTop={1} marginLeft={1}>
+          {project.worktrees.map((wt, i) => (
+            <box key={wt.id} flexShrink={0} marginBottom={i < project.worktrees.length - 1 ? 1 : 0}>
+              <WorktreeItem
+                worktree={wt}
+                id={rowId(worktreeKey(project.id, wt.id))}
+                active={worktreeKey(project.id, wt.id) === activeKey}
+                onClick={(e) => {
+                  // Handled here: a double-click hands focus to the terminal,
+                  // which the sidebar's own click-to-focus mustn't undo.
+                  e.stopPropagation();
+                  if (e.button === MouseButton.RIGHT) onRenameWorktree?.(project.id, wt.id);
+                  else onClickWorktree(project.id, wt.id);
+                }}
+              />
+            </box>
           ))}
         </box>
       )}
@@ -204,7 +207,14 @@ export function Sidebar({
 }: SidebarProps) {
   const theme = useTheme();
   const rootRef = useRef<BoxRenderable>(null);
+  const listRef = useRef<ScrollBoxRenderable>(null);
   const worktrees = projects.flatMap((p) => p.worktrees);
+
+  // The list scrolls (wheel) when it's taller than the sidebar; the selected
+  // row is kept in view as the selection moves.
+  useEffect(() => {
+    listRef.current?.scrollChildIntoView(rowId(activeKey));
+  }, [activeKey]);
   const agentCounts = URGENCY.map((state) => ({
     state,
     look: agentLook(state, theme),
@@ -232,7 +242,7 @@ export function Sidebar({
           )}
         </box>
         {/* Project groups */}
-        <box flexDirection="column" flexGrow={1}>
+        <scrollbox ref={listRef} flexGrow={1} flexShrink={1} minHeight={0} scrollY>
           {projects.length === 0 ? (
             <box flexDirection="column" paddingLeft={2} paddingRight={2}>
               <text fg={theme.fgMuted}>{"No projects yet."}</text>
@@ -254,10 +264,17 @@ export function Sidebar({
               />
             ))
           )}
-        </box>
+        </scrollbox>
 
         {/* Footer / status summary */}
-        <box flexDirection="column" borderColor={theme.border} border={["top"]} paddingLeft={2} paddingRight={2}>
+        <box
+          flexDirection="column"
+          flexShrink={0}
+          borderColor={theme.border}
+          border={["top"]}
+          paddingLeft={2}
+          paddingRight={2}
+        >
           <box flexDirection="row" alignItems="center">
             {/* Agents across all projects: ◆ needs action · ◐ working · ✓ done. */}
             {agentCounts.length === 0 ? (

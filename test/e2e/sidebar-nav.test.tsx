@@ -112,6 +112,49 @@ describe("moving the selection", () => {
   });
 });
 
+describe("a list taller than the sidebar", () => {
+  /** widget with main + eight worktrees — more cards than a 20-row screen shows. */
+  async function manyWorktrees() {
+    const widget = await makeRepo(join(sandbox.workspace, "widget"), {
+      worktrees: Array.from({ length: 8 }, (_, i) => ({ branch: `feature/w${i + 1}` })),
+    });
+    const state = loadState();
+    upsertRepo(state, { nameWithOwner: "acme/widget", name: "widget", root: widget });
+    await saveState(state);
+    await reconcile(state);
+  }
+  const HEADER = "▾ ◈ widget";
+
+  test("scrolls to keep the selection in view, and back", async () => {
+    await manyWorktrees();
+    app = await renderApp({ height: 20 });
+    await waitForSelection(app, "widget");
+    expect(app.captureCharFrame()).not.toContain("feature/w8");
+
+    app.mockInput.pressKey("G");
+    await waitForSelection(app, "feature/w8");
+    await waitForText(app, "feature/w8");
+    await waitForTextGone(app, HEADER); // scrolled past it
+
+    app.mockInput.pressKey("g");
+    await waitForSelection(app, "widget");
+    await waitForText(app, HEADER);
+    expect(app.captureCharFrame()).not.toContain("feature/w8");
+  });
+
+  test("moving down one row at a time never loses the selection off screen", async () => {
+    await manyWorktrees();
+    app = await renderApp({ height: 20 });
+    await waitForSelection(app, "widget");
+    for (let i = 1; i <= 8; i++) {
+      app.mockInput.pressKey("j"); // main, then w1…w7
+    }
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "feature/w8");
+    await waitForText(app, "feature/w8");
+  });
+});
+
 describe("folding projects", () => {
   test("h folds a project away and l unfolds it", async () => {
     await twoProjects();
