@@ -8,12 +8,12 @@
  *
  * Needs Chrome (or Chromium) and tmux. Re-run it when the UI changes.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { agentStatusDir } from "../src/services/agents";
 import { sessionName } from "../src/services/tmux";
-import { loadState, reconcile, saveState, setWorktreeLabel, type UiState, upsertRepo } from "../src/store";
+import { loadState, reconcile, saveState, setWorktreeLabel, upsertRepo } from "../src/store";
 import { getTheme } from "../src/theme";
 import { renderApp, type RenderedApp } from "../test/helpers/app";
 import { waitForSelection, waitForText } from "../test/helpers/frame";
@@ -21,8 +21,9 @@ import { makeRepo, writeFile } from "../test/helpers/repo";
 import { createSandbox, type Sandbox } from "../test/helpers/sandbox";
 
 const OUT = resolve(import.meta.dir, "../docs/screenshots");
-const COLS = 140;
-const ROWS = 34;
+// Wide enough for a dialog to sit between the sidebar and the PR panel.
+const COLS = 160;
+const ROWS = 40;
 
 /** What the harness captures: every line's spans of text, with colours and attributes. */
 type Frame = ReturnType<RenderedApp["captureSpans"]>;
@@ -50,11 +51,8 @@ const CHECKS = [
   { __typename: "CheckRun", name: "e2e", workflowName: "CI", status: "IN_PROGRESS", conclusion: null },
 ];
 
-/**
- * acme/webapp (a labelled login worktree with PR #42, a checkout fix waiting on
- * you) and acme/api (an agent working). `ui`: layout preferences, as state.json keeps them.
- */
-async function sampleWorkspace(sb: Sandbox, ui?: UiState) {
+/** acme/webapp (a labelled login worktree with PR #42, a checkout fix waiting on you) and acme/api (an agent working). */
+async function sampleWorkspace(sb: Sandbox) {
   const web = await makeRepo(join(sb.workspace, "webapp"), {
     worktrees: [{ branch: "feature/login" }, { branch: "fix/checkout-total" }],
   });
@@ -62,7 +60,6 @@ async function sampleWorkspace(sb: Sandbox, ui?: UiState) {
   const state = loadState();
   upsertRepo(state, { nameWithOwner: "acme/webapp", name: "webapp", root: web });
   upsertRepo(state, { nameWithOwner: "acme/api", name: "api", root: api });
-  if (ui) state.ui = ui;
   await saveState(state);
   await reconcile(state);
   await setWorktreeLabel(state, "acme/webapp", "feature-login", "Login screen");
@@ -176,8 +173,7 @@ const scenes: Record<string, { title: string; shoot(sb: Sandbox): Promise<Frame>
   merge: {
     title: "agentree — merging a PR",
     async shoot(sb) {
-      // A narrower PR panel, so the dialog doesn't cover the start of its lines.
-      await sampleWorkspace(sb, { prPanelWidth: 38 });
+      await sampleWorkspace(sb);
       const app = await renderApp({ width: COLS, height: ROWS });
       await loginTerminal(sb, app);
       await waitForText(app, "Merge…");
@@ -192,7 +188,7 @@ const scenes: Record<string, { title: string; shoot(sb: Sandbox): Promise<Frame>
   "add-worktree": {
     title: "agentree — adding a worktree",
     async shoot(sb) {
-      await sampleWorkspace(sb, { prPanelHidden: true }); // the dialog is wide; the PR panel isn't needed here
+      await sampleWorkspace(sb);
       sb.setOpenPrs([
         { number: 51, title: "Fix flaky checkout test", headRefName: "fix/flaky-checkout" },
         { number: 49, title: "Dark mode for settings", headRefName: "feat/settings-dark" },
@@ -209,14 +205,13 @@ const scenes: Record<string, { title: string; shoot(sb: Sandbox): Promise<Frame>
   },
 };
 
-// ── Frame → HTML → PNG ──
-
-const channel = (c: Rgba, i: number) =>
-  Math.round(c.buffer[i] ?? 0)
-    .toString(16)
-    .padStart(2, "0");
-const hex = (c: Rgba) => `#${channel(c, 0)}${channel(c, 1)}${channel(c, 2)}`;
-const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// ── Frame → terminal → PNG ──
+//
+// The frame is replayed as ANSI into xterm.js (the terminal emulator VS Code
+// uses) in headless Chrome, rather than laid out as HTML text: a terminal
+// keeps every glyph in its cell (symbols from fallback fonts included), fills
+// each cell's background edge to edge, and draws box-drawing lines itself so
+// they join up.
 
 /** The sandbox's temp paths, as they'd read on a real machine (same width, so nothing shifts). */
 function realPaths(text: string): string {
@@ -226,25 +221,46 @@ function realPaths(text: string): string {
   });
 }
 
-function toHtml(frame: Frame, title: string): string {
+const rgb = (c: Rgba) => [0, 1, 2].map((i) => Math.round(c.buffer[i] ?? 0)).join(";");
+
+/**
+ * The frame as ANSI: each span placed at its own column (so a character the
+ * two sides measure differently can't shift the rest of the row), in its
+ * colours and attributes.
+ */
+function toAnsi(frame: Frame): string {
+  let out = "\x1b[?25l"; // no cursor
+  frame.lines.forEach((line, row) => {
+    let col = 0;
+    for (const span of line.spans) {
+      const sgr = ["0", `38;2;${rgb(span.fg)}`];
+      if ((span.bg.buffer[3] ?? 0) > 0) sgr.push(`48;2;${rgb(span.bg)}`);
+      if (span.attributes & 1) sgr.push("1");
+      if (span.attributes & 2) sgr.push("2");
+      if (span.attributes & 4) sgr.push("3");
+      if (span.attributes & 8) sgr.push("4");
+      out += `\x1b[${row + 1};${col + 1}H\x1b[${sgr.join(";")}m${realPaths(span.text)}`;
+      col += Bun.stringWidth(span.text);
+    }
+  });
+  return `${out}\x1b[0m`;
+}
+
+function page(frame: Frame, title: string): string {
   const theme = getTheme();
-  const rows = frame.lines
-    .map((line) => {
-      const cells = line.spans
-        .map((s) => {
-          const style = [`color:${hex(s.fg)}`];
-          if ((s.bg.buffer[3] ?? 0) > 0) style.push(`background:${hex(s.bg)}`);
-          if (s.attributes & 1) style.push("font-weight:700");
-          if (s.attributes & 2) style.push("opacity:.62");
-          if (s.attributes & 4) style.push("font-style:italic");
-          if (s.attributes & 8) style.push("text-decoration:underline");
-          return `<span style="${style.join(";")}">${escapeHtml(realPaths(s.text))}</span>`;
-        })
-        .join("");
-      return `<div class="row">${cells}</div>`;
-    })
-    .join("");
-  return `<!doctype html><meta charset="utf-8"><style>
+  const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const options = {
+    cols: frame.cols,
+    rows: frame.rows,
+    fontFamily: '"Hack", "DejaVu Sans Mono", monospace',
+    fontSize: 14,
+    lineHeight: 1.2,
+    customGlyphs: true,
+    drawBoldTextInBrightColors: false,
+    disableStdin: true,
+    theme: { background: theme.bg, foreground: theme.fg },
+  };
+  return `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="xterm.css"><style>
   html,body{margin:0;background:#0b0d12}
   .stage{display:inline-block;padding:44px}
   .win{border-radius:12px;overflow:hidden;background:${theme.bg};border:1px solid #2a2f3a;
@@ -253,13 +269,20 @@ function toHtml(frame: Frame, title: string): string {
        font:500 13px -apple-system,"Inter","Segoe UI",sans-serif;color:#8b93a1;position:relative}
   .dot{width:12px;height:12px;border-radius:50%}
   .title{position:absolute;left:0;right:0;text-align:center;pointer-events:none}
-  .term{padding:10px 12px;font-family:"Hack","DejaVu Sans Mono","Menlo",monospace;font-size:14px;
-        line-height:17px;white-space:pre;color:${theme.fg};font-variant-ligatures:none}
-  .row{height:17px}
+  #term{padding:10px 12px}
   </style><div class="stage"><div class="win"><div class="bar">
   <span class="dot" style="background:#ff5f57"></span><span class="dot" style="background:#febc2e"></span>
   <span class="dot" style="background:#28c840"></span><span class="title">${escapeHtml(title)}</span></div>
-  <div class="term">${rows}</div></div></div>`;
+  <div id="term"></div></div></div>
+  <script src="xterm.js"></script><script src="addon-webgl.js"></script><script>
+  // The font has to be loaded before xterm measures its cells.
+  document.fonts.load('14px "Hack"').then(() => {
+    const term = new Terminal(${JSON.stringify(options)});
+    term.open(document.getElementById("term"));
+    term.loadAddon(new WebglAddon.WebglAddon());
+    term.write(${JSON.stringify(toAnsi(frame))});
+  });
+  </script>`;
 }
 
 function chrome(): string {
@@ -270,19 +293,27 @@ function chrome(): string {
   throw new Error("screenshots need Chrome or Chromium");
 }
 
+const xtermFiles = {
+  "xterm.js": require.resolve("@xterm/xterm/lib/xterm.js"),
+  "xterm.css": require.resolve("@xterm/xterm/css/xterm.css"),
+  "addon-webgl.js": require.resolve("@xterm/addon-webgl/lib/addon-webgl.js"),
+};
+
 async function photograph(html: string, png: string) {
   const dir = mkdtempSync(join(tmpdir(), "agentree-shot-"));
-  const page = join(dir, "page.html");
-  writeFileSync(page, html);
+  for (const [name, from] of Object.entries(xtermFiles)) copyFileSync(from, join(dir, name));
+  writeFileSync(join(dir, "page.html"), html);
   const shot = Bun.spawnSync([
     chrome(),
     "--headless=new",
-    "--disable-gpu",
+    "--use-angle=swiftshader", // WebGL without a GPU
+    "--enable-unsafe-swiftshader",
     "--hide-scrollbars",
     "--force-device-scale-factor=2",
-    "--window-size=1500,760",
+    "--window-size=1800,1200",
+    "--virtual-time-budget=5000", // let the font load and xterm draw first
     `--screenshot=${png}`,
-    `file://${page}`,
+    `file://${join(dir, "page.html")}`,
   ]);
   rmSync(dir, { recursive: true, force: true });
   if (shot.exitCode !== 0) throw new Error(new TextDecoder().decode(shot.stderr));
@@ -299,7 +330,7 @@ for (const [name, scene] of Object.entries(scenes)) {
   try {
     const frame = await scene.shoot(sb);
     const png = join(OUT, `${name}.png`);
-    await photograph(toHtml(frame, scene.title), png);
+    await photograph(page(frame, scene.title), png);
     console.log(`✓ ${png}`);
   } finally {
     sb.cleanup();
