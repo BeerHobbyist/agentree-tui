@@ -15,8 +15,8 @@ Working, at MVP+ level:
   a two-line card (blank line between cards): status glyph, name and PR badge
   `⇡#N` via `gh` coloured by CI (`⇡#N merged` once merged, until the worktree
   is closed); then the branch, an uncommitted-changes count (`●3`), +/− and
-  ahead/behind, and the **agent status** label (◆ needs action · ◐ working ·
-  ✓ done · ○ idle). Scrolls when it's taller than the screen, keeping the
+  ahead/behind, and the **agent status** label (◆ needs action · ⠹ working ·
+  ✓ done · ○ idle) — animated: working spins, needs-action pulses. Scrolls when it's taller than the screen, keeping the
   selection in view; keyboard + mouse nav, and clicking it gives it
   the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered;
   **hideable** (`b` or its `⇤`; back with `b`, Ctrl+g or the tab bar's `‹`).
@@ -61,6 +61,11 @@ Working, at MVP+ level:
   own tabs and read them; claude is told about it on start, and a Claude Code
   skill (`agentree skill install`) covers when and how.
 - **Ctrl+C reaches the shell**; app quit via `q` / Ctrl+C while the sidebar is focused.
+- **OpenCode-style UI** — `ctrl+p` opens a **command palette** (every action
+  that applies, grouped, searchable, each with its key); pop-ups are borderless
+  **dialogs** over a dimmed screen; results and failures show as **toasts**
+  (top right, gone after a few seconds); hints show keys bright and
+  descriptions muted; three themes (One Dark, Midnight, OpenCode — `t`).
 - **Docs and CI** — an OSS-style README with screenshots of the real app
   (`bun scripts/screenshots.tsx` regenerates them); CI lints and checks
   formatting (Biome), tests on Linux and macOS with a coverage minimum, and
@@ -124,7 +129,9 @@ the app polls those and cross-checks tmux (see **Agent status**).
   - `usePrefs.ts` — remembered layout (sidebar, PR panel, diff viewer).
   - `useAgents.ts` — agent reports (local + SSH), tracking, seen, notifications.
   - `useLiveProjects.ts` — git status and PR badges merged into the projects.
-- `src/theme.ts` — dark palette.
+  - `toasts.tsx` — `useToasts` and `ToastLayer`.
+- `src/theme.ts` — the palettes (`onedark`, `midnight`, `opencode`), `mix`.
+- `src/anim.ts` — the animation clock (`useTick`), spinner and pulse frames.
 - `src/config.ts` — workspace root (`~/agentree`, `AGENTREE_HOME`), state file
   (`~/.config/agentree/state.json`), branch→dir sanitize, `worktreePath`,
   `agentCommand` (startup command, `AGENTREE_AGENT_CMD`).
@@ -156,13 +163,15 @@ the app polls those and cross-checks tmux (see **Agent status**).
   opener (tests use a fake that records).
 - `src/layout.ts` — sidebar width rules (`clampSidebarWidth`, min/default/step)
   and `fitPanels` (sidebar + PR panel around the content pane).
-- `src/components/` — `Sidebar`, `WorktreeItem`, `ResizeHandle` (sidebar / PR
+- `src/components/` — `Dialog` (every pop-up's frame) + `rowLook`, `Hints`,
+  `CommandPalette`, `Sidebar`, `WorktreeItem` (+ `AgentGlyph`), `ResizeHandle` (sidebar / PR
   panel divider), `PrPanel`, `AddWorktreeModal`, `ConfirmModal`, `EmbeddedTerminal` (registers a
   `StableCursorEmbeddedTerminal` subclass — see **Terminal fidelity**),
   `TerminalPane`, `TabBar`, `HelpOverlay`, `MenuOverlay` (＋ menu / diff picker).
 - `src/hooks/useTerminalSession.ts` — Bun PTY lifecycle wired to the emulator.
-- `scripts/` — `check-coverage.ts` (CI's coverage minimum) and
-  `screenshots.tsx` (the README's screenshots; see **Quality checks**).
+- `scripts/` — `check-coverage.ts` (CI's coverage minimum), `screenshots.tsx`
+  and `record.tsx` (README screenshots, demo recordings; see **Quality
+  checks**), `lib/` (the camera and the sample workspace they share).
 
 ## Keybindings
 
@@ -197,8 +206,9 @@ the app polls those and cross-checks tmux (see **Agent status**).
 
 ## Theming
 
-`src/theme.ts` is a small registry + observable store: `themes` (`midnight`,
-`onedark`), `getTheme`/`setTheme`/`cycleTheme`, and a `useTheme()` hook
+`src/theme.ts` is a small registry + observable store: `themes` (`onedark`,
+`midnight`, `opencode` — OpenCode's default palette), `getTheme`/`setTheme`/
+`cycleTheme`, `mix(a, b, t)` for blending two colours, and a `useTheme()` hook
 (`useSyncExternalStore`) so the whole UI re-renders on change. Every component
 reads `const theme = useTheme()`. `t` (or the footer swatch) cycles themes.
 Terminals re-theme live: `TerminalView` re-applies tmux `window-style` /
@@ -524,14 +534,18 @@ names another. Tabs are tmux windows, so the app's tab bar follows.
 
 ## Hints
 
-Key hints stay short; every key is in the help overlay (`?`). The tab bar shows
+Key hints stay short — and styled as in OpenCode: each key bright, what it
+does muted (`Hints`, from pairs, or `hintsFrom("↑↓ choose · y / ⏎ confirm")`).
+Every action is in the command palette (`ctrl+p`), every key in the help
+overlay (`?`). The tab bar shows
 only `^g sidebar` (the way back — it used to list ten ⌥ chords, which pushed
 the tabs and even the `＋` button out of view). The sidebar footer's hint line
 is one line for the selected row (`footerHint`, at most 33 columns — the
-default sidebar's room): `⏎ open · a new · d close · ? keys` on a worktree,
-`a add dir · d remove · ? keys` on an SSH host, `n add repo · s add host` with
-nothing yet — `Tab next agent` first when one needs you. It was three wrapped
-lines of every sidebar key.
+default sidebar's room), always ending in `^p commands`: `⏎ open · d close`
+on a worktree, `d close (merged)` once its PR is merged, `a dir · d remove`
+on an SSH host, `n repo · s host` with nothing yet — `Tab next agent` first
+when one needs you. It was three wrapped lines of every sidebar key. The empty
+pane (a row selected, no terminal open) says what to do next the same way.
 
 The tab bar also can't shrink any more (`flexShrink={0}`): on a screen under
 ~20 rows the terminal below used to take its row, and the tabs vanished.
@@ -561,6 +575,32 @@ sidebar / terminal / mouse shortcuts, an agent-status legend, and the active
 theme; `esc` / `?` / click closes. The sections scroll (`↑↓`/`j k`, PgUp/PgDn,
 `g`/`G`, wheel): they had outgrown a 30-row screen and started drawing over
 each other.
+
+## OpenCode-style UI (#51)
+
+Modelled on OpenCode's TUI (sst/opencode, also OpenTUI; its source, not
+screenshots, for the details):
+- **Animated statuses** (`src/anim.ts`, `AgentGlyph`): working spins
+  (braille `⠋⠙⠹…`, a step per 80ms tick), needs-action pulses (◆ fading
+  toward the background and back, 1.6s). One shared clock (`useTick`) runs
+  only while something animates. `AGENTREE_ANIMATIONS=off` holds them still;
+  the test sandbox sets it so frames are stable, and the tests that check the
+  animation turn it back on.
+- **Command palette** (`ctrl+p`, `CommandPalette`): the sidebar's key table as
+  commands — only those that apply to the selected row and what's on screen
+  (no "close" on the main copy, no "merge" without an open PR) — grouped,
+  fuzzy-filtered (start > word start > inside > letters in order; title
+  counts double), each with its key and a detail (`#42`, the worktree, the
+  next theme). Enter or a click runs the key's own handler.
+- **Dialogs** (`Dialog`, `rowLook`): borderless panel (`panelAlt`) over a
+  dimmed screen (`#00000099`, OpenTUI blends it), a quarter of the way down,
+  bold title with a clickable `esc`; the selected row is filled with the
+  accent (and keeps its ▶, a cue that isn't only colour). Every pop-up uses
+  it; a click outside closes, except while busy.
+- **Toasts** (`src/app/toasts.tsx`): top right, `┃` edges in the kind's colour,
+  one at a time, 4–8s by kind (failures longest), `esc` or a click dismisses.
+  They replaced the `notice` pop-up for failures; closing a worktree,
+  removing a host and turning tracking on/off confirm with one.
 
 ## Persistence
 
@@ -662,6 +702,23 @@ each other.
   `canonicalPath` (#46) — only for comparing; what's stored stays as given.
   Found by the macOS CI job, whose temp dir is such a symlink; reproducible on
   Linux with `TMPDIR` pointing through a symlink.
+- **The test harness's `pressKey("return")` types r, e, t, u, r, n** — named
+  keys have their own helpers (`pressEnter`, `pressTab`, `pressEscape`,
+  `pressBackspace`). The first demo recordings typed "return" into the palette.
+- **A dialog's keys attach a moment after it shows** (`useKeyboard` is an
+  effect): keys sent in the same instant go nowhere — tests wait briefly after
+  opening one before typing.
+- **Flex centring can land on a half row**, and OpenTUI renderables round it
+  differently: the empty pane's subtitle was drawn over the logo's second row
+  whenever the centred block's height and the pane's had different parity.
+  It's placed with a whole-row `paddingTop` now.
+- **A new terminal flashed black** (#52): tmux clears the screen when it
+  attaches and repaints it row by row, and a cleared cell shows the emulator's
+  default background — black until `TerminalPane` set it (OSC 10 / 11, before
+  tmux's first output, and on a theme change). Seen only in the recordings (two
+  frames); `e2e/terminal-open` samples every frame of an attach for black.
+- **puppeteer's emulated device scale factor breaks xterm's WebGL sizing** (it
+  drew 2.5× too large); Chrome's own `--force-device-scale-factor` is fine.
 - **A browser isn't a terminal**: laying a captured frame out as HTML text
   gave the first README screenshots misaligned rows (symbols from fallback
   fonts at other widths), stripes between rows, gappy box lines and boxes
@@ -669,7 +726,7 @@ each other.
 
 ## Tests
 
-`bun test` — 428 tests, ~75s (`bun run test` and CI use a 30s per-test timeout;
+`bun test` — 447 tests, ~80s (`bun run test` and CI use a 30s per-test timeout;
 plain `bun test` defaults to 5s). CI (`.github/workflows/ci.yml`: install,
 typecheck, test, compile build) runs on every PR and every push to main. Unit
 (pure helpers), integration (real git in a temp dir, a fake `gh` on PATH, and a
@@ -736,12 +793,19 @@ The macOS job paid for itself on its first run: 18 failures, 16 of them a real
 bug with symlinked repo paths (#46; see **Key learnings**).
 
 **README screenshots** — `bun scripts/screenshots.tsx` renders the real app
-headlessly (the test sandbox, fakes and sample data: two repos, a labelled
-worktree with PR #42, agents waiting and working, an agent transcript in a
-terminal), replays each frame as ANSI into xterm.js (WebGL renderer) in
-headless Chrome, and trims the shot with ImageMagick →
-`docs/screenshots/*.png`. Needs Chrome and ImageMagick; re-run when the UI
-changes. A scene that waits for text a hidden panel would show hangs.
+headlessly (the test sandbox, fakes and sample data from `scripts/lib/
+sample.ts`: two repos, a labelled worktree with PR #42, an agent waiting on a
+permission prompt and one working, an agent transcript in a terminal) and
+photographs it with `scripts/lib/terminal.ts`: one headless Chrome page
+(puppeteer-core, the system Chrome) with an xterm.js terminal (WebGL), each
+frame replayed as ANSI → `docs/screenshots/*.png`. Re-run when the UI changes.
+A scene that waits for text a hidden panel would show hangs.
+
+**Demo recordings** — `bun scripts/record.tsx [scene…]` drives the app through
+a scripted session (keys on a timer), grabs the screen 12×/s, photographs each
+distinct frame and encodes a GIF + MP4 with ffmpeg into `.recordings/`
+(ignored). For PR descriptions: they're pushed to the `media` branch (never
+merged) and linked by commit. Scenes: `agents`, `palette`, `themes`.
 
 ## Deferred / follow-ups
 
@@ -783,6 +847,13 @@ changes. A scene that waits for text a hidden panel would show hangs.
 
 ### 2026-09-25
 
+- #52 `a90f7c5` No black flash when a terminal opens: the emulator's default
+  colours are the theme's (OSC 10 / 11)
+- #51 `f02b78c` OpenCode-style UI: animated agent statuses, a command palette
+  (`ctrl+p`), borderless dialogs over a dimmed screen, toasts, styled hints, an
+  OpenCode theme; the empty pane says what to do next (and no longer draws its
+  subtitle over the logo). `89a10ef` demo recordings (`scripts/record.tsx`)
+  and a shared terminal camera
 - #50 `96ddd00` A roomier sidebar: project header bands, worktrees as spaced
   two-line cards (agent label on line 2), and a list that scrolls to keep the
   selection in view; README screenshots regenerated
