@@ -1,6 +1,6 @@
 /** The persisted store, and `reconcile()` against real `git worktree list`. */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   addManagedWorktree,
@@ -35,6 +35,13 @@ function meta(root: string) {
 
 async function fixtureRepo(worktrees: { branch: string }[] = []) {
   return makeRepo(join(sandbox.workspace, "widget"), { worktrees });
+}
+
+/** The repo reached through a symlink — like a code folder on another disk, or `/home` → `/var/home`. */
+function linkTo(real: string) {
+  const link = join(sandbox.root, "linked-widget");
+  symlinkSync(real, link);
+  return link;
 }
 
 describe("loadState", () => {
@@ -212,6 +219,37 @@ describe("reconcile", () => {
 
     const projects = await reconcile(state); // a second reconcile shouldn't duplicate it
     expect(projects[0]!.worktrees.filter((w) => w.name === "x")).toHaveLength(1);
+    expect(findRepo(state, "acme/widget")!.worktrees).toHaveLength(1);
+  });
+
+  test("a repo reached through a symlink: its main copy and worktrees match git's real paths", async () => {
+    const root = linkTo(await fixtureRepo([{ branch: "feature/x" }]));
+    const state = loadState();
+    upsertRepo(state, meta(root));
+
+    const projects = await reconcile(state);
+    expect(projects[0]!.worktrees.map((w) => w.name).sort()).toEqual(["main", "x"]);
+    expect(projects[0]!.worktrees.find((w) => w.id === "main")).toMatchObject({ path: root });
+    await reconcile(state); // and nothing is adopted twice
+    expect(findRepo(state, "acme/widget")!.worktrees).toHaveLength(1);
+  });
+
+  test("a missing worktree under a symlinked repo stays one missing worktree", async () => {
+    const real = await fixtureRepo([{ branch: "feature/x" }]);
+    const root = linkTo(real);
+    const state = loadState();
+    // Stored under the path agentree was given, as when it creates a worktree.
+    await addManagedWorktree(state, meta(root), {
+      id: "feature-x",
+      branch: "feature/x",
+      name: "x",
+      path: join(root, ".worktrees", "feature-x"),
+      createdAt: "",
+    });
+    rmSync(join(real, ".worktrees", "feature-x"), { recursive: true, force: true });
+
+    const projects = await reconcile(state);
+    expect(projects[0]!.worktrees.filter((w) => w.name === "x")).toMatchObject([{ missing: true }]);
     expect(findRepo(state, "acme/widget")!.worktrees).toHaveLength(1);
   });
 

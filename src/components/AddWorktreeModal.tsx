@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { TextAttributes, type ParsedKey } from "@opentui/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,7 +9,14 @@ import { useTheme } from "../theme";
 import type { OpenPr, Project, RepoSummary } from "../data/model";
 import { branchLeaf, repoDir, sanitizeBranchForPath, worktreePath } from "../config";
 import { clone } from "../services/gh";
-import { addWorktree, fetchPrBranch, ignoreWorktreesDir, listWorktrees, localBranchExists } from "../services/git";
+import {
+  addWorktree,
+  canonicalPath,
+  fetchPrBranch,
+  ignoreWorktreesDir,
+  listWorktrees,
+  localBranchExists,
+} from "../services/git";
 import { addManagedWorktree, findRepo, reconcile, saveState, upsertRepo, type State } from "../store";
 import { existsSync } from "node:fs";
 
@@ -190,7 +197,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
   const buildExisting = async (repoRoot: string): Promise<ExistingWorktree[]> => {
     const wts = await listWorktrees(repoRoot);
     return wts.map((w) => {
-      const isMain = resolve(w.path) === resolve(repoRoot);
+      const isMain = canonicalPath(w.path) === canonicalPath(repoRoot);
       const br = w.branch ?? "(detached)";
       return {
         id: isMain ? "main" : sanitizeBranchForPath(br),
@@ -283,7 +290,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
       const current = await listWorktrees(root);
       const same = current.find((w) => w.branch === name);
       if (same) {
-        const isMain = resolve(same.path) === resolve(root);
+        const isMain = canonicalPath(same.path) === canonicalPath(root);
         await loadExisting({
           id: isMain ? "main" : sanitizeBranchForPath(name),
           name: isMain ? "main" : branchLeaf(name),
@@ -332,7 +339,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
       const current = await listWorktrees(root);
       const same = current.find((w) => w.branch === name);
       if (same) {
-        const isMain = resolve(same.path) === resolve(root);
+        const isMain = canonicalPath(same.path) === canonicalPath(root);
         await loadExisting({
           id: isMain ? "main" : sanitizeBranchForPath(name),
           name: isMain ? "main" : branchLeaf(name),
