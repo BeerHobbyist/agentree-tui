@@ -130,8 +130,9 @@ export function TabBar({
         </text>
       )}
       {/* The one key worth always showing: the way back. The rest are in `?`. */}
-      <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={1000} minWidth={0} wrapMode="none" truncate>
-        {"  ^g sidebar"}
+      <text flexShrink={1000} minWidth={0} wrapMode="none" truncate>
+        <span fg={theme.fg}>{"  ^g"}</span>
+        <span fg={theme.fgMuted}>{" sidebar"}</span>
       </text>
     </box>
   );

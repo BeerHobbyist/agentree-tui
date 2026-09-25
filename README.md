@@ -17,7 +17,8 @@ agentree keeps every branch you're working on in its own [git worktree](https://
 - **Diffs your way.** Working changes, staged, against the base branch, or any ref — in hunk, diffnav, delta, difftastic, nvim diffview or plain git, whichever you have.
 - **Remote machines as projects.** Add an SSH host and a directory on it; its terminals run there, in tmux there, so they survive a dropped connection. Key or password login.
 - **A CLI for the agents themselves.** Inside an agentree terminal, `agentree tab new --name dev -- npm run dev` starts a dev server in its own tab and `agentree tab read dev` shows its output — so an agent can run and watch long-lived processes without blocking itself. Comes with a Claude Code skill that teaches it when and how.
-- **Keyboard first, mouse everywhere.** Every action has a key; everything is also clickable, and the sidebar and PR panel resize by dragging.
+- **Keyboard first, mouse everywhere.** Every action has a key — and `Ctrl+p` opens a command palette listing them all, searchable, so none need remembering. Everything is also clickable, and the sidebar and PR panel resize by dragging.
+- **Alive, but out of your way.** Working agents spin, ones waiting on you pulse; what happened (or failed) shows as a toast in the corner. Three themes — One Dark, Midnight and OpenCode's — `t` switches.
 
 <p>
   <img src="docs/screenshots/add-worktree.png" width="49%" alt="The add-worktree dialog: a new branch, an existing worktree, or an open pull request">
@@ -75,7 +76,8 @@ agentree skill install     # into ~/.claude/skills/agentree/
 | `p` / `m` | PR panel / merge | `⌥d` | open a diff |
 | `b` | hide the sidebar | `⌥n` | next agent that needs you |
 | `H` | track every `claude` | `⌥a` | a new agent in a new tab |
-| `?` | all keys | `Ctrl+b …` | tmux's own keys still work |
+| `Ctrl+p` | command palette | `Ctrl+b …` | tmux's own keys still work |
+| `t` / `?` | theme / all keys | | |
 
 ## The agent CLI
 
@@ -105,6 +107,7 @@ agentree keeps its state in `~/.config/agentree/state.json` (it follows `$XDG_CO
 | `AGENTREE_AGENT_CMD` | the agent started in a new worktree (default `claude`) |
 | `AGENTREE_NOTIFY` | `off` turns desktop notifications off |
 | `AGENTREE_NOTIFY_CMD` | your own notifier, given the title and message |
+| `AGENTREE_ANIMATIONS` | `off` holds the status glyphs still |
 | `AGENTREE_TMUX_SOCKET` | the tmux server agentree uses (default: its own, `-L agentree`) |
 | `AGENTREE_OPEN_CMD` | how links are opened (default: `xdg-open` / `open`) |
 | `CLAUDE_CONFIG_DIR` | where Claude Code's settings and skills live (default `~/.claude`) |

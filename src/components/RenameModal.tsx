@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
-import { TextAttributes, type ParsedKey } from "@opentui/core";
+import type { ParsedKey } from "@opentui/core";
 import { useKeyboard, usePaste } from "@opentui/react";
 import { useTheme } from "../theme";
+import { Dialog } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 
 interface RenameModalProps {
   /** What it's called now (prefilled). */
@@ -74,61 +76,32 @@ export function RenameModal({ initial, heading, placeholder, note, maxLength, on
   });
 
   return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      width="100%"
-      height="100%"
-      zIndex={150}
-      alignItems="center"
-      justifyContent="center"
-      shouldFill={false}
-      onMouseDown={onCancel}
-    >
-      <box
-        width={54}
-        borderStyle="rounded"
-        border
-        borderColor={theme.accent}
-        backgroundColor={theme.panel}
-        title=" Rename "
-        titleAlignment="center"
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <text fg={theme.fgMuted} wrapMode="none" truncate>
-          {heading}
+    <Dialog title="Rename" width={58} onClose={onCancel} zIndex={150}>
+      <text fg={theme.fgMuted} wrapMode="none" truncate>
+        {heading}
+      </text>
+      <box flexDirection="row" alignItems="center" marginTop={1}>
+        <text fg={theme.accent} flexShrink={0}>
+          {"❯ "}
         </text>
-        <box flexDirection="row" alignItems="center" marginTop={1}>
-          <text fg={theme.accent} flexShrink={0}>
-            {"❯ "}
+        {value ? (
+          <text fg={theme.fg} flexShrink={1} wrapMode="none" truncate>
+            {value}
           </text>
-          {value ? (
-            <text fg={theme.fg} flexShrink={1} wrapMode="none" truncate>
-              {value}
-            </text>
-          ) : (
-            <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={1} wrapMode="none" truncate>
-              {placeholder}
-            </text>
-          )}
-          <text fg={theme.accent} flexShrink={0}>
-            {"▏"}
+        ) : (
+          <text fg={theme.fgFaint} flexShrink={1} wrapMode="none" truncate>
+            {placeholder}
           </text>
-        </box>
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
-          {note}
-        </text>
-        <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-          {"⏎ save · esc cancel · ^u clear"}
+        )}
+        <text fg={theme.accent} flexShrink={0}>
+          {"▏"}
         </text>
       </box>
-    </box>
+      <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
+        {note}
+      </text>
+      <Hints marginTop={1} hints={hintsFrom("⏎ save · esc cancel · ^u clear")} />
+    </Dialog>
   );
 }
 

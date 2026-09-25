@@ -1,5 +1,6 @@
 import { TextAttributes, type MouseEvent } from "@opentui/core";
-import { useTheme, type Theme } from "../theme";
+import { animationsOn, PULSE, SPINNER, useTick } from "../anim";
+import { mix, useTheme, type Theme } from "../theme";
 import { displayName, type Worktree } from "../data/model";
 import { checkLook } from "./PrPanel";
 
@@ -32,6 +33,25 @@ export function agentLook(agent: Worktree["agent"], theme: Theme): { glyph: stri
  * branch, its changes and what the agent is doing on the second. The sidebar
  * puts a blank line between cards.
  */
+/**
+ * An agent's status glyph, alive: a spinner while it works, a slow pulse while
+ * it needs you (fading toward `bg`, what it's drawn on). Still otherwise, and
+ * with animations off.
+ */
+export function AgentGlyph({ agent, bg }: { agent: Worktree["agent"]; bg: string }) {
+  const theme = useTheme();
+  const look = agentLook(agent, theme);
+  const animated = (agent === "working" || agent === "needs-action") && animationsOn();
+  const tick = useTick(animated);
+  const glyph = animated && agent === "working" ? SPINNER[tick % SPINNER.length] : look.glyph;
+  const color = animated && agent === "needs-action" ? mix(look.color, bg, PULSE[tick % PULSE.length]!) : look.color;
+  return (
+    <text fg={color} flexShrink={0}>
+      {glyph}
+    </text>
+  );
+}
+
 export function WorktreeItem({ worktree, active, id, onClick }: WorktreeItemProps) {
   const theme = useTheme();
   const look = agentLook(worktree.agent, theme);
@@ -47,9 +67,7 @@ export function WorktreeItem({ worktree, active, id, onClick }: WorktreeItemProp
       <box flexDirection="column" flexGrow={1} minWidth={0} paddingLeft={1} paddingRight={1}>
         {/* Line 1: status + name .......... PR */}
         <box flexDirection="row" alignItems="center">
-          <text fg={look.color} flexShrink={0}>
-            {look.glyph}
-          </text>
+          <AgentGlyph agent={worktree.agent} bg={bg} />
           <text
             fg={theme.fg}
             attributes={active ? TextAttributes.BOLD : undefined}

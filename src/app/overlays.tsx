@@ -6,6 +6,7 @@
  */
 import type { PrInfo } from "../data/model";
 import { AddWorktreeModal, type PreselectRepo, type Selection } from "../components/AddWorktreeModal";
+import { type Command, CommandPalette } from "../components/CommandPalette";
 import { ConfirmModal } from "../components/ConfirmModal";
 import { HelpOverlay } from "../components/HelpOverlay";
 import { MergeModal } from "../components/MergeModal";
@@ -23,6 +24,8 @@ export type Overlay =
   /** Add an SSH host, or a directory to one: `s`, its ＋. */
   | { kind: "ssh"; host?: string }
   | { kind: "help" }
+  /** The command palette (`ctrl+p`). */
+  | { kind: "palette" }
   /** Delete a worktree from disk (`d`). `what` names it: `"label" (branch)`, or `"name"`. */
   | { kind: "close-worktree"; repoId: string; worktreeId: string; what: string; dirty: boolean; missing: boolean }
   /** Forget an SSH directory, or (no `dirId`) the whole host (`d`). */
@@ -32,9 +35,7 @@ export type Overlay =
   /** Merge the PR on screen (`m`); `worktreeId` is its worktree, which `d` can close after. */
   | { kind: "merge"; repo: string; pr: PrInfo; worktreeId: string }
   /** A worktree's label (`R`, right-click). */
-  | { kind: "rename"; repoId: string; worktreeId: string; label: string; name: string; branch: string }
-  /** Something went wrong, until dismissed. */
-  | { kind: "notice"; title: string; message: string };
+  | { kind: "rename"; repoId: string; worktreeId: string; label: string; name: string; branch: string };
 
 export type OverlayKind = Overlay["kind"];
 
@@ -78,6 +79,8 @@ export interface OverlayActions {
   merged(method: MergeMethod): void;
   /** After a merge, `d`: ask to close the PR's worktree. */
   closeMergedWorktree(target: Extract<Overlay, { kind: "merge" }>): void;
+  /** What the palette offers now. */
+  paletteCommands(): Command[];
 }
 
 /** The pop-up on top of the stack, if any. */
@@ -94,6 +97,8 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
       return <SshModal state={actions.state} host={o.host} onClose={close} onAdded={actions.onApplied} />;
     case "help":
       return <HelpOverlay themeName={actions.themeName} onClose={close} />;
+    case "palette":
+      return <CommandPalette commands={actions.paletteCommands()} onClose={close} />;
     case "close-worktree":
       return (
         <ConfirmModal
@@ -169,7 +174,5 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
           onCancel={close}
         />
       );
-    case "notice":
-      return <ConfirmModal title={o.title} message={o.message} onCancel={close} />;
   }
 }

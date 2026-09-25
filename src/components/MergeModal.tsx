@@ -3,6 +3,8 @@ import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../theme";
+import { Dialog, rowLook } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 import type { PrInfo } from "../data/model";
 import { mergeSettingsQuery, prDetailsQuery, queryKeys } from "../queries";
 import { MERGE_METHODS, mergeOptions, mergePr, mergeStatus, type MergeMethod } from "../services/pr";
@@ -124,11 +126,7 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
     }
   });
 
-  const hint = (text: string) => (
-    <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-      {text}
-    </text>
-  );
+  const hint = (text: string) => <Hints marginTop={1} hints={hintsFrom(text)} />;
 
   const body = () => {
     if (!d || !settings) {
@@ -167,22 +165,25 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
                   </text>
                 )}
                 <box flexDirection="column" marginTop={1}>
-                  {methods.map((m, i) => (
-                    <box
-                      key={m}
-                      flexDirection="row"
-                      backgroundColor={i === index ? theme.activeBg : undefined}
-                      onMouseDown={() => {
-                        moveTo(i);
-                        pick(i);
-                      }}
-                    >
-                      <text fg={i === index ? theme.accent : theme.fgMuted}>{i === index ? "▶ " : "  "}</text>
-                      <text fg={i === index ? theme.fg : theme.fgMuted}>
-                        {labelOf(m).label + (auto ? " when ready" : "")}
-                      </text>
-                    </box>
-                  ))}
+                  {methods.map((m, i) => {
+                    const look = rowLook(theme, i === index);
+                    return (
+                      <box
+                        key={m}
+                        flexDirection="row"
+                        backgroundColor={look.bg}
+                        onMouseDown={() => {
+                          moveTo(i);
+                          pick(i);
+                        }}
+                      >
+                        <text fg={look.marker}>{i === index ? " ▶ " : "   "}</text>
+                        <text fg={look.fg} attributes={look.bold}>
+                          {labelOf(m).label + (auto ? " when ready" : "")}
+                        </text>
+                      </box>
+                    );
+                  })}
                 </box>
                 {hint("↑↓ choose · ⏎ next · esc cancel")}
               </>
@@ -197,7 +198,7 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
                 ? `Set #${pr.number} to ${labelOf(phase.method).verb} into ${into} once it's ready?`
                 : labelOf(phase.method).ask(`#${pr.number}`, into)}
             </text>
-            <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
+            <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
               {phase.auto
                 ? "GitHub merges it once reviews and required checks pass; you can turn auto-merge off there. Your worktree stays as it is."
                 : "Merges on GitHub. Your worktree and its local branch stay as they are."}
@@ -232,45 +233,22 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
   };
 
   return (
-    <box
-      position="absolute"
-      top={0}
-      left={0}
-      width="100%"
-      height="100%"
+    <Dialog
+      title={`Merge #${pr.number}`}
+      width={62}
+      // Not while gh is merging: it's going through either way.
+      onClose={phase.kind === "merging" ? undefined : onClose}
       zIndex={150}
-      alignItems="center"
-      justifyContent="center"
-      shouldFill={false}
-      onMouseDown={() => {
-        if (phaseRef.current.kind !== "merging") onClose();
-      }}
     >
-      <box
-        width={60}
-        borderStyle="rounded"
-        border
-        borderColor={theme.accent}
-        backgroundColor={theme.panel}
-        title={` Merge #${pr.number} `}
-        titleAlignment="center"
-        flexDirection="column"
-        paddingTop={1}
-        paddingBottom={1}
-        paddingLeft={2}
-        paddingRight={2}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <text fg={theme.fg} attributes={TextAttributes.BOLD} wrapMode="none" truncate>
-          {d?.title ?? pr.title}
+      <text fg={theme.fg} attributes={TextAttributes.BOLD} wrapMode="none" truncate>
+        {d?.title ?? pr.title}
+      </text>
+      {d && (
+        <text fg={theme.fgMuted} wrapMode="none" truncate marginBottom={1}>
+          {`${d.base} ← ${d.head}`}
         </text>
-        {d && (
-          <text fg={theme.fgMuted} wrapMode="none" truncate marginBottom={1}>
-            {`${d.base} ← ${d.head}`}
-          </text>
-        )}
-        {body()}
-      </box>
-    </box>
+      )}
+      {body()}
+    </Dialog>
   );
 }

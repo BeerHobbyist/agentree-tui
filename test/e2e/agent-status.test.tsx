@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { SPINNER } from "../../src/anim";
 import { agentStatusDir } from "../../src/services/agents";
 import { sessionName } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
@@ -113,4 +114,44 @@ describe("uncommitted changes", () => {
     writeFileSync(join(path, "notes.txt"), "new\n");
     await waitForText(app, "●1", { timeoutMs: 12_000 }); // background refresh, every 5s
   }, 20_000);
+});
+
+describe("animated (AGENTREE_ANIMATIONS on; the sandbox turns it off)", () => {
+  test("a working agent's glyph spins", async () => {
+    process.env.AGENTREE_ANIMATIONS = "on";
+    await start();
+    report(agentPane(), "working");
+    await waitForText(app, "working");
+    const seen = new Set<string>();
+    await waitUntil(
+      app,
+      () => {
+        const glyph = /(\S) x\s/.exec(app.captureCharFrame())?.[1];
+        if (glyph) seen.add(glyph);
+        return seen.size >= 3;
+      },
+      "the spinner to turn",
+    );
+    for (const glyph of seen) expect(SPINNER).toContain(glyph);
+  });
+
+  test("an agent that needs you pulses", async () => {
+    process.env.AGENTREE_ANIMATIONS = "on";
+    await start();
+    report(agentPane(), "needs-action");
+    await waitForText(app, "needs action");
+    const colours = new Set<string>();
+    await waitUntil(
+      app,
+      () => {
+        for (const line of app.captureSpans().lines) {
+          for (const span of line.spans) {
+            if (span.text.includes("◆")) colours.add(Array.from(span.fg.buffer.slice(0, 3)).join(","));
+          }
+        }
+        return colours.size >= 3;
+      },
+      "the ◆ to pulse",
+    );
+  });
 });

@@ -221,6 +221,8 @@ export function createSandbox(): Sandbox {
     FAKE_NOTIFY_LOG: notifyLog,
     // Diff viewers "installed": plain git only, whatever this machine has.
     AGENTREE_DIFF_VIEWERS: "git",
+    // Status glyphs hold still, so frames are the same from one capture to the next.
+    AGENTREE_ANIMATIONS: "off",
     // ssh's shared-connection sockets go here rather than the real runtime dir.
     XDG_RUNTIME_DIR: join(root, "run"),
     // Keep git away from the developer's identity and global config.

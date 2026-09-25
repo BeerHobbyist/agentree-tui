@@ -1,4 +1,4 @@
-import { TextAttributes, type ParsedKey } from "@opentui/core";
+import type { ParsedKey } from "@opentui/core";
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react";
 import { existsSync } from "node:fs";
 import { useEffect, useRef, useState } from "react";
@@ -6,12 +6,14 @@ import { QueryClientProvider, useQueryClient, type QueryClient } from "@tanstack
 import { bindTerminalFocus, createQueryClient } from "./queryClient";
 import { queryKeys } from "./queries";
 import { setRemoteTracking, setTrackingEveryClaude } from "./services/agents";
-import { useTheme, cycleTheme } from "./theme";
+import { useTheme, cycleTheme, themeNames } from "./theme";
 import { displayName, type AgentStatus, type PrInfo, type Project, type Worktree } from "./data/model";
 import { removeWorktree } from "./services/git";
 import { killSession, sessionName, tmuxOn } from "./services/tmux";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
 import type { Selection } from "./components/AddWorktreeModal";
+import type { Command } from "./components/CommandPalette";
+import { type Hint, Hints } from "./components/Hints";
 import {
   reconcile,
   removeHost,
@@ -27,12 +29,14 @@ import { PrPanel, type PrPanelHandle } from "./components/PrPanel";
 import { openExternal } from "./services/open";
 import { useLive, useMirror } from "./app/live";
 import { OverlayLayer, useOverlays, type Overlay, type OverlayActions } from "./app/overlays";
+import { ToastLayer, useToasts } from "./app/toasts";
 import { usePrefs } from "./app/usePrefs";
 import { useAgents } from "./app/useAgents";
 import { useLiveProjects } from "./app/useLiveProjects";
 
 function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?: boolean }) {
   const theme = useTheme();
+  const { height } = useTerminalDimensions();
   const label = !row ? "agentree" : row.kind === "worktree" ? displayName(row.worktree) : row.project.name;
   const subtitle =
     row?.kind === "worktree"
@@ -43,13 +47,48 @@ function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?
         ? row.project.root
         : "Press n to add a project";
 
+  // What you can do from here.
+  const next: Hint[] = !row
+    ? [
+        { key: "n", text: "add a project" },
+        { key: "s", text: "add an SSH host" },
+      ]
+    : row.kind === "project"
+      ? [
+          { key: "a", text: "new worktree" },
+          { key: "^p", text: "commands" },
+        ]
+      : row.worktree.missing
+        ? [{ text: "gone from disk" }, { key: "d", text: "forget it" }]
+        : [
+            { key: "⏎", text: "open its terminal" },
+            { key: "^p", text: "commands" },
+          ];
+
   return (
-    <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg} alignItems="center" justifyContent="center">
-      <ascii-font font="tiny" text={label} />
-      <text fg={theme.fgMuted}>{subtitle}</text>
-      <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
-        {sidebarHidden ? "The sidebar is hidden — b shows it" : "tmux session would render here"}
+    <box
+      flexGrow={1}
+      flexDirection="column"
+      backgroundColor={theme.bg}
+      alignItems="center"
+      // Centred on a whole row. Flex centring can land the column on a half
+      // row, which the logo and the text below it round in opposite
+      // directions — and the subtitle was drawn over the logo's second row.
+      paddingTop={Math.max(0, Math.floor((height - 5) / 2))}
+    >
+      <box height={2} flexShrink={0}>
+        <ascii-font font="tiny" text={label} />
+      </box>
+      <text fg={theme.fgMuted} flexShrink={0}>
+        {subtitle}
       </text>
+      {sidebarHidden ? (
+        <text fg={theme.fgFaint} flexShrink={0}>
+          {"The sidebar is hidden — b shows it"}
+        </text>
+      ) : (
+        <Hints hints={next} marginTop={1} />
+      )}
     </box>
   );
 }
@@ -158,7 +197,9 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const { viewProjects, refreshPrs } = useLiveProjects(projects, agents.status, agents.reports);
   projectsRef.current = viewProjects;
 
-  const notice = (title: string, err: unknown) => overlays.open({ kind: "notice", title, message: errText(err) });
+  const toasts = useToasts();
+  /** Something failed: say so in a toast, without stopping you. */
+  const notice = (title: string, err: unknown) => toasts.show({ kind: "error", title, message: errText(err) });
 
   // ── Selection, folding, opening terminals ──
 
@@ -333,8 +374,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     }
     if (row?.kind !== "worktree") return;
     if (row.worktree.id === "main") {
-      overlays.open({
-        kind: "notice",
+      toasts.show({
+        kind: "warning",
         title: "Could not close worktree",
         message: "The main working copy can't be closed this way — remove the project instead.",
       });
@@ -392,6 +433,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       }
       await removeManagedWorktree(state, target.repoId, target.worktreeId);
       afterRemoval(await reconcile(state), (o) => o.repoId === target.repoId && o.worktreeId === target.worktreeId);
+      toasts.show({ kind: "success", message: `Closed ${target.what}` });
     } catch (err) {
       notice("Could not close worktree", err);
     }
@@ -412,6 +454,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       if (target.dirId) await removeRemoteDir(state, target.host, target.dirId);
       else await removeHost(state, target.host);
       afterRemoval(await reconcile(state), (o) => o.repoId === repoId && dirIds.includes(o.worktreeId));
+      toasts.show({ kind: "success", message: target.dirId ? `Removed ${target.what}` : `Removed ${target.host}` });
     } catch (err) {
       notice("Could not remove it", err);
     }
@@ -467,6 +510,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       notice("Couldn't change Claude's settings", err);
       return;
     }
+    toasts.show({
+      kind: "success",
+      message: on ? "Tracking every claude started in agentree" : "Only the agents agentree starts report now",
+    });
     agents.hookedHosts.current.clear();
     for (const h of agents.remoteHosts) {
       void setRemoteTracking(h.host, on, { onlyIfConnected: h.needsPassword }).then((result) => {
@@ -482,6 +529,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   const sidebarKeys: Record<string, (row: Row | undefined, rows: Row[], i: number) => void> = {
     q: quit,
     "C-c": quit,
+    escape: () => toasts.dismiss(),
+    "C-p": () => overlays.open({ kind: "palette" }),
     n: () => overlays.open({ kind: "add", preselect: null }),
     s: () => overlays.open({ kind: "ssh" }),
     a: (row) => row && openAddForProject(row.project.id),
@@ -525,6 +574,56 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       else if (row?.kind === "worktree" && !row.worktree.missing) openWorktreeTerminal(row.project.id, row.worktree.id);
     },
   };
+  /**
+   * The palette: what the sidebar's keys do, as commands — those that apply to
+   * the selected row and what's on screen — each running its key's handler.
+   */
+  const paletteCommands = (): Command[] => {
+    const rows = buildRows(projectsRef.current, collapsedRef.current);
+    const i = activeIndexRef.current;
+    const row = rows[i];
+    const wt = row?.kind === "worktree" ? row.worktree : undefined;
+    const ssh = !!row?.project.ssh;
+    const pr = currentPrRef.current;
+    const names = themeNames();
+    const nextTheme = names[(names.indexOf(theme.name) + 1) % names.length];
+    const cmd = (id: string, title: string, category: string, keys: string, when = true, detail?: string): Command[] =>
+      when ? [{ id, title, category, keys, detail, run: () => sidebarKeys[id]?.(row, rows, i) }] : [];
+    return [
+      ...cmd("return", "Open its terminal", "Worktree", "⏎", !!wt && !wt.missing, wt && displayName(wt)),
+      ...cmd("a", ssh ? "Add a directory on this host" : "New worktree", "Worktree", "a", !!row, row?.project.name),
+      ...cmd("R", "Rename worktree", "Worktree", "R", !!wt && !ssh, wt && displayName(wt)),
+      ...cmd(
+        "d",
+        ssh ? (wt ? "Remove directory" : "Remove host") : "Close worktree",
+        "Worktree",
+        "d",
+        ssh || (!!wt && wt.id !== "main"),
+        wt && displayName(wt),
+      ),
+      ...cmd(
+        "m",
+        "Merge pull request",
+        "Pull request",
+        "m",
+        !!pr && !pr.pr.merged,
+        pr ? `#${pr.pr.number}` : undefined,
+      ),
+      ...cmd("o", "Open pull request on GitHub", "Pull request", "o", !!pr, pr ? `#${pr.pr.number}` : undefined),
+      ...cmd("p", prefs.prPanel.hidden ? "Show the PR panel" : "Hide the PR panel", "Pull request", "p"),
+      ...cmd("r", "Refresh pull requests", "Pull request", "r"),
+      ...cmd("tab", "Next agent that needs you", "Agents", "Tab"),
+      ...cmd("H", agents.tracking ? "Stop tracking every claude" : "Track every claude", "Agents", "H"),
+      ...cmd("n", "Add a project", "Projects", "n", true, "a GitHub repo"),
+      ...cmd("s", "Add an SSH host", "Projects", "s"),
+      ...cmd("b", prefs.sidebar.hidden ? "Show the sidebar" : "Hide the sidebar", "View", "b"),
+      ...cmd("t", "Switch theme", "View", "t", true, `→ ${nextTheme}`),
+      ...cmd("=", "Reset the sidebar width", "View", "="),
+      ...cmd("?", "Keyboard & mouse", "View", "?"),
+      ...cmd("q", "Quit", "App", "q"),
+    ];
+  };
+
   sidebarKeys.j = sidebarKeys.down!;
   sidebarKeys.k = sidebarKeys.up!;
   sidebarKeys.h = sidebarKeys.left!;
@@ -594,6 +693,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     setTracking,
     saveLabel,
     merged: (method) => prefs.saveUi({ mergeMethod: method }),
+    paletteCommands,
     closeMergedWorktree: (target) => {
       overlays.close("merge");
       requestCloseWorktree(target.repo, target.worktreeId);
@@ -669,6 +769,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
         />
       )}
       <OverlayLayer overlays={overlays} actions={overlayActions} />
+      <ToastLayer toasts={toasts} screenWidth={screenWidth} />
     </box>
   );
 }

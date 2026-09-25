@@ -106,7 +106,7 @@ describe("a merged PR", () => {
     const frame = app.captureCharFrame();
     expect(frame).toContain("Merged");
     expect(frame).not.toContain(" Merge… "); // nothing left to merge
-    expect(frame).toContain("merged: d close · ⏎ open"); // the sidebar's hint
+    expect(frame).toContain("d close (merged) · ^p commands"); // the sidebar's hint
     expect(closeButtonLine()).toStartWith(" Close worktree…  d");
   });
 
