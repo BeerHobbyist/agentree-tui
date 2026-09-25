@@ -1,0 +1,37 @@
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions: {}
+
+jobs:
+  conventional:
+    name: conventional title
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # Conventional Commits: `type(optional scope)!: summary`. The title comes
+      # in through the environment, never pasted into the script, so a title
+      # can't inject shell.
+      - name: Check the PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='feat|fix|docs|refactor|test|perf|build|ci|chore|style|revert'
+          if printf '%s' "$TITLE" | grep -Eq "^(${types})(\([a-z0-9._/-]+\))?!?: [^ ].*[^ .]$"; then
+            echo "✓ $TITLE"
+            exit 0
+          fi
+          echo "::error title=PR title::\"$TITLE\" isn't a Conventional Commits title."
+          cat <<'HELP'
+          PR titles look like:    type(scope): what changes
+            type   feat, fix, docs, refactor, test, perf, build, ci, chore, style or revert
+            scope  optional, in parentheses: feat(ssh): …
+            !      before the colon for a breaking change: feat!: …
+          e.g.  feat: rename terminal tabs
+                fix(pr-panel): keep the badge when gh fails
+          (no full stop at the end)
+          HELP
+          exit 1

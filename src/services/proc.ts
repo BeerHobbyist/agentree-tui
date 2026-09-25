@@ -18,10 +18,7 @@ export interface RunOptions {
 }
 
 /** Run a command, capturing stdout/stderr. Never throws on non-zero exit. */
-export async function run(
-  cmd: string[],
-  opts: RunOptions = {},
-): Promise<ProcResult> {
+export async function run(cmd: string[], opts: RunOptions = {}): Promise<ProcResult> {
   // Bun snapshots the environment at process start, so passing it explicitly
   // is what makes a `process.env.PATH` change (tests' fake binaries) take.
   const proc = Bun.spawn(cmd, {
@@ -42,15 +39,10 @@ export async function run(
 }
 
 /** Run a command, returning stdout; throws with stderr on non-zero exit. */
-export async function runOrThrow(
-  cmd: string[],
-  opts: RunOptions = {},
-): Promise<string> {
+export async function runOrThrow(cmd: string[], opts: RunOptions = {}): Promise<string> {
   const { code, stdout, stderr } = await run(cmd, opts);
   if (code !== 0) {
-    throw new Error(
-      (stderr || stdout || `command failed: ${cmd.join(" ")}`).trim(),
-    );
+    throw new Error((stderr || stdout || `command failed: ${cmd.join(" ")}`).trim());
   }
   return stdout;
 }

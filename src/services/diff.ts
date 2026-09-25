@@ -23,8 +23,7 @@ export function diffArgs(target: DiffTarget, arg?: string): string[] {
     case "ref":
       // A ref, or a range like "A..B" / "A...B".
       return [arg || "HEAD"];
-    case "working":
-    default:
+    default: // "working": the uncommitted changes
       return [];
   }
 }
@@ -90,7 +89,8 @@ export const DIFF_VIEWERS: DiffViewer[] = [
     label: "nvim diffview",
     needs: ["nvim"],
     auto: false,
-    command: (args) => shellJoin(["nvim", "-c", ["DiffviewOpen", ...args.map((a) => (a === "--staged" ? "--cached" : a))].join(" ")]),
+    command: (args) =>
+      shellJoin(["nvim", "-c", ["DiffviewOpen", ...args.map((a) => (a === "--staged" ? "--cached" : a))].join(" ")]),
   },
   {
     id: "git",

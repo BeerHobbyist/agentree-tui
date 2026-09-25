@@ -29,12 +29,7 @@ export async function renderApp(opts: RenderAppOptions = {}): Promise<RenderedAp
   let quits = 0;
 
   const setup = await testRender(
-    <App
-      initialProjects={initialProjects}
-      state={state}
-      onQuit={() => void quits++}
-      queryClient={opts.queryClient}
-    />,
+    <App initialProjects={initialProjects} state={state} onQuit={() => void quits++} queryClient={opts.queryClient} />,
     { width: opts.width ?? 100, height: opts.height ?? 30 },
   );
 

@@ -28,7 +28,12 @@ const TAB_LABEL_MAX = 20;
 function tabLabel(name: string): string {
   const chars = Array.from(name);
   if (chars.length <= TAB_LABEL_MAX) return name;
-  return chars.slice(0, TAB_LABEL_MAX - 1).join("").trimEnd() + "…";
+  return (
+    chars
+      .slice(0, TAB_LABEL_MAX - 1)
+      .join("")
+      .trimEnd() + "…"
+  );
 }
 
 /**
@@ -80,9 +85,7 @@ export function TabBar({
               attributes={w.active ? TextAttributes.BOLD : undefined}
               // One line, whatever the name: a renamed tab can have spaces.
               wrapMode="none"
-              onMouseDown={(e) =>
-                e.button === MouseButton.RIGHT ? onRenameTab?.(w.index) : onSelect(w.index)
-              }
+              onMouseDown={(e) => (e.button === MouseButton.RIGHT ? onRenameTab?.(w.index) : onSelect(w.index))}
             >
               {` ${w.active ? "●" : "○"} ${tabLabel(w.name)}${w.panes > 1 ? ` ⑂${w.panes}` : ""} `}
             </text>
@@ -90,10 +93,7 @@ export function TabBar({
                 remaining tab: tmux can't have a session with zero windows, so
                 closing it would kill the session and strand the pane. */}
             {windows.length > 1 && (
-              <text
-                fg={w.active ? theme.removed : theme.fgFaint}
-                onMouseDown={() => onCloseTab(w.index)}
-              >
+              <text fg={w.active ? theme.removed : theme.fgFaint} onMouseDown={() => onCloseTab(w.index)}>
                 {"× "}
               </text>
             )}
@@ -130,14 +130,7 @@ export function TabBar({
         </text>
       )}
       {/* The one key worth always showing: the way back. The rest are in `?`. */}
-      <text
-        fg={theme.fgFaint}
-        attributes={TextAttributes.DIM}
-        flexShrink={1000}
-        minWidth={0}
-        wrapMode="none"
-        truncate
-      >
+      <text fg={theme.fgFaint} attributes={TextAttributes.DIM} flexShrink={1000} minWidth={0} wrapMode="none" truncate>
         {"  ^g sidebar"}
       </text>
     </box>

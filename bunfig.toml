@@ -1,0 +1,5 @@
+[test]
+# Coverage counts the app's code, not the tests themselves.
+coverageSkipTestFiles = true
+# A text table for people, lcov for scripts/check-coverage.ts (CI's minimum).
+coverageReporter = ["text", "lcov"]

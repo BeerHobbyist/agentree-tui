@@ -12,13 +12,7 @@ interface ConfirmModalProps {
 }
 
 /** Centered modal: y/⏎ confirms, n/esc/click-outside cancels (or dismisses a notice). */
-export function ConfirmModal({
-  title,
-  message,
-  detail,
-  onConfirm,
-  onCancel,
-}: ConfirmModalProps) {
+export function ConfirmModal({ title, message, detail, onConfirm, onCancel }: ConfirmModalProps) {
   const theme = useTheme();
 
   useKeyboard((key) => {
@@ -61,12 +55,7 @@ export function ConfirmModal({
           {message}
         </text>
         {detail && (
-          <text
-            fg={theme.fgFaint}
-            attributes={TextAttributes.DIM}
-            marginTop={1}
-            wrapMode="word"
-          >
+          <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1} wrapMode="word">
             {detail}
           </text>
         )}

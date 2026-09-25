@@ -4,13 +4,7 @@
  * code comments (not part of `gh pr view`). Everything is normalized into
  * `PrDetails` by pure functions, exported for tests.
  */
-import type {
-  CheckState,
-  PrCheck,
-  PrComment,
-  PrDetails,
-  PrReviewer,
-} from "../data/model";
+import type { CheckState, PrCheck, PrComment, PrDetails, PrReviewer } from "../data/model";
 import { run } from "./proc";
 
 /** A `statusCheckRollup` entry: a GitHub Actions/app CheckRun or a commit StatusContext. */
@@ -145,10 +139,7 @@ export function toChecks(raw: RawCheck[] | null | undefined): PrCheck[] {
       state: checkState(c),
       ...((c.detailsUrl ?? c.targetUrl) ? { url: (c.detailsUrl ?? c.targetUrl)! } : {}),
     }))
-    .sort(
-      (a, b) =>
-        CHECK_ORDER.indexOf(a.state) - CHECK_ORDER.indexOf(b.state) || a.name.localeCompare(b.name),
-    );
+    .sort((a, b) => CHECK_ORDER.indexOf(a.state) - CHECK_ORDER.indexOf(b.state) || a.name.localeCompare(b.name));
 }
 
 function reviewerState(state: string | undefined): PrReviewer["state"] {
@@ -326,9 +317,7 @@ export function excerpt(body: string, maxLines = 4, maxChars = 280): string {
 export async function fetchPrDetails(nameWithOwner: string, number: number): Promise<PrDetails> {
   const [view, inline] = await Promise.all([
     run(["gh", "pr", "view", String(number), "-R", nameWithOwner, "--json", PR_VIEW_FIELDS]),
-    run(["gh", "api", `repos/${nameWithOwner}/pulls/${number}/comments?per_page=100`]).catch(
-      () => null,
-    ),
+    run(["gh", "api", `repos/${nameWithOwner}/pulls/${number}/comments?per_page=100`]).catch(() => null),
   ]);
   if (view.code !== 0) {
     throw new Error(view.stderr.trim().split("\n").pop() || `gh pr view exited ${view.code}`);
@@ -358,9 +347,24 @@ export const MERGE_METHODS: {
   /** The confirm question for merging now. */
   ask: (pr: string, into: string) => string;
 }[] = [
-  { method: "squash", label: "Squash and merge", verb: "squash-merge", ask: (pr, into) => `Squash and merge ${pr} into ${into}?` },
-  { method: "merge", label: "Create a merge commit", verb: "merge", ask: (pr, into) => `Merge ${pr} into ${into} with a merge commit?` },
-  { method: "rebase", label: "Rebase and merge", verb: "rebase-merge", ask: (pr, into) => `Rebase and merge ${pr} into ${into}?` },
+  {
+    method: "squash",
+    label: "Squash and merge",
+    verb: "squash-merge",
+    ask: (pr, into) => `Squash and merge ${pr} into ${into}?`,
+  },
+  {
+    method: "merge",
+    label: "Create a merge commit",
+    verb: "merge",
+    ask: (pr, into) => `Merge ${pr} into ${into} with a merge commit?`,
+  },
+  {
+    method: "rebase",
+    label: "Rebase and merge",
+    verb: "rebase-merge",
+    ask: (pr, into) => `Rebase and merge ${pr} into ${into}?`,
+  },
 ];
 
 /** What a repo's settings allow when merging. */
@@ -394,10 +398,7 @@ export async function fetchMergeSettings(nameWithOwner: string): Promise<MergeSe
  * (enable auto-merge, for a PR that's blocked but otherwise fine), or neither —
  * with `reason` saying why.
  */
-export function mergeOptions(
-  d: PrDetails,
-  settings: MergeSettings,
-): { now: boolean; auto: boolean; reason?: string } {
+export function mergeOptions(d: PrDetails, settings: MergeSettings): { now: boolean; auto: boolean; reason?: string } {
   const status = mergeStatus(d).label;
   if (d.state !== "open") return { now: false, auto: false, reason: status };
   if (d.mergeable === "CONFLICTING" || d.mergeStateStatus === "DIRTY") {

@@ -96,7 +96,12 @@ describe("toComments", () => {
       {
         comments: [{ author: { login: "alice" }, body: "LGTM", createdAt: "2026-09-20T10:00:00Z" }],
         reviews: [
-          { author: { login: "bob" }, state: "CHANGES_REQUESTED", body: "See inline.", submittedAt: "2026-09-21T10:00:00Z" },
+          {
+            author: { login: "bob" },
+            state: "CHANGES_REQUESTED",
+            body: "See inline.",
+            submittedAt: "2026-09-21T10:00:00Z",
+          },
           { author: { login: "carol" }, state: "APPROVED", body: "", submittedAt: "2026-09-22T10:00:00Z" },
         ],
       },
@@ -111,17 +116,15 @@ describe("toComments", () => {
         },
       ],
     );
-    expect(comments.map((c) => `${c.kind}:${c.author}`)).toEqual([
-      "review:bob",
-      "inline:bob",
-      "comment:alice",
-    ]); // carol's bare approval has no body, so it isn't a comment
+    expect(comments.map((c) => `${c.kind}:${c.author}`)).toEqual(["review:bob", "inline:bob", "comment:alice"]); // carol's bare approval has no body, so it isn't a comment
     expect(comments[0]!.reviewState).toBe("changes-requested");
     expect(comments[1]).toMatchObject({ path: "src/a.ts", line: 12, url: "https://gh/r1" });
   });
 
   test("an outdated inline comment falls back to its original line", () => {
-    const [c] = toComments({}, [{ user: { login: "x" }, body: "old", created_at: "", path: "a", line: null, original_line: 7 }]);
+    const [c] = toComments({}, [
+      { user: { login: "x" }, body: "old", created_at: "", path: "a", line: null, original_line: 7 },
+    ]);
     expect(c!.line).toBe(7);
   });
 });
@@ -209,8 +212,9 @@ describe("toMergeSettings", () => {
     expect(
       toMergeSettings({ allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: true }).methods,
     ).toEqual(["squash", "rebase"]);
-    expect(toMergeSettings({ allow_merge_commit: true, allow_squash_merge: false, allow_rebase_merge: false }))
-      .toEqual({ methods: ["merge"], autoMerge: false });
+    expect(toMergeSettings({ allow_merge_commit: true, allow_squash_merge: false, allow_rebase_merge: false })).toEqual(
+      { methods: ["merge"], autoMerge: false },
+    );
   });
 
   test("without push access GitHub leaves the fields out: offer everything, let GitHub decide", () => {

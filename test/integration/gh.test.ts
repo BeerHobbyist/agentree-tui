@@ -5,14 +5,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import {
-  clone,
-  fetchRepoPage,
-  isAuthenticated,
-  prForBranch,
-} from "../../src/services/gh";
+import { clone, fetchRepoPage, isAuthenticated, prForBranch } from "../../src/services/gh";
 import { fetchMergeSettings, fetchPrDetails, mergePr } from "../../src/services/pr";
-import { createSandbox, repoSummary, type Sandbox } from "../helpers/sandbox";
+import { createSandbox, type Sandbox } from "../helpers/sandbox";
 import { makeRemote } from "../helpers/repo";
 
 let sandbox: Sandbox;
@@ -54,7 +49,10 @@ describe("fetchRepoPage", () => {
   });
 
   test("a full page means another one probably exists", async () => {
-    sandbox.setRepoPage(1, Array.from({ length: 100 }, (_, i) => ({ nameWithOwner: `acme/r${i}` })));
+    sandbox.setRepoPage(
+      1,
+      Array.from({ length: 100 }, (_, i) => ({ nameWithOwner: `acme/r${i}` })),
+    );
     const page = await fetchRepoPage(1);
     expect(page.repos).toHaveLength(100);
     expect(page.hasMore).toBe(true);
@@ -116,7 +114,7 @@ describe("prForBranch", () => {
     expect(await prForBranch("acme/widget", "feature/y")).toBeNull();
   });
 
-  test("a failing gh is an error, not \"no PR\" — so a cache keeps the last good badge", async () => {
+  test('a failing gh is an error, not "no PR" — so a cache keeps the last good badge', async () => {
     sandbox.failGh("pr");
     await expect(prForBranch("acme/widget", "feature/x")).rejects.toThrow("pr failed");
   });
@@ -143,9 +141,7 @@ describe("clone", () => {
 
   test("throws with gh's message when the clone fails", async () => {
     sandbox.failGh("clone");
-    expect(clone("acme/widget", join(sandbox.workspace, "widget"))).rejects.toThrow(
-      /repository not found/,
-    );
+    expect(clone("acme/widget", join(sandbox.workspace, "widget"))).rejects.toThrow(/repository not found/);
   });
 });
 
@@ -225,12 +221,17 @@ describe("mergePr", () => {
 
 describe("fetchMergeSettings", () => {
   test("reads the repo's allowed methods and auto-merge", async () => {
-    sandbox.setRepoSettings({ allow_merge_commit: false, allow_squash_merge: true, allow_rebase_merge: false, allow_auto_merge: true });
+    sandbox.setRepoSettings({
+      allow_merge_commit: false,
+      allow_squash_merge: true,
+      allow_rebase_merge: false,
+      allow_auto_merge: true,
+    });
     expect(await fetchMergeSettings("acme/widget")).toEqual({ methods: ["squash"], autoMerge: true });
     expect(sandbox.ghCalls()).toContain("api repos/acme/widget");
   });
 
-  test("a failed lookup is an error, not \"everything allowed\"", async () => {
+  test('a failed lookup is an error, not "everything allowed"', async () => {
     sandbox.failGh("api");
     await expect(fetchMergeSettings("acme/widget")).rejects.toThrow();
   });

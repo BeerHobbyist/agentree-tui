@@ -4,12 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import {
-  DEFAULT_SIDEBAR_WIDTH,
-  MIN_CONTENT_WIDTH,
-  MIN_SIDEBAR_WIDTH,
-  SIDEBAR_WIDTH_STEP,
-} from "../../src/layout";
+import { DEFAULT_SIDEBAR_WIDTH, MIN_CONTENT_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH_STEP } from "../../src/layout";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForText, waitUntil } from "../helpers/frame";
@@ -55,6 +50,11 @@ function waitForDivider(app: RenderedApp, col: number) {
   return waitUntil(app, () => dividerColumn(app) === col, `the divider at column ${col}`);
 }
 
+/** The project's path, as the sidebar shows it (shortened to fit) — the row under its name. */
+function shownPath(app: RenderedApp): string {
+  return (app.captureCharFrame().split("\n")[2] ?? "").slice(0, dividerColumn(app)).trim();
+}
+
 function storedWidth(): number | undefined {
   return sandbox.readState()?.ui?.sidebarWidth;
 }
@@ -73,10 +73,12 @@ describe("dragging the divider", () => {
 
   test("resizes the sidebar live and remembers the width", async () => {
     await start();
+    const before = shownPath(app);
     await app.mockMouse.drag(DEFAULT_COL, 10, 50, 10);
     await waitForDivider(app, 50);
-    // The wider sidebar shows the worktree path it used to truncate.
-    expect(app.captureCharFrame()).toContain(join(sandbox.workspace, "widget"));
+    // The wider sidebar shows more of the project's path (all of it, if the temp dir's is short).
+    expect(shownPath(app).length).toBeGreaterThan(before.length);
+    expect(shownPath(app)).toEndWith("/workspace/widget");
     await waitUntil(app, () => storedWidth() === 51, "the width to be saved");
   });
 
@@ -126,11 +128,7 @@ describe("keyboard", () => {
     app.mockInput.pressKey("[");
     app.mockInput.pressKey("[");
     await waitForDivider(app, DEFAULT_COL - SIDEBAR_WIDTH_STEP);
-    await waitUntil(
-      app,
-      () => storedWidth() === DEFAULT_SIDEBAR_WIDTH - SIDEBAR_WIDTH_STEP,
-      "the width to be saved",
-    );
+    await waitUntil(app, () => storedWidth() === DEFAULT_SIDEBAR_WIDTH - SIDEBAR_WIDTH_STEP, "the width to be saved");
   });
 
   test("a burst of ] presses moves one step each", async () => {

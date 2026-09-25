@@ -25,11 +25,17 @@ export function usePrefs(
 ) {
   // The sidebar width you chose; what's rendered is this clamped to the screen,
   // so shrinking the window doesn't lose it.
-  const [sidebarWidth, sidebarWidthRef, setSidebarWidth] = useLive(() => state.ui?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH);
+  const [sidebarWidth, sidebarWidthRef, setSidebarWidth] = useLive(
+    () => state.ui?.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH,
+  );
   const [sidebarHidden, sidebarHiddenRef, setSidebarHidden] = useLive(() => state.ui?.sidebarHidden ?? false);
   const [prPanelHidden, prPanelHiddenRef, setPrPanelHidden] = useLive(() => state.ui?.prPanelHidden ?? false);
-  const [prPanelWidth, prPanelWidthRef, setPrPanelWidth] = useLive(() => state.ui?.prPanelWidth ?? DEFAULT_PR_PANEL_WIDTH);
-  const [prCollapsed, prCollapsedRef, setPrCollapsed] = useLive(() => (state.ui?.prPanelCollapsed ?? []) as PrSection[]);
+  const [prPanelWidth, prPanelWidthRef, setPrPanelWidth] = useLive(
+    () => state.ui?.prPanelWidth ?? DEFAULT_PR_PANEL_WIDTH,
+  );
+  const [prCollapsed, prCollapsedRef, setPrCollapsed] = useLive(
+    () => (state.ui?.prPanelCollapsed ?? []) as PrSection[],
+  );
   const [diffViewer, , setDiffViewer] = useLive<DiffViewerId | undefined>(() => state.ui?.diffViewer);
 
   /** Merge UI preferences into state.json; `undefined` drops a field. No-op if nothing changed. */

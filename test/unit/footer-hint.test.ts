@@ -4,10 +4,26 @@ import { footerHint, projectKey, worktreeKey } from "../../src/components/Sideba
 import type { Project, Worktree } from "../../src/data/model";
 
 const wt = (id: string): Worktree => ({
-  id, name: id, branch: id, path: `/r/${id}`, dirty: false, changed: 0, added: 0, removed: 0, ahead: 0, behind: 0, agent: "none",
+  id,
+  name: id,
+  branch: id,
+  path: `/r/${id}`,
+  dirty: false,
+  changed: 0,
+  added: 0,
+  removed: 0,
+  ahead: 0,
+  behind: 0,
+  agent: "none",
 });
 const repo: Project = { id: "acme/widget", name: "widget", root: "/r", worktrees: [wt("main"), wt("x")] };
-const host: Project = { id: "ssh:dev-box", name: "dev-box", root: "dev-box", ssh: { host: "dev-box" }, worktrees: [wt("api")] };
+const host: Project = {
+  id: "ssh:dev-box",
+  name: "dev-box",
+  root: "dev-box",
+  ssh: { host: "dev-box" },
+  worktrees: [wt("api")],
+};
 
 describe("footerHint", () => {
   test("says what you can do with the selected row", () => {

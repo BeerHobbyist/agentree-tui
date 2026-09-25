@@ -21,11 +21,7 @@ describe("buildRows", () => {
 
   test("a collapsed project contributes only its header", () => {
     const rows = buildRows(projects, new Set(["acme/widget"]));
-    expect(rows.map(rowKey)).toEqual([
-      "acme/widget",
-      "acme/gadget",
-      "acme/gadget:main",
-    ]);
+    expect(rows.map(rowKey)).toEqual(["acme/widget", "acme/gadget", "acme/gadget:main"]);
   });
 
   test("every row carries its project, so `a` works on worktree rows too", () => {

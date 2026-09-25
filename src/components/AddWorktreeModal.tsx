@@ -7,28 +7,10 @@ import { openPrsQuery, reposQuery } from "../queries";
 import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { OpenPr, Project, RepoSummary } from "../data/model";
-import {
-  branchLeaf,
-  repoDir,
-  sanitizeBranchForPath,
-  worktreePath,
-} from "../config";
+import { branchLeaf, repoDir, sanitizeBranchForPath, worktreePath } from "../config";
 import { clone } from "../services/gh";
-import {
-  addWorktree,
-  fetchPrBranch,
-  ignoreWorktreesDir,
-  listWorktrees,
-  localBranchExists,
-} from "../services/git";
-import {
-  addManagedWorktree,
-  findRepo,
-  reconcile,
-  saveState,
-  upsertRepo,
-  type State,
-} from "../store";
+import { addWorktree, fetchPrBranch, ignoreWorktreesDir, listWorktrees, localBranchExists } from "../services/git";
+import { addManagedWorktree, findRepo, reconcile, saveState, upsertRepo, type State } from "../store";
 import { existsSync } from "node:fs";
 
 type Phase =
@@ -73,21 +55,12 @@ interface AddWorktreeModalProps {
 
 const MAX_LIST_ROWS = 10;
 
-export function AddWorktreeModal({
-  state,
-  preselect,
-  onClose,
-  onApplied,
-}: AddWorktreeModalProps) {
+export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWorktreeModalProps) {
   const theme = useTheme();
   const queryClient = useQueryClient();
   // Straight to the list when the repos are already cached (no loading flash).
   const [phase, setPhase] = useState<Phase>(() =>
-    preselect
-      ? "actions"
-      : queryClient.getQueryData(reposQuery().queryKey)
-        ? "repoList"
-        : "repoLoading",
+    preselect ? "actions" : queryClient.getQueryData(reposQuery().queryKey) ? "repoList" : "repoLoading",
   );
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState(0);
@@ -105,18 +78,14 @@ export function AddWorktreeModal({
   // fetched in the background. Cached (src/queries.ts), so reopening the modal
   // is instant and a stale list refreshes behind the one on screen.
   const reposQ = useInfiniteQuery({ ...reposQuery(), enabled: !preselect });
-  const repos = useMemo(
-    () => reposQ.data?.pages.flatMap((p) => p.repos) ?? [],
-    [reposQ.data],
-  );
+  const repos = useMemo(() => reposQ.data?.pages.flatMap((p) => p.repos) ?? [], [reposQ.data]);
   useEffect(() => {
     if (reposQ.hasNextPage && !reposQ.isFetchingNextPage && !reposQ.isFetchNextPageError) {
       void reposQ.fetchNextPage();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reposQ.hasNextPage, reposQ.isFetchingNextPage, reposQ.isFetchNextPageError]);
-  const loadingMore =
-    reposQ.isFetchingNextPage || (reposQ.hasNextPage && !reposQ.isFetchNextPageError);
+  const loadingMore = reposQ.isFetchingNextPage || (reposQ.hasNextPage && !reposQ.isFetchNextPageError);
   // Leave the loading screen once page 1 (or an error) is in.
   useEffect(() => {
     if (phase !== "repoLoading") return;
@@ -146,9 +115,7 @@ export function AddWorktreeModal({
   // PRs that don't already have a worktree for their branch. Until the repo's
   // worktrees are known, offer none — the (cached) PR list can arrive first,
   // and would briefly offer a PR whose worktree already exists.
-  const availablePrs = existingLoaded
-    ? prs.filter((pr) => !existing.some((w) => w.branch === pr.headRefName))
-    : [];
+  const availablePrs = existingLoaded ? prs.filter((pr) => !existing.some((w) => w.branch === pr.headRefName)) : [];
 
   // Everything the keyboard handler needs, mirrored to refs (handler is global).
   const ref = useRef({
@@ -409,13 +376,10 @@ export function AddWorktreeModal({
     // Escape is a universal back/cancel. With a preselected repo there's no
     // repo-picker to return to, so actions/cloneError close outright.
     if (name === "escape") {
-      if (s.phase === "actions")
-        return preselect ? onClose() : void setPhase("repoList");
+      if (s.phase === "actions") return preselect ? onClose() : void setPhase("repoList");
       if (s.phase === "branchInput") return void setPhase("actions");
-      if (s.phase === "cloneError")
-        return preselect ? onClose() : void setPhase("repoList");
-      if (s.phase === "createError")
-        return void setPhase(s.pendingPr ? "actions" : "branchInput");
+      if (s.phase === "cloneError") return preselect ? onClose() : void setPhase("repoList");
+      if (s.phase === "createError") return void setPhase(s.pendingPr ? "actions" : "branchInput");
       return onClose();
     }
 
@@ -580,25 +544,13 @@ function renderBody(p: BodyProps) {
         />
       );
     case "cloning":
-      return (
-        <StatusLine text={`Cloning ${p.repo?.nameWithOwner ?? ""}…`} />
-      );
+      return <StatusLine text={`Cloning ${p.repo?.nameWithOwner ?? ""}…`} />;
     case "cloneError":
-      return (
-        <ErrorBlock
-          message={p.errorMsg || "Clone failed."}
-          hint="r retry · esc back"
-        />
-      );
+      return <ErrorBlock message={p.errorMsg || "Clone failed."} hint="r retry · esc back" />;
     case "creating":
       return <StatusLine text={`Creating worktree ${p.branch}…`} />;
     case "createError":
-      return (
-        <ErrorBlock
-          message={p.errorMsg || "Could not create the worktree."}
-          hint="r retry · esc back"
-        />
-      );
+      return <ErrorBlock message={p.errorMsg || "Could not create the worktree."} hint="r retry · esc back" />;
     case "repoList":
       return <RepoList {...p} />;
     case "actions":
@@ -650,19 +602,12 @@ function RepoList(p: BodyProps) {
         <text fg={theme.accent}>{"▏"}</text>
       </box>
 
-      {slice.length === 0 && (
-        <text fg={theme.fgMuted}>{"No matching repositories."}</text>
-      )}
+      {slice.length === 0 && <text fg={theme.fgMuted}>{"No matching repositories."}</text>}
 
       {slice.map((r, i) => {
         const active = start + i === p.index;
         return (
-          <box
-            key={r.nameWithOwner}
-            flexDirection="row"
-            alignItems="center"
-            onMouseDown={() => p.onPick?.(start + i)}
-          >
+          <box key={r.nameWithOwner} flexDirection="row" alignItems="center" onMouseDown={() => p.onPick?.(start + i)}>
             <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
               {active ? "▶ " : "  "}
             </text>
@@ -716,12 +661,7 @@ function Actions(p: BodyProps) {
       {rows.map((row, i) => {
         const active = i === p.index;
         return (
-          <box
-            key={String(i)}
-            flexDirection="row"
-            alignItems="center"
-            onMouseDown={() => p.onPick?.(i)}
-          >
+          <box key={String(i)} flexDirection="row" alignItems="center" onMouseDown={() => p.onPick?.(i)}>
             <text fg={active ? theme.accent : theme.panel} flexShrink={0}>
               {active ? "▶ " : "  "}
             </text>
@@ -797,11 +737,11 @@ function typedChar(key: ParsedKey): string | null {
 }
 
 function isPrintable(ch: string): boolean {
-  return /^[A-Za-z0-9._/\-]$/.test(ch);
+  return /^[A-Za-z0-9._/-]$/.test(ch);
 }
 
 function isBranchChar(ch: string): boolean {
-  return /^[A-Za-z0-9._/\-]$/.test(ch);
+  return /^[A-Za-z0-9._/-]$/.test(ch);
 }
 
 function errText(err: unknown): string {

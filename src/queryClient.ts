@@ -6,12 +6,7 @@
  * straight away, and refreshed in the background. A query nothing is showing
  * is dropped after GC_MS.
  */
-import {
-  environmentManager,
-  focusManager,
-  QueryClient,
-  type DefaultOptions,
-} from "@tanstack/react-query";
+import { environmentManager, focusManager, QueryClient, type DefaultOptions } from "@tanstack/react-query";
 
 // TanStack treats a runtime without `window` as a server: refetch timers off,
 // entries kept forever, no retries. This is a long-lived interactive client —

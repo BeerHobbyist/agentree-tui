@@ -387,7 +387,13 @@ describe("SSH hosts", () => {
     const ssh = projects[1]!;
     expect(ssh).toMatchObject({ name: "dev-box", ssh: { host: "dev-box" } });
     expect(ssh.worktrees).toEqual([
-      expect.objectContaining({ id: "api", name: "api", path: "/home/dev/code/api", subtitle: "~/code/api", host: "dev-box" }),
+      expect.objectContaining({
+        id: "api",
+        name: "api",
+        path: "/home/dev/code/api",
+        subtitle: "~/code/api",
+        host: "dev-box",
+      }),
     ]);
   });
 
@@ -418,12 +424,7 @@ describe("SSH hosts", () => {
 
   test("malformed hosts in a hand-edited state file are dropped", () => {
     mkdirSync(join(sandbox.configHome, "agentree"), { recursive: true });
-    const hosts = [
-      { host: "ok", dirs: [{ id: "x", path: "/x" }, { id: 3 }] },
-      { host: "" },
-      { nope: true },
-      "dev-box",
-    ];
+    const hosts = [{ host: "ok", dirs: [{ id: "x", path: "/x" }, { id: 3 }] }, { host: "" }, { nope: true }, "dev-box"];
     writeFileSync(sandbox.stateFile, JSON.stringify({ version: 1, repos: [], hosts }));
     expect(loadState().hosts as unknown).toEqual([{ host: "ok", dirs: [{ id: "x", path: "/x" }] }]);
   });

@@ -38,7 +38,8 @@ async function cli(...argv: string[]) {
   return { code, out: out.join("\n"), err: err.join("\n") };
 }
 
-const tabs = () => sh([...tmux(), "list-windows", "-t", session, "-F", "#{window_index}:#{window_name}:#{window_active}"]).split("\n");
+const tabs = () =>
+  sh([...tmux(), "list-windows", "-t", session, "-F", "#{window_index}:#{window_name}:#{window_active}"]).split("\n");
 
 async function until(what: string, ok: () => boolean | Promise<boolean>) {
   for (let i = 0; i < 100; i++) {
@@ -72,7 +73,10 @@ describe("agentree tab", () => {
   test("send types a line, or presses keys", async () => {
     await cli("tab", "new", "--name", "sh");
     await cli("tab", "send", "sh", "echo", "typed-by-agent");
-    await until("the typed line to run", async () => (await cli("tab", "read", "sh")).out.split("typed-by-agent").length >= 3);
+    await until(
+      "the typed line to run",
+      async () => (await cli("tab", "read", "sh")).out.split("typed-by-agent").length >= 3,
+    );
     await cli("tab", "send", "sh", "sleep 100");
     await Bun.sleep(200);
     expect((await cli("tab", "send", "sh", "--key", "C-c")).code).toBe(0);

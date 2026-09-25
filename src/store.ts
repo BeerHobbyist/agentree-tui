@@ -4,13 +4,7 @@
  * Only stable metadata is persisted (identity + paths). Volatile git status is
  * computed at runtime. Loading is synchronous; every mutation writes atomically.
  */
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { stateFilePath, workspaceRoot, branchLeaf } from "./config";
 import { ignoreWorktreesDir, listWorktrees } from "./services/git";
@@ -91,12 +85,9 @@ export interface State {
 /** Keep only well-formed ui fields from a parsed state file. */
 function sanitizeUi(raw: unknown): UiState | undefined {
   if (!raw || typeof raw !== "object") return undefined;
-  const { sidebarWidth, sidebarHidden, prPanelHidden, prPanelWidth, mergeMethod, prPanelCollapsed, diffViewer } = raw as Record<
-    string,
-    unknown
-  >;
-  const width = (v: unknown) =>
-    typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : undefined;
+  const { sidebarWidth, sidebarHidden, prPanelHidden, prPanelWidth, mergeMethod, prPanelCollapsed, diffViewer } =
+    raw as Record<string, unknown>;
+  const width = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : undefined);
   const ui: UiState = {};
   if (width(sidebarWidth)) ui.sidebarWidth = width(sidebarWidth);
   if (width(prPanelWidth)) ui.prPanelWidth = width(prPanelWidth);
@@ -172,18 +163,12 @@ export async function saveState(state: State): Promise<void> {
 }
 
 /** Find (or return undefined) a repo by nameWithOwner. */
-export function findRepo(
-  state: State,
-  nameWithOwner: string,
-): StoredRepo | undefined {
+export function findRepo(state: State, nameWithOwner: string): StoredRepo | undefined {
   return state.repos.find((r) => r.nameWithOwner === nameWithOwner);
 }
 
 /** Add or update a repo record (without touching its worktrees). */
-export function upsertRepo(
-  state: State,
-  meta: Omit<StoredRepo, "worktrees">,
-): StoredRepo {
+export function upsertRepo(state: State, meta: Omit<StoredRepo, "worktrees">): StoredRepo {
   let repo = findRepo(state, meta.nameWithOwner);
   if (repo) {
     repo.name = meta.name;
@@ -210,11 +195,7 @@ export async function addManagedWorktree(
 }
 
 /** Drop a worktree from a repo's managed list (not from disk) and persist. */
-export async function removeManagedWorktree(
-  state: State,
-  nameWithOwner: string,
-  worktreeId: string,
-): Promise<void> {
+export async function removeManagedWorktree(state: State, nameWithOwner: string, worktreeId: string): Promise<void> {
   const repo = findRepo(state, nameWithOwner);
   if (!repo) return;
   repo.worktrees = repo.worktrees.filter((w) => w.id !== worktreeId);
@@ -427,12 +408,15 @@ export async function reconcile(state: State): Promise<Project[]> {
     if (main) {
       matchedPaths.add(rootResolved);
       worktrees.push(
-        toUiWorktree({
-          id: "main",
-          name: main.branch ? branchLeaf(main.branch) : "main",
-          branch: main.branch ?? "(detached)",
-          path: repo.root,
-        }, label("main")),
+        toUiWorktree(
+          {
+            id: "main",
+            name: main.branch ? branchLeaf(main.branch) : "main",
+            branch: main.branch ?? "(detached)",
+            path: repo.root,
+          },
+          label("main"),
+        ),
       );
     }
 

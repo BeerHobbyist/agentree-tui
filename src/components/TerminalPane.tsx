@@ -13,13 +13,7 @@ import {
 } from "../services/tmux";
 import { diffCommand, nextViewer, resolveViewer, viewer, type DiffTarget, type DiffViewerId } from "../services/diff";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  baseRefQuery,
-  diffViewersQuery,
-  queryKeys,
-  tmuxAvailableQuery,
-  tmuxWindowsQuery,
-} from "../queries";
+import { baseRefQuery, diffViewersQuery, queryKeys, tmuxAvailableQuery, tmuxWindowsQuery } from "../queries";
 import { useTerminalSession } from "../hooks/useTerminalSession";
 import { agentLaunchCommand, agentSessionEnv, remoteSessionEnv } from "../services/agents";
 import { remoteAgentCommand } from "../config";
@@ -69,13 +63,7 @@ interface TerminalPaneProps {
   onJumpNext?: () => void;
 }
 
-function Centered({
-  visible = true,
-  children,
-}: {
-  visible?: boolean;
-  children: React.ReactNode;
-}) {
+function Centered({ visible = true, children }: { visible?: boolean; children: React.ReactNode }) {
   const theme = useTheme();
   return (
     <box
@@ -137,10 +125,7 @@ function TerminalView({
   onJumpNext,
 }: TerminalPaneProps) {
   const theme = useTheme();
-  const session = useMemo(
-    () => sessionName(repoId, worktree.id),
-    [repoId, worktree.id],
-  );
+  const session = useMemo(() => sessionName(repoId, worktree.id), [repoId, worktree.id]);
   // An SSH project's directory: tmux (and everything in it) runs on the host.
   const host = worktree.host;
   // A password host: talk to it only over the connection its terminal opened.
@@ -170,8 +155,7 @@ function TerminalView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session, worktree.path, host, worktree.hostHome],
   );
-  const { ref, onData, onTerminalResize, status, error } =
-    useTerminalSession(command);
+  const { ref, onData, onTerminalResize, status, error } = useTerminalSession(command);
 
   // Route focus to the emulator whenever the app hands it focus.
   useEffect(() => {
@@ -183,12 +167,14 @@ function TerminalView({
   // Live re-theme: re-apply tmux styling (global) when the theme changes.
   useEffect(() => {
     if (status !== "running") return;
-    tmux.applyTheme({
-      bg: theme.bg,
-      fg: theme.fg,
-      border: theme.border,
-      borderActive: theme.accent,
-    }).catch(() => {});
+    tmux
+      .applyTheme({
+        bg: theme.bg,
+        fg: theme.fg,
+        border: theme.border,
+        borderActive: theme.accent,
+      })
+      .catch(() => {});
   }, [theme, status, tmux]);
 
   // The session's windows (tabs), so the bar reflects tmux state — our own
@@ -202,8 +188,7 @@ function TerminalView({
     placeholderData: keepPreviousData,
   });
   const windows: WindowInfo[] = windowsQuery.data ?? [];
-  const refreshWindows = () =>
-    void queryClient.invalidateQueries({ queryKey: queryKeys.tmuxWindows(session) });
+  const refreshWindows = () => void queryClient.invalidateQueries({ queryKey: queryKeys.tmuxWindows(session) });
 
   // A session always needs at least one window with at least one pane; closing
   // the last pane of the last tab would kill the tmux session out from under
@@ -222,9 +207,7 @@ function TerminalView({
   };
 
   // ＋ menu / diff picker / tab rename overlay.
-  const [overlay, setOverlay] = useState<
-    "none" | "menu" | "diff" | "diffInput" | "rename"
-  >("none");
+  const [overlay, setOverlay] = useState<"none" | "menu" | "diff" | "diffInput" | "rename">("none");
   const [menuIndex, setMenuIndex] = useState(0);
   const [refInput, setRefInput] = useState("");
   /** The tab being renamed. */
@@ -260,16 +243,8 @@ function TerminalView({
   const openDiff = (target: DiffTarget, arg?: string) => {
     act(async () => {
       const resolved =
-        arg ??
-        (target === "base"
-          ? await queryClient.fetchQuery(baseRefQuery(worktree.path))
-          : undefined);
-      await tmux.newWindowCmd(
-        session,
-        worktree.path,
-        diffCommand(diffIn, target, resolved),
-        "diff",
-      );
+        arg ?? (target === "base" ? await queryClient.fetchQuery(baseRefQuery(worktree.path)) : undefined);
+      await tmux.newWindowCmd(session, worktree.path, diffCommand(diffIn, target, resolved), "diff");
     });
   };
   const openAgent = () => {
@@ -331,7 +306,6 @@ function TerminalView({
   const handleMouse = (event: { type: string }) => {
     if (event.type === "down") onRequestFocus();
   };
-
 
   // Terminal-focused keyboard: return to sidebar + tab management. We
   // preventDefault/stopPropagation so these chords don't also reach the shell
@@ -472,12 +446,7 @@ function TerminalView({
   }
 
   return (
-    <box
-      visible={visible}
-      flexGrow={1}
-      flexDirection="column"
-      backgroundColor={theme.bg}
-    >
+    <box visible={visible} flexGrow={1} flexDirection="column" backgroundColor={theme.bg}>
       <TabBar
         windows={windows}
         onSelect={(i) => act(() => tmux.selectWindow(session, i))}
@@ -515,13 +484,7 @@ function TerminalView({
         minWidth={0}
       />
       {overlay === "menu" && (
-        <MenuOverlay
-          title="New tab"
-          items={menuItems}
-          index={menuIndex}
-          onPick={pickOverlay}
-          onClose={closeOverlay}
-        />
+        <MenuOverlay title="New tab" items={menuItems} index={menuIndex} onPick={pickOverlay} onClose={closeOverlay} />
       )}
       {overlay === "diff" && (
         <MenuOverlay
@@ -531,9 +494,7 @@ function TerminalView({
           onPick={pickOverlay}
           onClose={closeOverlay}
           note={
-            viewers.length > 1
-              ? `v switches viewer · ${viewers.map((id) => viewer(id).label).join(", ")}`
-              : undefined
+            viewers.length > 1 ? `v switches viewer · ${viewers.map((id) => viewer(id).label).join(", ")}` : undefined
           }
         />
       )}
@@ -583,11 +544,7 @@ function TerminalView({
               <text fg={theme.fg}>{refInput}</text>
               <text fg={theme.accent}>{"▏"}</text>
             </box>
-            <text
-              fg={theme.fgFaint}
-              attributes={TextAttributes.DIM}
-              marginTop={1}
-            >
+            <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
               {"⏎ open · esc back"}
             </text>
           </box>

@@ -16,7 +16,9 @@ const PR_LOOKUP_THROTTLE_MS = 15_000;
 
 function samePr(a: PrInfo | undefined, b: PrInfo | undefined): boolean {
   if (!a || !b) return a === b;
-  return a.number === b.number && a.title === b.title && a.url === b.url && a.draft === b.draft && a.checks === b.checks;
+  return (
+    a.number === b.number && a.title === b.title && a.url === b.url && a.draft === b.draft && a.checks === b.checks
+  );
 }
 
 export function useLiveProjects(
@@ -86,7 +88,9 @@ export function useLiveProjects(
   }, [reportsSig]);
 
   const statusByPath = new Map(liveWorktrees.map(({ worktree }, i) => [worktree.path, gitStatuses[i]?.data]));
-  const prByWorktree = new Map(prTargets.map(({ repoId, worktree }, i) => [`${repoId}:${worktree.id}`, branchPrs[i]?.data]));
+  const prByWorktree = new Map(
+    prTargets.map(({ repoId, worktree }, i) => [`${repoId}:${worktree.id}`, branchPrs[i]?.data]),
+  );
   const viewProjects: Project[] = projects.map((p) => ({
     ...p,
     worktrees: p.worktrees.map((w) => {

@@ -66,14 +66,7 @@ function controlDir(): string | undefined {
 export function sshOptions(): string[] {
   const dir = controlDir();
   if (!dir) return [];
-  return [
-    "-o",
-    "ControlMaster=auto",
-    "-o",
-    `ControlPath=${join(dir, "%C")}`,
-    "-o",
-    "ControlPersist=10m",
-  ];
+  return ["-o", "ControlMaster=auto", "-o", `ControlPath=${join(dir, "%C")}`, "-o", "ControlPersist=10m"];
 }
 
 /**
@@ -133,11 +126,7 @@ export class SshAuthError extends Error {}
  * prompt with it, and this connection becomes the host's shared one, which
  * everything after reuses without logging in again. The password isn't kept.
  */
-export async function probeRemoteDir(
-  host: string,
-  path: string,
-  opts: { password?: string } = {},
-): Promise<RemoteDir> {
+export async function probeRemoteDir(host: string, path: string, opts: { password?: string } = {}): Promise<RemoteDir> {
   const script = [
     `cd -- ${remotePathExpr(path)} || exit 3`,
     "pwd",
@@ -156,7 +145,9 @@ export async function probeRemoteDir(
   const [resolved, home, tmux] = stdout.trim().split("\n");
   if (!resolved) throw new Error(`Couldn't read ${path} on ${host}.`);
   if (tmux !== "tmux") {
-    throw new Error(`tmux isn't installed on ${host} — agentree runs remote terminals in tmux, so they survive a dropped connection.`);
+    throw new Error(
+      `tmux isn't installed on ${host} — agentree runs remote terminals in tmux, so they survive a dropped connection.`,
+    );
   }
   return { path: resolved, home: home || "" };
 }

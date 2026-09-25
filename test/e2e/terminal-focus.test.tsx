@@ -8,7 +8,13 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { focusManager } from "@tanstack/react-query";
-import { agentStatusQuery, gitStatusQuery, prDetailsQuery, prForBranchQuery, tmuxWindowsQuery } from "../../src/queries";
+import {
+  agentStatusQuery,
+  gitStatusQuery,
+  prDetailsQuery,
+  prForBranchQuery,
+  tmuxWindowsQuery,
+} from "../../src/queries";
 import { createQueryClient } from "../../src/queryClient";
 import { agentStatusDir } from "../../src/services/agents";
 import { sessionName } from "../../src/services/tmux";

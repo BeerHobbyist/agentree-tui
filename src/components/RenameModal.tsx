@@ -27,15 +27,7 @@ interface RenameModalProps {
  * leaks to a focused terminal underneath (global key handlers run before the
  * focused renderable).
  */
-export function RenameModal({
-  initial,
-  heading,
-  placeholder,
-  note,
-  maxLength,
-  onSave,
-  onCancel,
-}: RenameModalProps) {
+export function RenameModal({ initial, heading, placeholder, note, maxLength, onSave, onCancel }: RenameModalProps) {
   const theme = useTheme();
   const [value, setValue] = useState(initial);
   // Keys can arrive faster than React re-renders (a paste, key repeat).
@@ -45,7 +37,11 @@ export function RenameModal({
     setValue(next);
   };
   const append = (text: string) =>
-    apply(Array.from(valueRef.current + text).slice(0, maxLength).join(""));
+    apply(
+      Array.from(valueRef.current + text)
+        .slice(0, maxLength)
+        .join(""),
+    );
 
   useKeyboard((key) => {
     key.preventDefault();

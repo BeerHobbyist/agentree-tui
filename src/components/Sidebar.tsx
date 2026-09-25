@@ -104,10 +104,7 @@ function ProjectGroup({
         onMouseDown={() => onSelectProject(project.id)}
       >
         {/* accent gutter for the selected header */}
-        <box
-          width={1}
-          backgroundColor={headerActive ? theme.accent : theme.panel}
-        />
+        <box width={1} backgroundColor={headerActive ? theme.accent : theme.panel} />
         <box flexDirection="row" alignItems="center" flexGrow={1} paddingLeft={1} paddingRight={2}>
           <text fg={headerActive ? theme.accent : theme.fgMuted} flexShrink={0}>
             {collapsed ? "▸ " : "▾ "}
@@ -141,11 +138,7 @@ function ProjectGroup({
             {String(project.worktrees.length)}
           </text>
           {/* Clickable "add worktree" button (also bound to the `a` key). */}
-          <text
-            fg={theme.accent}
-            flexShrink={0}
-            onMouseDown={() => onAddWorktree(project.id)}
-          >
+          <text fg={theme.accent} flexShrink={0} onMouseDown={() => onAddWorktree(project.id)}>
             {"  ＋"}
           </text>
         </box>
@@ -154,12 +147,7 @@ function ProjectGroup({
       {/* Project root path (hidden while collapsed to stay compact) */}
       {!collapsed && (
         <box paddingLeft={4} paddingRight={2}>
-          <text
-            fg={theme.fgFaint}
-            attributes={TextAttributes.DIM}
-            wrapMode="none"
-            truncate
-          >
+          <text fg={theme.fgFaint} attributes={TextAttributes.DIM} wrapMode="none" truncate>
             {project.ssh ? `ssh ${project.ssh.host}` : project.root}
           </text>
         </box>
@@ -268,13 +256,7 @@ export function Sidebar({
         </box>
 
         {/* Footer / status summary */}
-        <box
-          flexDirection="column"
-          borderColor={theme.border}
-          border={["top"]}
-          paddingLeft={2}
-          paddingRight={2}
-        >
+        <box flexDirection="column" borderColor={theme.border} border={["top"]} paddingLeft={2} paddingRight={2}>
           <box flexDirection="row" alignItems="center">
             {/* Agents across all projects: ◆ needs action · ◐ working · ✓ done. */}
             {agentCounts.length === 0 ? (
@@ -300,7 +282,11 @@ export function Sidebar({
             </text>
           </box>
           <text fg={theme.fgFaint} attributes={TextAttributes.DIM} wrapMode="none" truncate>
-            {footerHint(projects, activeKey, agentCounts.some((c) => c.state !== "working"))}
+            {footerHint(
+              projects,
+              activeKey,
+              agentCounts.some((c) => c.state !== "working"),
+            )}
           </text>
         </box>
       </box>

@@ -271,7 +271,13 @@ export function PrPanel({
             {d && (
               <text
                 fg={toneColor(
-                  d.state === "merged" ? "merged" : d.state === "closed" ? "bad" : d.state === "draft" ? "muted" : "good",
+                  d.state === "merged"
+                    ? "merged"
+                    : d.state === "closed"
+                      ? "bad"
+                      : d.state === "draft"
+                        ? "muted"
+                        : "good",
                   theme,
                 )}
                 flexShrink={0}
@@ -301,7 +307,9 @@ export function PrPanel({
             <text flexShrink={0} wrapMode="none" truncate>
               <span fg={theme.added}>{`+${d.additions}`}</span>
               <span fg={theme.removed}>{` −${d.deletions}`}</span>
-              <span fg={theme.fgMuted}>{` · ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"} · updated ${relativeTime(d.updatedAt)}`}</span>
+              <span
+                fg={theme.fgMuted}
+              >{` · ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"} · updated ${relativeTime(d.updatedAt)}`}</span>
             </text>
           )}
         </box>
@@ -334,7 +342,11 @@ export function PrPanel({
             <Section
               title="Merge"
               {...fold("merge")}
-              folded={<text fg={toneColor(merge.tone, theme)} wrapMode="none" truncate>{"  " + merge.label}</text>}
+              folded={
+                <text fg={toneColor(merge.tone, theme)} wrapMode="none" truncate>
+                  {"  " + merge.label}
+                </text>
+              }
             >
               <Row glyph="●" color={toneColor(merge.tone, theme)} text={merge.label} />
               {d.state === "open" && onMerge && (
@@ -387,6 +399,7 @@ export function PrPanel({
                   const look = checkLook(c.state, theme);
                   return (
                     <Row
+                      // biome-ignore lint/suspicious/noArrayIndexKey: two checks can share a name (matrix jobs); the list is rebuilt from each fetch
                       key={`${c.name}-${i}`}
                       glyph={look.glyph}
                       color={look.color}
@@ -403,7 +416,11 @@ export function PrPanel({
               <Section
                 title="Labels"
                 {...fold("labels")}
-                folded={<text fg={theme.fgFaint} wrapMode="none" truncate>{"  " + d.labels.join(" · ")}</text>}
+                folded={
+                  <text fg={theme.fgFaint} wrapMode="none" truncate>
+                    {"  " + d.labels.join(" · ")}
+                  </text>
+                }
               >
                 <text fg={theme.fgMuted}>{d.labels.join(" · ")}</text>
               </Section>
@@ -425,6 +442,7 @@ export function PrPanel({
               ) : (
                 d.comments.slice(0, MAX_COMMENTS).map((c, i) => (
                   <box
+                    // biome-ignore lint/suspicious/noArrayIndexKey: comments have no id here; the list is rebuilt from each fetch
                     key={i}
                     flexDirection="column"
                     flexShrink={0}
@@ -463,7 +481,9 @@ export function PrPanel({
                 ? "refresh failed"
                 : query.dataUpdatedAt
                   ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
-                  : "") + (d?.state === "open" ? " · m merge" : "") + " · o open · r refresh"}
+                  : "") +
+              (d?.state === "open" ? " · m merge" : "") +
+              " · o open · r refresh"}
           </text>
         </box>
       </box>

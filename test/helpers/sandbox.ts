@@ -6,7 +6,7 @@
  * without it the suite would read and write the developer's real
  * `~/.config/agentree/state.json`, `~/agentree`, and tmux sessions.
  */
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { RepoSummary } from "../../src/data/model";
@@ -137,7 +137,9 @@ export function repoSummary(nameWithOwner: string, extra: Partial<RepoSummary> =
 }
 
 export function createSandbox(): Sandbox {
-  const root = mkdtempSync(join(tmpdir(), "agentree-test-"));
+  // The real path: on macOS the temp dir is behind a symlink (/var → /private/var)
+  // and git, `pwd` and the like report the resolved one.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "agentree-test-")));
   const workspace = join(root, "workspace");
   const configHome = join(root, "config");
   const remotes = join(root, "remotes");

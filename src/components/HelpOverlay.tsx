@@ -151,14 +151,7 @@ export function HelpOverlay({ themeName, onClose }: HelpOverlayProps) {
                   <text fg={theme.fg} flexShrink={0}>
                     {keys.padEnd(24)}
                   </text>
-                  <text
-                    fg={theme.fgMuted}
-                    flexGrow={1}
-                    flexShrink={1}
-                    minWidth={0}
-                    wrapMode="none"
-                    truncate
-                  >
+                  <text fg={theme.fgMuted} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
                     {desc}
                   </text>
                 </box>

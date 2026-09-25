@@ -161,7 +161,9 @@ async function tabCommand(args: Args, io: Io): Promise<number> {
       const tabs = await tmux.listWindows(session);
       if (tabs.length === 0) throw new CliError(`no tmux session "${session}"`);
       if (has(args, "json")) io.out(JSON.stringify(tabs));
-      else for (const t of tabs) io.out(`${t.index}\t${t.name}${t.active ? "\t(active)" : ""}${t.panes > 1 ? `\t${t.panes} panes` : ""}`);
+      else
+        for (const t of tabs)
+          io.out(`${t.index}\t${t.name}${t.active ? "\t(active)" : ""}${t.panes > 1 ? `\t${t.panes} panes` : ""}`);
       return 0;
     }
     case "new": {
@@ -170,7 +172,8 @@ async function tabCommand(args: Args, io: Io): Promise<number> {
       if (tabs.length === 0) throw new CliError(`no tmux session "${session}"`);
       // A second "dev" tab would be a second dev server: say so instead.
       const clash = name && tabs.find((t) => t.name === name);
-      if (clash) throw new CliError(`a tab named "${name}" is already open (${clash.index}) — use it, or close it first`);
+      if (clash)
+        throw new CliError(`a tab named "${name}" is already open (${clash.index}) — use it, or close it first`);
       const index = await tmux.openTab(session, { name, cwd: flag(args, "cwd"), select: has(args, "select") });
       if (args.rest.length > 0) await tmux.sendText(`${session}:${index}`, shellJoin(args.rest));
       io.out(has(args, "json") ? JSON.stringify({ index, name: name ?? null }) : String(index));

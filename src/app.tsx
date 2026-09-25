@@ -33,11 +33,7 @@ import { useLiveProjects } from "./app/useLiveProjects";
 
 function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?: boolean }) {
   const theme = useTheme();
-  const label = !row
-    ? "agentree"
-    : row.kind === "worktree"
-      ? displayName(row.worktree)
-      : row.project.name;
+  const label = !row ? "agentree" : row.kind === "worktree" ? displayName(row.worktree) : row.project.name;
   const subtitle =
     row?.kind === "worktree"
       ? row.worktree.host
@@ -48,13 +44,7 @@ function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?
         : "Press n to add a project";
 
   return (
-    <box
-      flexGrow={1}
-      flexDirection="column"
-      backgroundColor={theme.bg}
-      alignItems="center"
-      justifyContent="center"
-    >
+    <box flexGrow={1} flexDirection="column" backgroundColor={theme.bg} alignItems="center" justifyContent="center">
       <ascii-font font="tiny" text={label} />
       <text fg={theme.fgMuted}>{subtitle}</text>
       <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
@@ -64,9 +54,7 @@ function MainPane({ row, sidebarHidden }: { row: Row | undefined; sidebarHidden?
   );
 }
 
-export type Row =
-  | { kind: "project"; project: Project }
-  | { kind: "worktree"; project: Project; worktree: Worktree };
+export type Row = { kind: "project"; project: Project } | { kind: "worktree"; project: Project; worktree: Worktree };
 
 /** The visible, navigable rows: every project header, plus the worktrees of expanded projects. */
 export function buildRows(projects: Project[], collapsed: Set<string>): Row[] {
@@ -83,9 +71,7 @@ export function buildRows(projects: Project[], collapsed: Set<string>): Row[] {
 }
 
 export function rowKey(row: Row): string {
-  return row.kind === "project"
-    ? projectKey(row.project.id)
-    : worktreeKey(row.project.id, row.worktree.id);
+  return row.kind === "project" ? projectKey(row.project.id) : worktreeKey(row.project.id, row.worktree.id);
 }
 
 /**
@@ -177,7 +163,12 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   // ── Selection, folding, opening terminals ──
 
   /** Select a worktree's row (in `projects`, as folded by `folded`). */
-  const selectWorktreeRow = (repoId: string, worktreeId: string, list = projectsRef.current, folded = collapsedRef.current) => {
+  const selectWorktreeRow = (
+    repoId: string,
+    worktreeId: string,
+    list = projectsRef.current,
+    folded = collapsedRef.current,
+  ) => {
     const idx = buildRows(list, folded).findIndex(
       (r) => r.kind === "worktree" && r.project.id === repoId && r.worktree.id === worktreeId,
     );
@@ -190,7 +181,9 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     else next.delete(projectId);
     setCollapsed(next);
     // Keep the selection valid: snap to the project header in the new layout.
-    const idx = buildRows(projectsRef.current, next).findIndex((r) => r.kind === "project" && r.project.id === projectId);
+    const idx = buildRows(projectsRef.current, next).findIndex(
+      (r) => r.kind === "project" && r.project.id === projectId,
+    );
     if (idx >= 0) setActiveIndex(idx);
   };
   const toggleFold = (projectId: string) => setCollapsedFor(projectId, !collapsedRef.current.has(projectId));
@@ -198,7 +191,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   /** Record a worktree as opened so its terminal stays mounted across switches. */
   const markOpened = (repoId: string, worktreeId: string) => {
     const list = openedRef.current;
-    if (!list.some((o) => o.repoId === repoId && o.worktreeId === worktreeId)) setOpened([...list, { repoId, worktreeId }]);
+    if (!list.some((o) => o.repoId === repoId && o.worktreeId === worktreeId))
+      setOpened([...list, { repoId, worktreeId }]);
   };
 
   /** Open (mount + focus) a worktree's terminal — Enter, a double-click. */
@@ -230,7 +224,9 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     const now = Date.now();
     const double = lastRowClick.current.key === key && now - lastRowClick.current.at < DOUBLE_CLICK_MS;
     lastRowClick.current = double ? { key: "", at: 0 } : { key, at: now };
-    const missing = projectsRef.current.find((p) => p.id === repoId)?.worktrees.find((w) => w.id === worktreeId)?.missing;
+    const missing = projectsRef.current
+      .find((p) => p.id === repoId)
+      ?.worktrees.find((w) => w.id === worktreeId)?.missing;
     if (double && !missing) openWorktreeTerminal(repoId, worktreeId);
     else showWorktree(repoId, worktreeId);
   };
@@ -324,12 +320,18 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       const { host, needsPassword } = row.project.ssh;
       overlays.open(
         row.kind === "worktree"
-          ? { kind: "forget", host, dirId: row.worktree.id, what: row.worktree.subtitle ?? row.worktree.path, needsPassword }
+          ? {
+              kind: "forget",
+              host,
+              dirId: row.worktree.id,
+              what: row.worktree.subtitle ?? row.worktree.path,
+              needsPassword,
+            }
           : { kind: "forget", host, what: host, needsPassword },
       );
       return;
     }
-    if (!row || row.kind !== "worktree") return;
+    if (row?.kind !== "worktree") return;
     if (row.worktree.id === "main") {
       overlays.open({
         kind: "notice",
@@ -531,7 +533,9 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     if (top || focusModeRef.current === "terminal") return;
     const rows = buildRows(projectsRef.current, collapsedRef.current);
     const i = activeIndexRef.current;
-    const action = keyIds(key).map((id) => sidebarKeys[id]).find(Boolean);
+    const action = keyIds(key)
+      .map((id) => sidebarKeys[id])
+      .find(Boolean);
     action?.(rows[i], rows, i);
   });
 

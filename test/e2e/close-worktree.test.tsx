@@ -8,13 +8,7 @@ import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import {
-  settle,
-  waitForSelection,
-  waitForText,
-  waitForTextGone,
-  waitUntil,
-} from "../helpers/frame";
+import { settle, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { git, makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 

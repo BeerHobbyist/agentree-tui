@@ -49,10 +49,7 @@ function agentPane(): string {
 /** Write a report as the hooks would. */
 function report(pane: string, state: string) {
   mkdirSync(agentStatusDir(), { recursive: true });
-  writeFileSync(
-    join(agentStatusDir(), `${SESSION()}.${pane}`),
-    `${state} ${Math.floor(Date.now() / 1000)}\n`,
-  );
+  writeFileSync(join(agentStatusDir(), `${SESSION()}.${pane}`), `${state} ${Math.floor(Date.now() / 1000)}\n`);
 }
 
 async function start() {
