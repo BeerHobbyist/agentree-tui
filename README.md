@@ -120,8 +120,10 @@ The design, the decisions behind it and the gotchas found along the way are writ
 ```sh
 bun install
 bun run dev          # run from source, reloading on changes
-bun run typecheck
+bun run check        # lint, formatting (Biome) and types — what CI runs
+bun run format       # fix the formatting
 bun run test         # unit, integration and end-to-end tests
+bun run coverage     # the tests, with the coverage minimum CI enforces
 bun run build        # a single binary in dist/agentree
 bun scripts/screenshots.tsx   # regenerate the README's screenshots (needs Chrome and ImageMagick)
 ```
