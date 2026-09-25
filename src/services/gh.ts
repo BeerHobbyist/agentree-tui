@@ -2,6 +2,7 @@
  * Thin async wrappers over the `gh` CLI.
  */
 import type { OpenPr, PrInfo, RepoSummary } from "../data/model";
+import { headCommit, isAncestor } from "./git";
 import { run, runOrThrow } from "./proc";
 import { checkState, summarizeChecks, type RawCheck } from "./pr";
 
@@ -69,7 +70,11 @@ export async function isAuthenticated(): Promise<boolean> {
  * lookup throws rather than answering "no PR", so a cache holding the last good
  * answer (src/queries.ts) keeps showing it through a network hiccup.
  */
-export async function prForBranch(nameWithOwner: string, branch: string): Promise<PrInfo | null> {
+export async function prForBranch(
+  nameWithOwner: string,
+  branch: string,
+  worktreePath?: string,
+): Promise<PrInfo | null> {
   const out = await runOrThrow([
     "gh",
     "pr",
@@ -79,28 +84,58 @@ export async function prForBranch(nameWithOwner: string, branch: string): Promis
     "--head",
     branch,
     "--state",
-    "open",
+    "all",
     "--limit",
-    "1",
+    "5",
     "--json",
-    "number,title,url,isDraft,statusCheckRollup",
+    "number,title,url,isDraft,statusCheckRollup,state,headRefOid,mergeCommit,commits",
   ]);
-  const [pr] = JSON.parse(out) as {
-    number: number;
-    title: string;
-    url: string;
-    isDraft: boolean;
-    statusCheckRollup?: RawCheck[] | null;
-  }[];
-  if (!pr) return null;
-  const checks = summarizeChecks((pr.statusCheckRollup ?? []).map(checkState));
-  return {
-    number: pr.number,
-    title: pr.title ?? "",
-    url: pr.url ?? "",
-    draft: !!pr.isDraft,
-    ...(checks ? { checks } : {}),
-  };
+  const prs = JSON.parse(out) as BranchPr[];
+  const open = prs.find((pr) => pr.state === "OPEN");
+  if (open) {
+    const checks = summarizeChecks((open.statusCheckRollup ?? []).map(checkState));
+    return { ...prInfo(open), ...(checks ? { checks } : {}) };
+  }
+  if (!worktreePath) return null;
+  for (const pr of prs) {
+    if (pr.state === "MERGED" && (await isThisBranchsPr(worktreePath, pr))) return { ...prInfo(pr), merged: true };
+  }
+  return null;
+}
+
+/** A PR as `gh pr list --head` lists it. */
+interface BranchPr {
+  number: number;
+  title: string;
+  url: string;
+  isDraft: boolean;
+  state: "OPEN" | "MERGED" | "CLOSED";
+  statusCheckRollup?: RawCheck[] | null;
+  headRefOid?: string;
+  mergeCommit?: { oid: string } | null;
+  commits?: { oid: string }[];
+}
+
+function prInfo(pr: BranchPr): PrInfo {
+  return { number: pr.number, title: pr.title ?? "", url: pr.url ?? "", draft: !!pr.isDraft };
+}
+
+/**
+ * Whether a merged PR with this branch's name was made from this worktree's
+ * branch — not an older one that happened to have the same name, and not a
+ * fork's `main` merged into ours. Its commits are this branch's (it's at one
+ * of them, or past the PR's head), and what the merge made isn't in it yet
+ * (as it is in a branch started from main after the merge).
+ */
+async function isThisBranchsPr(worktreePath: string, pr: BranchPr): Promise<boolean> {
+  const head = await headCommit(worktreePath);
+  if (!head) return false;
+  const ours =
+    pr.headRefOid === head ||
+    (pr.commits ?? []).some((c) => c.oid === head) ||
+    (!!pr.headRefOid && (await isAncestor(worktreePath, pr.headRefOid, head)));
+  if (!ours) return false;
+  return !(pr.mergeCommit && (await isAncestor(worktreePath, pr.mergeCommit.oid, head)));
 }
 
 /** All open PRs for a repo, most-recently-updated first. Best-effort: [] on failure. */

@@ -17,7 +17,12 @@ const PR_LOOKUP_THROTTLE_MS = 15_000;
 function samePr(a: PrInfo | undefined, b: PrInfo | undefined): boolean {
   if (!a || !b) return a === b;
   return (
-    a.number === b.number && a.title === b.title && a.url === b.url && a.draft === b.draft && a.checks === b.checks
+    a.number === b.number &&
+    a.title === b.title &&
+    a.url === b.url &&
+    a.draft === b.draft &&
+    a.merged === b.merged &&
+    a.checks === b.checks
   );
 }
 
@@ -37,12 +42,12 @@ export function useLiveProjects(
     queries: liveWorktrees.map(({ worktree }) => gitStatusQuery(worktree.path)),
   });
 
-  // Each branch's open PR (the ⇡#N badge) — polled every minute, invalidated
+  // Each branch's PR, open or merged (the ⇡#N badge) — polled every minute, invalidated
   // when an agent changes state and on `r`. A failed lookup keeps the last
   // answer rather than dropping the badge.
   const prTargets = liveWorktrees.filter(({ worktree: w }) => w.branch && w.branch !== "(detached)");
   const branchPrs = useQueries({
-    queries: prTargets.map(({ repoId, worktree }) => prForBranchQuery(repoId, worktree.branch)),
+    queries: prTargets.map(({ repoId, worktree }) => prForBranchQuery(repoId, worktree.branch, worktree.path)),
   });
 
   // A PR whose checks or title moved has newer details too: mark its cached

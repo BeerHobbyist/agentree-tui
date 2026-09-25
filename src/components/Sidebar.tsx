@@ -67,6 +67,7 @@ export function footerHint(projects: Project[], activeKey: string, agentWaiting:
     if (agentWaiting) return "Tab next agent · ⏎ open · ? keys";
     if (p.ssh) return "⏎ open · d remove · ? keys";
     if (w.id === "main") return "⏎ open · a new worktree · ? keys";
+    if (w.pr?.merged) return "merged: d close · ⏎ open · ? keys";
     return "⏎ open · a new · d close · ? keys";
   }
   return agentWaiting ? "Tab next agent · ? keys" : "? keys";

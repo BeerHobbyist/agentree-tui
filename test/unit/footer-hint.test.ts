@@ -16,7 +16,8 @@ const wt = (id: string): Worktree => ({
   behind: 0,
   agent: "none",
 });
-const repo: Project = { id: "acme/widget", name: "widget", root: "/r", worktrees: [wt("main"), wt("x")] };
+const merged: Worktree = { ...wt("done"), pr: { number: 42, title: "t", url: "u", draft: false, merged: true } };
+const repo: Project = { id: "acme/widget", name: "widget", root: "/r", worktrees: [wt("main"), wt("x"), merged] };
 const host: Project = {
   id: "ssh:dev-box",
   name: "dev-box",
@@ -34,6 +35,10 @@ describe("footerHint", () => {
     expect(footerHint([host], worktreeKey(host.id, "api"), false)).toBe("⏎ open · d remove · ? keys");
   });
 
+  test("a worktree whose PR is merged: closing it comes first", () => {
+    expect(footerHint([repo], worktreeKey(repo.id, "done"), false)).toBe("merged: d close · ⏎ open · ? keys");
+  });
+
   test("nothing yet: how to add something", () => {
     expect(footerHint([], "", false)).toBe("n add repo · s add host · ? keys");
   });
@@ -49,6 +54,7 @@ describe("footerHint", () => {
       [[repo], projectKey(repo.id), false],
       [[repo], worktreeKey(repo.id, "x"), false],
       [[repo], worktreeKey(repo.id, "main"), false],
+      [[repo], worktreeKey(repo.id, "done"), false],
       [[host], projectKey(host.id), false],
       [[host], worktreeKey(host.id, "api"), false],
       [[repo], worktreeKey(repo.id, "x"), true],
