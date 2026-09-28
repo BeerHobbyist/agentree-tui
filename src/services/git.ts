@@ -79,15 +79,18 @@ function finalizeWorktree(w: Partial<GitWorktree>): GitWorktree {
   };
 }
 
-/** Add a worktree. `newBranch` creates the branch (`-b`), else checks out existing. */
+/**
+ * Add a worktree. `newBranch` creates the branch (`-b`); `base` (only meaningful
+ * with `newBranch`) is the ref it starts from, default the current HEAD.
+ */
 export async function addWorktree(
   root: string,
   path: string,
   branch: string,
-  opts: { newBranch: boolean },
+  opts: { newBranch: boolean; base?: string },
 ): Promise<void> {
   const args = opts.newBranch
-    ? ["git", "worktree", "add", path, "-b", branch]
+    ? ["git", "worktree", "add", path, "-b", branch, ...(opts.base ? [opts.base] : [])]
     : ["git", "worktree", "add", path, branch];
   await runOrThrow(args, { cwd: root });
 }

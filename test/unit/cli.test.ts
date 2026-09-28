@@ -38,6 +38,14 @@ describe("parseArgs", () => {
     expect(parseArgs(["send", "dev", "--key", "C-c", "--key", "Enter"]).flags.get("key")).toEqual(["C-c", "Enter"]);
   });
 
+  test("worktree/tab cross-repo flags (--repo, --branch, --base, --worktree) take a value", () => {
+    const a = parseArgs(["worktree", "new", "--repo", "acme/widget", "--branch", "agent/task", "--base", "main"]);
+    expect(a.flags.get("repo")).toEqual(["acme/widget"]);
+    expect(a.flags.get("branch")).toEqual(["agent/task"]);
+    expect(a.flags.get("base")).toEqual(["main"]);
+    expect(parseArgs(["tab", "new", "--worktree", "agent-task"]).flags.get("worktree")).toEqual(["agent-task"]);
+  });
+
   test("a valued flag without its value is an error", () => {
     expect(() => parseArgs(["tab", "new", "--name"])).toThrow("--name needs a value");
   });
@@ -55,9 +63,11 @@ describe("what agents are told", () => {
       "notify",
       "status",
       "skill",
+      "worktree new",
     ]) {
       expect(HELP).toContain(`agentree ${cmd}`);
     }
+    expect(HELP).toContain("--worktree");
   });
 
   test("the SessionStart context hook speaks only inside an agentree terminal", () => {

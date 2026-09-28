@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { runCli } from "../../src/cli";
 import { skillPath } from "../../src/services/skill";
 import { sessionName } from "../../src/services/tmux";
-import { loadState, saveState, upsertRepo } from "../../src/store";
-import { makeRepo } from "../helpers/repo";
+import { addManagedWorktree, loadState, saveState, upsertRepo } from "../../src/store";
+import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
 let sandbox: Sandbox;
@@ -104,10 +104,145 @@ describe("agentree tab", () => {
   });
 });
 
+describe("agentree worktree new", () => {
+  test("--repo PATH creates and registers a worktree, printing its id", async () => {
+    const otherRoot = await makeRepo(join(sandbox.workspace, "other"));
+    const { code, out } = await cli("worktree", "new", "--repo", otherRoot, "--branch", "agent/task");
+    expect(code).toBe(0);
+    expect(out).toBe("agent-task");
+    const repo = loadState().repos.find((r) => r.root === otherRoot);
+    expect(repo?.nameWithOwner).toBeTruthy();
+    expect(repo?.worktrees).toEqual([expect.objectContaining({ id: "agent-task", branch: "agent/task" })]);
+    expect(existsSync(join(otherRoot, ".worktrees", "agent-task"))).toBe(true);
+  });
+
+  test("--repo owner/name clones it first (via gh) when it isn't on disk yet", async () => {
+    await makeRemote(sandbox, "acme/widget2");
+    const { code, out } = await cli("worktree", "new", "--repo", "acme/widget2", "--branch", "agent/task");
+    expect(code).toBe(0);
+    expect(out).toBe("agent-task");
+    expect(sandbox.ghCalls().some((c) => c.startsWith("repo clone acme/widget2"))).toBe(true);
+    const repo = loadState().repos.find((r) => r.nameWithOwner === "acme/widget2");
+    expect(repo?.root).toBe(join(sandbox.workspace, "widget2"));
+    expect(existsSync(join(repo!.root, ".worktrees", "agent-task"))).toBe(true);
+  });
+
+  test("adopts a worktree that already exists on that branch instead of duplicating it", async () => {
+    const otherRoot = await makeRepo(join(sandbox.workspace, "other2"), { worktrees: [{ branch: "agent/task" }] });
+    const { code, out } = await cli("worktree", "new", "--repo", otherRoot, "--branch", "agent/task");
+    expect(code).toBe(0);
+    expect(out).toBe("agent-task");
+    const repo = loadState().repos.find((r) => r.root === otherRoot);
+    expect(repo?.worktrees).toHaveLength(1);
+  });
+
+  test("--base creates the new branch from a given ref, not current HEAD", async () => {
+    const otherRoot = await makeRepo(join(sandbox.workspace, "other3"));
+    await git(["checkout", "-b", "old"], otherRoot);
+    writeFile(otherRoot, "marker.txt", "from old\n");
+    await commitAll(otherRoot, "marker");
+    await git(["checkout", "main"], otherRoot);
+
+    const { code, out } = await cli(
+      "worktree",
+      "new",
+      "--repo",
+      otherRoot,
+      "--branch",
+      "agent/from-old",
+      "--base",
+      "old",
+    );
+    expect(code).toBe(0);
+    expect(existsSync(join(otherRoot, ".worktrees", out, "marker.txt"))).toBe(true);
+  });
+
+  test("a missing --repo or --branch is an error", async () => {
+    expect((await cli("worktree", "new", "--branch", "x")).err).toContain("--repo needed");
+    expect((await cli("worktree", "new", "--repo", "acme/widget")).err).toContain("--branch needed");
+  });
+});
+
+describe("agentree tab new --worktree (cross-worktree)", () => {
+  test("starts the worktree's session if it isn't running yet, then opens a tab in it", async () => {
+    const wtRoot = join(root, ".worktrees", "feature");
+    await git(["worktree", "add", wtRoot, "-b", "feature"], root);
+    const state = loadState();
+    await addManagedWorktree(
+      state,
+      { nameWithOwner: "acme/widget", name: "widget", root },
+      { id: "feature", branch: "feature", name: "feature", path: wtRoot, createdAt: new Date().toISOString() },
+    );
+    const wtSession = sessionName("acme/widget", "feature");
+    expect(Bun.spawnSync([...tmux(), "has-session", "-t", wtSession]).exitCode).not.toBe(0);
+
+    const { code, out } = await cli(
+      "tab",
+      "new",
+      "--worktree",
+      "feature",
+      "--name",
+      "claude",
+      "--",
+      "echo",
+      "hi from feature",
+    );
+    expect(code).toBe(0);
+    expect(out).toBe("1"); // 0 is the session's own default shell window
+    expect(Bun.spawnSync([...tmux(), "has-session", "-t", wtSession]).exitCode).toBe(0);
+
+    await until("the output", async () => {
+      const read = await cli("tab", "read", "claude", "--worktree", "feature");
+      return read.out.includes("hi from feature");
+    });
+  });
+
+  test("--repo disambiguates a worktree id that collides across repos; without it, it's an error", async () => {
+    const widgetWt = join(root, ".worktrees", "feature");
+    await git(["worktree", "add", widgetWt, "-b", "feature"], root);
+    const otherRoot = await makeRepo(join(sandbox.workspace, "other4"));
+    const otherWt = join(otherRoot, ".worktrees", "feature");
+    await git(["worktree", "add", otherWt, "-b", "feature"], otherRoot);
+
+    const state = loadState();
+    await addManagedWorktree(
+      state,
+      { nameWithOwner: "acme/widget", name: "widget", root },
+      { id: "feature", branch: "feature", name: "feature", path: widgetWt, createdAt: "" },
+    );
+    await addManagedWorktree(
+      state,
+      { nameWithOwner: "acme/other4", name: "other4", root: otherRoot },
+      { id: "feature", branch: "feature", name: "feature", path: otherWt, createdAt: "" },
+    );
+
+    const ambiguous = await cli("tab", "new", "--worktree", "feature");
+    expect(ambiguous.code).toBe(2);
+    expect(ambiguous.err).toContain("more than one repo");
+
+    const picked = await cli("tab", "new", "--worktree", "feature", "--repo", "acme/other4");
+    expect(picked.code).toBe(0);
+  });
+
+  test("an unknown worktree id is an error", async () => {
+    const r = await cli("tab", "new", "--worktree", "nope");
+    expect(r.code).toBe(2);
+    expect(r.err).toContain('no worktree "nope"');
+  });
+});
+
 describe("the rest", () => {
   test("diff opens the working changes in a tab of their own", async () => {
     expect((await cli("diff")).out).toContain("git diff");
     expect(tabs().some((t) => t.includes(":diff:"))).toBe(true);
+  });
+
+  test("--help short-circuits every command, e.g. `diff --help` prints help instead of opening a diff", async () => {
+    const before = tabs().length;
+    const { code, out } = await cli("diff", "--help");
+    expect(code).toBe(0);
+    expect(out).toContain("agentree — git worktrees with agent terminals");
+    expect(tabs()).toHaveLength(before);
   });
 
   test("notify tells the user, titled with the worktree", async () => {

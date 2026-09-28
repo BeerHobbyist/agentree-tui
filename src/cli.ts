@@ -6,16 +6,21 @@
  *
  * Tabs are tmux windows, so the running app's tab bar shows every change.
  */
-import { loadState } from "./store";
+import { existsSync, mkdirSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
+import { addManagedWorktree, findRepo, loadState, saveState, upsertRepo, type State, type StoredRepo } from "./store";
 import { readAgentStatuses } from "./services/agents";
+import { branchLeaf, repoDir, sanitizeBranchForPath, worktreePath } from "./config";
 import { availableViewers, diffCommand, resolveViewer, type DiffTarget } from "./services/diff";
-import { baseRef } from "./services/git";
+import { addWorktree, baseRef, canonicalPath, listWorktrees, localBranchExists } from "./services/git";
+import { clone } from "./services/gh";
 import { notify } from "./services/notify";
+import { run } from "./services/proc";
 import { shellJoin } from "./services/shell";
 import { installSkill, skillPath, skillState, SKILL_TEXT, uninstallSkill } from "./services/skill";
-import { sessionName, tmuxOn, type WindowInfo } from "./services/tmux";
+import { sessionName, tmuxOn, type Tmux, type WindowInfo } from "./services/tmux";
 
-const COMMANDS = ["tab", "tabs", "diff", "notify", "status", "skill", "help"];
+const COMMANDS = ["tab", "tabs", "diff", "notify", "status", "skill", "worktree", "help"];
 
 /** Whether these arguments are a CLI command (else the app starts). */
 export function isCliInvocation(argv: string[]): boolean {
@@ -30,9 +35,15 @@ control that worktree's tabs (tmux windows; the app's tab bar follows):
 
   agentree tab list [--json]              the tabs: index, name, active
   agentree tab new [--name N] [--select] [--cwd DIR] [-- COMMAND...]
+                    [--worktree ID] [--repo OWNER/NAME]
                                           open a tab (in the background unless
                                           --select); runs COMMAND in its shell;
-                                          prints its index
+                                          prints its index. --worktree targets
+                                          another worktree's tabs instead of
+                                          this one, starting its tmux session
+                                          if it doesn't exist yet; --repo picks
+                                          between worktree ids that collide
+                                          across repos
   agentree tab read TAB [--lines N]       what TAB shows (last 50 lines)
   agentree tab send TAB TEXT...           type TEXT into TAB, then Enter
                     [--no-enter] [--key KEY]...   (KEY: tmux names, e.g. C-c)
@@ -42,15 +53,28 @@ control that worktree's tabs (tmux windows; the app's tab bar follows):
   agentree diff [working|staged|base|REF] open a diff in its own tab
   agentree notify MESSAGE... [--title T]  a desktop notification for the user
   agentree status [--json]                every worktree and its agent's status
+  agentree worktree new --repo OWNER/NAME|PATH --branch NAME [--base REF]
+                                          create (or adopt) a worktree exactly
+                                          as the app's "add worktree" does —
+                                          --repo names a repo already known to
+                                          agentree, one not yet cloned (fetched
+                                          with gh), or a local path to a repo;
+                                          prints the worktree's id
   agentree skill install|uninstall|show   the Claude Code skill that teaches
                                           agents all this (~/.claude/skills)
 
 TAB is a tab's index or name. --session S acts on another tmux session.
+Any command accepts --help to print this instead of running.
 
 Examples (an agent running a dev server beside itself):
   agentree tab new --name dev -- npm run dev
   agentree tab read dev --lines 30
   agentree tab send dev --key C-c
+
+Example (spinning up an agent in another repo's worktree):
+  id=$(agentree worktree new --repo owner/other-repo --branch agent/task)
+  agentree tab new --worktree "$id" --repo owner/other-repo --name claude \\
+    --select -- claude "do the thing"
 `;
 
 class CliError extends Error {}
@@ -63,7 +87,7 @@ interface Args {
 }
 
 /** Flags that take a value (the rest are switches). */
-const VALUED = new Set(["name", "cwd", "lines", "key", "title", "session"]);
+const VALUED = new Set(["name", "cwd", "lines", "key", "title", "session", "worktree", "repo", "branch", "base"]);
 
 export function parseArgs(argv: string[]): Args {
   const positional: string[] = [];
@@ -103,6 +127,10 @@ const stdio: Io = {
 export async function runCli(argv: string[], io: Io = stdio): Promise<number> {
   try {
     const args = parseArgs(argv);
+    if (has(args, "help") || has(args, "h")) {
+      io.out(HELP);
+      return 0;
+    }
     const [command, ...rest] = args.positional;
     switch (command) {
       case undefined:
@@ -121,11 +149,9 @@ export async function runCli(argv: string[], io: Io = stdio): Promise<number> {
         return await status(args, io);
       case "skill":
         return skill({ ...args, positional: rest }, io);
+      case "worktree":
+        return await worktreeCommand({ ...args, positional: rest }, io);
       default:
-        if (has(args, "help") || has(args, "h")) {
-          io.out(HELP);
-          return 0;
-        }
         throw new CliError(`unknown command "${command}" — see agentree --help`);
     }
   } catch (err) {
@@ -152,9 +178,49 @@ async function findTab(session: string, ref: string | undefined): Promise<Window
   return tab;
 }
 
+/**
+ * The tmux session and cwd a repo's worktree id resolves to, across every
+ * known repo (or just `repoArg`'s, to disambiguate an id that collides).
+ */
+function findWorktreeSession(
+  state: State,
+  worktreeId: string,
+  repoArg: string | undefined,
+): { session: string; path: string }[] {
+  const matches: { session: string; path: string }[] = [];
+  for (const repo of state.repos) {
+    if (repoArg && repo.nameWithOwner !== repoArg) continue;
+    const entries = [{ id: "main", path: repo.root }, ...repo.worktrees.map((w) => ({ id: w.id, path: w.path }))];
+    const e = entries.find((e) => e.id === worktreeId);
+    if (e) matches.push({ session: sessionName(repo.nameWithOwner, e.id), path: e.path });
+  }
+  return matches;
+}
+
+/**
+ * The tmux session to act on: `--worktree` (with `--repo` to disambiguate,
+ * starting its session if it isn't running yet), else `--session`/the
+ * agentree terminal we're in.
+ */
+async function resolveSession(args: Args, tmux: Tmux): Promise<string> {
+  const worktreeId = flag(args, "worktree");
+  if (!worktreeId) return currentSession(args);
+  const repoArg = flag(args, "repo");
+  const matches = findWorktreeSession(loadState(), worktreeId, repoArg);
+  if (matches.length === 0) {
+    throw new CliError(`no worktree "${worktreeId}"${repoArg ? ` in ${repoArg}` : ""} — see agentree status`);
+  }
+  if (matches.length > 1) {
+    throw new CliError(`worktree "${worktreeId}" exists in more than one repo — add --repo to pick one`);
+  }
+  const { session, path } = matches[0]!;
+  if (!(await tmux.hasSession(session))) await tmux.newSession(session, path);
+  return session;
+}
+
 async function tabCommand(args: Args, io: Io): Promise<number> {
   const tmux = tmuxOn();
-  const session = currentSession(args);
+  const session = await resolveSession(args, tmux);
   const [sub, ref, ...words] = args.positional;
   switch (sub) {
     case "list": {
@@ -250,6 +316,113 @@ function skill(args: Args, io: Io): number {
     default:
       throw new CliError("skill: expected install, uninstall or show");
   }
+}
+
+async function worktreeCommand(args: Args, io: Io): Promise<number> {
+  const [sub] = args.positional;
+  switch (sub) {
+    case "new":
+      return await worktreeNew(args, io);
+    default:
+      throw new CliError(`worktree ${sub ?? ""}: expected new`);
+  }
+}
+
+/** A repo record: enough to create/register a worktree under it. */
+type RepoMeta = Omit<StoredRepo, "worktrees">;
+
+/** Whether a string looks like `owner/name` rather than a filesystem path. */
+function looksLikeNameWithOwner(s: string): boolean {
+  return /^[^/\s]+\/[^/\s]+$/.test(s);
+}
+
+/** `owner/name` parsed out of a git remote URL (ssh or https), if it has one. */
+function nameWithOwnerFromUrl(url: string): string | undefined {
+  return url.match(/[/:]([^/:]+\/[^/]+?)(\.git)?$/)?.[1];
+}
+
+/** The repo meta for an on-disk git repo (main worktree or any of its worktrees). */
+async function repoMetaForPath(state: State, inputPath: string): Promise<RepoMeta> {
+  const common = await run(["git", "rev-parse", "--git-common-dir"], { cwd: inputPath });
+  if (common.code !== 0) throw new CliError(`--repo "${inputPath}": not a git repository`);
+  const gitDir = resolve(inputPath, common.stdout.trim());
+  const root = basename(gitDir) === ".git" ? dirname(gitDir) : gitDir;
+
+  const canon = canonicalPath(root);
+  const existing = state.repos.find((r) => canonicalPath(r.root) === canon);
+  if (existing) return existing;
+
+  const remote = await run(["git", "config", "--get", "remote.origin.url"], { cwd: root });
+  const fromRemote = remote.code === 0 ? nameWithOwnerFromUrl(remote.stdout.trim()) : undefined;
+  const name = fromRemote?.split("/")[1] ?? basename(root);
+  return { nameWithOwner: fromRemote ?? name, name, root };
+}
+
+/**
+ * The repo `--repo` names: a path to a git repo already on disk (its root
+ * adopted or registered), else `owner/name` — a repo agentree already knows,
+ * or one cloned (via `gh`) into the usual workspace location if it isn't on
+ * disk yet, exactly like the app's "add worktree" picker.
+ */
+async function resolveRepo(state: State, repoArg: string): Promise<RepoMeta> {
+  if (existsSync(resolve(repoArg))) return repoMetaForPath(state, resolve(repoArg));
+  if (!looksLikeNameWithOwner(repoArg)) {
+    throw new CliError(`--repo "${repoArg}": not a path on disk, and not "owner/name"`);
+  }
+  const existing = findRepo(state, repoArg);
+  const name = repoArg.split("/")[1]!;
+  const root = existing?.root ?? repoDir(name);
+  if (!existsSync(root)) await clone(repoArg, root);
+  return { nameWithOwner: repoArg, name, root };
+}
+
+async function worktreeNew(args: Args, io: Io): Promise<number> {
+  const repoArg = flag(args, "repo");
+  const branch = flag(args, "branch");
+  if (!repoArg) throw new CliError("worktree new: --repo needed — owner/name or a path");
+  if (!branch) throw new CliError("worktree new: --branch needed");
+  const base = flag(args, "base");
+
+  const state = loadState();
+  const meta = await resolveRepo(state, repoArg);
+
+  // A worktree already on this branch is adopted (registered if it wasn't) rather than duplicated.
+  const current = await listWorktrees(meta.root);
+  const same = current.find((w) => w.branch === branch);
+  if (same) {
+    const isMain = canonicalPath(same.path) === canonicalPath(meta.root);
+    const id = isMain ? "main" : sanitizeBranchForPath(branch);
+    if (isMain) {
+      upsertRepo(state, meta);
+      await saveState(state);
+    } else {
+      await addManagedWorktree(state, meta, {
+        id,
+        branch,
+        name: branchLeaf(branch),
+        path: same.path,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    io.out(has(args, "json") ? JSON.stringify({ id, path: same.path, repo: meta.nameWithOwner }) : id);
+    return 0;
+  }
+
+  const path = worktreePath(meta.root, branch);
+  mkdirSync(dirname(path), { recursive: true });
+  const exists = await localBranchExists(meta.root, branch);
+  await addWorktree(meta.root, path, branch, { newBranch: !exists, base });
+
+  const id = sanitizeBranchForPath(branch);
+  await addManagedWorktree(state, meta, {
+    id,
+    branch,
+    name: branchLeaf(branch),
+    path,
+    createdAt: new Date().toISOString(),
+  });
+  io.out(has(args, "json") ? JSON.stringify({ id, path, repo: meta.nameWithOwner }) : id);
+  return 0;
 }
 
 /** The worktree a session belongs to, from state: its name and project. */
