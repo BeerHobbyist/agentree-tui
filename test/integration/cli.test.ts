@@ -143,7 +143,16 @@ describe("agentree worktree new", () => {
     await commitAll(otherRoot, "marker");
     await git(["checkout", "main"], otherRoot);
 
-    const { code, out } = await cli("worktree", "new", "--repo", otherRoot, "--branch", "agent/from-old", "--base", "old");
+    const { code, out } = await cli(
+      "worktree",
+      "new",
+      "--repo",
+      otherRoot,
+      "--branch",
+      "agent/from-old",
+      "--base",
+      "old",
+    );
     expect(code).toBe(0);
     expect(existsSync(join(otherRoot, ".worktrees", out, "marker.txt"))).toBe(true);
   });
@@ -167,7 +176,17 @@ describe("agentree tab new --worktree (cross-worktree)", () => {
     const wtSession = sessionName("acme/widget", "feature");
     expect(Bun.spawnSync([...tmux(), "has-session", "-t", wtSession]).exitCode).not.toBe(0);
 
-    const { code, out } = await cli("tab", "new", "--worktree", "feature", "--name", "claude", "--", "echo", "hi from feature");
+    const { code, out } = await cli(
+      "tab",
+      "new",
+      "--worktree",
+      "feature",
+      "--name",
+      "claude",
+      "--",
+      "echo",
+      "hi from feature",
+    );
     expect(code).toBe(0);
     expect(out).toBe("1"); // 0 is the session's own default shell window
     expect(Bun.spawnSync([...tmux(), "has-session", "-t", wtSession]).exitCode).toBe(0);
