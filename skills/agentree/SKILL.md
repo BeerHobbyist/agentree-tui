@@ -35,9 +35,37 @@ agentree tab close dev
 agentree diff                           # working changes, in a tab for the user (also: staged, base, a ref)
 agentree notify "Migration ready — review the SQL in tab db"
 agentree status                         # every worktree and its agent's status
+agentree worktree new --repo OWNER/NAME --branch agent/task   # create/adopt a worktree; prints its id
 ```
 
 `TAB` is a tab's name or index. Add `--json` to `tab list` / `status` for machine-readable output.
+Any command accepts `--help` to print the full command list instead of running.
+
+## Working in another worktree, or another repo entirely
+
+`agentree` only controls the worktree you're already in — `$AGENTREE_SESSION` names its
+tabs. To hand work to an agent somewhere else (another worktree of this repo, or a whole
+other repo), first make sure the worktree exists, then open a tab in it:
+
+```sh
+# 1. Create the worktree (or adopt it if that branch already has one) — same as
+#    the app's "n" add-worktree modal. --repo takes "owner/name" (cloned with gh
+#    if agentree doesn't have it yet) or a path to a repo already on disk.
+id=$(agentree worktree new --repo owner/other-repo --branch agent/fix-flaky-test)
+
+# 2. Confirm it, or find an id you already know, with:
+agentree status --json     # every repo's worktrees, including ones you didn't open
+
+# 3. Open a tab in *that* worktree's terminal and start an agent in it. --worktree
+#    starts the worktree's tmux session first if it isn't running yet (it doesn't
+#    show up until the app — or this command — opens a terminal in it); --repo
+#    disambiguates if the same id exists in more than one repo.
+agentree tab new --worktree "$id" --repo owner/other-repo --name claude \
+  -- claude "fix the flaky test in test/foo.test.ts"
+```
+
+The new tab shows up under the *other* worktree in the app's tab bar, not yours — unlike
+a `tab new --cwd` in your own worktree, which would file it under the wrong one.
 
 ## Working with a dev server
 

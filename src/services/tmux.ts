@@ -304,6 +304,16 @@ export function tmuxOn(host?: string, opts: { onlyIfConnected?: boolean } = {}) 
       }
     },
 
+    /**
+     * Create a detached session running the plain shell, if it doesn't exist
+     * yet — no theming, no startup command (the app applies those itself the
+     * first time it opens the worktree's terminal via `attachCommand`).
+     */
+    async newSession(session: string, cwd: string): Promise<void> {
+      const { code, stderr } = await exec("new-session", "-d", "-s", session, "-c", cwd);
+      if (code !== 0) throw new Error(stderr.trim() || `couldn't start a session for ${session}`);
+    },
+
     /** List a session's windows (tabs). Empty if the session is gone. */
     async listWindows(session: string): Promise<WindowInfo[]> {
       const { code, stdout } = await exec(
