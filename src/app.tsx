@@ -19,6 +19,7 @@ import {
   removeHost,
   removeManagedWorktree,
   removeRemoteDir,
+  removeRepo,
   setWorktreeLabel,
   sshProjectId,
   type State,
@@ -355,7 +356,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     overlays.open({ kind: "add", preselect: { nameWithOwner: proj.id, name: proj.name, root: proj.root } });
   };
 
-  /** `d`: ask to close (delete) the worktree under the cursor — or forget an SSH directory / host. */
+  /**
+   * `d`: ask to close (delete) the worktree under the cursor, or remove the
+   * project whose header it is — or forget an SSH directory / host.
+   */
   const requestClose = (row: Row | undefined) => {
     if (row?.project.ssh) {
       const { host, needsPassword } = row.project.ssh;
@@ -372,12 +376,16 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       );
       return;
     }
+    if (row?.kind === "project") {
+      overlays.open({ kind: "remove-project", repoId: row.project.id, name: row.project.name });
+      return;
+    }
     if (row?.kind !== "worktree") return;
     if (row.worktree.id === "main") {
       toasts.show({
         kind: "warning",
         title: "Could not close worktree",
-        message: "The main working copy can't be closed this way — remove the project instead.",
+        message: "The main working copy can't be closed this way — remove the project instead (d on its header).",
       });
       return;
     }
@@ -436,6 +444,25 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       toasts.show({ kind: "success", message: `Closed ${target.what}` });
     } catch (err) {
       notice("Could not close worktree", err);
+    }
+  };
+
+  /**
+   * Remove a project: end its worktrees' tmux sessions and drop it from state.
+   * Nothing on disk is deleted — adding it again (`n`) picks the worktrees back up.
+   */
+  const removeProject = async (target: Extract<Overlay, { kind: "remove-project" }>) => {
+    overlays.close("remove-project");
+    const project = projectsRef.current.find((p) => p.id === target.repoId);
+    // "main" too: a project whose clone is gone doesn't list it.
+    const ids = new Set(["main", ...(project?.worktrees.map((w) => w.id) ?? [])]);
+    await Promise.all([...ids].map((id) => killSession(sessionName(target.repoId, id)).catch(() => {})));
+    try {
+      await removeRepo(state, target.repoId);
+      afterRemoval(await reconcile(state), (o) => o.repoId === target.repoId);
+      toasts.show({ kind: "success", message: `Removed ${target.name}` });
+    } catch (err) {
+      notice("Could not remove it", err);
     }
   };
 
@@ -595,10 +622,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       ...cmd("R", "Rename worktree", "Worktree", "R", !!wt && !ssh, wt && displayName(wt)),
       ...cmd(
         "d",
-        ssh ? (wt ? "Remove directory" : "Remove host") : "Close worktree",
+        ssh ? "Remove directory" : "Close worktree",
         "Worktree",
         "d",
-        ssh || (!!wt && wt.id !== "main"),
+        !!wt && (ssh || wt.id !== "main"),
         wt && displayName(wt),
       ),
       ...cmd(
@@ -616,6 +643,8 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
       ...cmd("H", agents.tracking ? "Stop tracking every claude" : "Track every claude", "Agents", "H"),
       ...cmd("n", "Add a project", "Projects", "n", true, "a GitHub repo"),
       ...cmd("s", "Add an SSH host", "Projects", "s"),
+      // `d` on a header: the project, not a worktree (only one of the two `d`s applies).
+      ...cmd("d", ssh ? "Remove host" : "Remove project", "Projects", "d", row?.kind === "project", row?.project.name),
       ...cmd("b", prefs.sidebar.hidden ? "Show the sidebar" : "Hide the sidebar", "View", "b"),
       ...cmd("t", "Switch theme", "View", "t", true, `→ ${nextTheme}`),
       ...cmd("=", "Reset the sidebar width", "View", "="),
@@ -689,6 +718,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     themeName: theme.name,
     onApplied,
     closeWorktree: (target) => void closeWorktree(target),
+    removeProject: (target) => void removeProject(target),
     forget: (target) => void forget(target),
     setTracking,
     saveLabel,

@@ -14,6 +14,7 @@ import {
   removeHost,
   removeRemoteDir,
   removeManagedWorktree,
+  removeRepo,
   saveState,
   setWorktreeLabel,
   upsertRepo,
@@ -392,6 +393,27 @@ describe("worktree labels", () => {
     await setWorktreeLabel(state, "acme/widget", "main", "Trunk");
     await removeManagedWorktree(state, "acme/widget", "x");
     expect(findRepo(loadState(), "acme/widget")!.labels).toEqual({ main: "Trunk" });
+  });
+
+  test("removing a repo forgets it, its worktrees and labels — and leaves the files", async () => {
+    const root = await fixtureRepo([{ branch: "feature/x" }]);
+    const state = loadState();
+    upsertRepo(state, meta(root));
+    upsertRepo(state, { nameWithOwner: "acme/other", name: "other", root: "/tmp/other" });
+    await reconcile(state); // adopts feature/x
+    await setWorktreeLabel(state, "acme/widget", "main", "Trunk");
+
+    await removeRepo(state, "acme/widget");
+    expect(loadState().repos.map((r) => r.nameWithOwner)).toEqual(["acme/other"]);
+    expect(existsSync(join(root, ".worktrees", "feature-x"))).toBe(true);
+
+    // Added again, it picks the worktrees back up, unlabelled.
+    upsertRepo(state, meta(root));
+    const widget = (await reconcile(state)).find((p) => p.id === "acme/widget")!;
+    expect(widget.worktrees.map((w) => [w.id, w.label])).toEqual([
+      ["main", undefined],
+      ["feature-x", undefined],
+    ]);
   });
 
   test("a hand-edited, malformed label is ignored rather than shown", async () => {

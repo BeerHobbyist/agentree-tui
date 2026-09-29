@@ -31,7 +31,7 @@ const host: Project = {
 
 describe("footerHint", () => {
   test("says what you can do with the selected row", () => {
-    expect(footerHint([repo], projectKey(repo.id), false)).toBe("⏎ fold · a new · ^p commands");
+    expect(footerHint([repo], projectKey(repo.id), false)).toBe("a new · d remove · ^p commands");
     expect(footerHint([repo], worktreeKey(repo.id, "x"), false)).toBe("⏎ open · d close · ^p commands");
     expect(footerHint([repo], worktreeKey(repo.id, "main"), false)).toBe("⏎ open · a new · ^p commands");
     expect(footerHint([host], projectKey(host.id), false)).toBe("a dir · d remove · ^p commands");

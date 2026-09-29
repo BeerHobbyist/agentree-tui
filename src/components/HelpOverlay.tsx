@@ -21,6 +21,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["a", "add worktree to selected project"],
       ["R", "rename worktree (its label here only)"],
       ["d", "close worktree (deletes it from disk)"],
+      ["d  on a project header", "remove project (its files stay on disk)"],
       ["n", "add a project (pick a GitHub repo)"],
       ["s", "add an SSH host (terminals on that machine)"],
       ["t", "cycle theme"],

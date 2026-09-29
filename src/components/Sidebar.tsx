@@ -72,7 +72,7 @@ export function footerHint(projects: Project[], activeKey: string, agentWaiting:
       if (agentWaiting) return [NEXT_AGENT, COMMANDS];
       return p.ssh
         ? [{ key: "a", text: "dir" }, { key: "d", text: "remove" }, COMMANDS]
-        : [{ key: "⏎", text: "fold" }, { key: "a", text: "new" }, COMMANDS];
+        : [{ key: "a", text: "new" }, { key: "d", text: "remove" }, COMMANDS];
     }
     const w = p.worktrees.find((w) => activeKey === worktreeKey(p.id, w.id));
     if (!w) continue;
