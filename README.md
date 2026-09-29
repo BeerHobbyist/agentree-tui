@@ -70,7 +70,7 @@ agentree skill install     # into ~/.claude/skills/agentree/
 | `↑` `↓` / `j` `k` | move | `Ctrl+g` | back to the sidebar |
 | `Enter` | open the terminal | `⌥t` / `⌥w` | new tab / close pane |
 | `n` / `a` / `s` | add a repo / worktree / SSH host | `⌥,` `⌥.` / `⌥1`–`9` | switch tabs |
-| `d` | close a worktree | `⌥\` / `⌥-` | split |
+| `d` | close a worktree / remove a project | `⌥\` / `⌥-` | split |
 | `R` | rename (label only) | `⌥h` `⌥j` `⌥k` `⌥l` | move between panes |
 | `Tab` | next agent that needs you | `⌥r` | rename the tab |
 | `p` / `m` | PR panel / merge | `⌥d` | open a diff |

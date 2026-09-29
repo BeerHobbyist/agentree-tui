@@ -203,6 +203,12 @@ export async function removeManagedWorktree(state: State, nameWithOwner: string,
   await saveState(state);
 }
 
+/** Forget a repo, its worktrees and labels (nothing on disk is touched). Persists. */
+export async function removeRepo(state: State, nameWithOwner: string): Promise<void> {
+  state.repos = state.repos.filter((r) => r.nameWithOwner !== nameWithOwner);
+  await saveState(state);
+}
+
 /** Longest label kept; the sidebar truncates long ones anyway. */
 export const MAX_LABEL_LENGTH = 48;
 

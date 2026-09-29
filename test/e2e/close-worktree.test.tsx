@@ -126,14 +126,4 @@ describe("closing a worktree", () => {
     await waitForTextGone(app, "Could not close worktree");
     await waitForText(app, "main");
   });
-
-  test("a project header ignores d", async () => {
-    await oneProject();
-    app = await renderApp();
-    await waitForSelection(app, "widget");
-
-    app.mockInput.pressKey("d");
-    await settle(app);
-    expect(app.captureCharFrame()).not.toContain("Close worktree");
-  });
 });

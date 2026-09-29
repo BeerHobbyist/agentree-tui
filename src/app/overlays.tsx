@@ -28,6 +28,8 @@ export type Overlay =
   | { kind: "palette" }
   /** Delete a worktree from disk (`d`). `what` names it: `"label" (branch)`, or `"name"`. */
   | { kind: "close-worktree"; repoId: string; worktreeId: string; what: string; dirty: boolean; missing: boolean }
+  /** Forget a repo project and its worktrees, leaving them on disk (`d` on its header). */
+  | { kind: "remove-project"; repoId: string; name: string }
   /** Forget an SSH directory, or (no `dirId`) the whole host (`d`). */
   | { kind: "forget"; host: string; dirId?: string; what: string; needsPassword?: boolean }
   /** Turn tracking every claude on or off (`H`) — it edits Claude's settings, so it asks. */
@@ -73,6 +75,7 @@ export interface OverlayActions {
   themeName: string;
   onApplied(projects: Project[], selection: Selection): void;
   closeWorktree(target: Extract<Overlay, { kind: "close-worktree" }>): void;
+  removeProject(target: Extract<Overlay, { kind: "remove-project" }>): void;
   forget(target: Extract<Overlay, { kind: "forget" }>): void;
   setTracking(on: boolean): void;
   saveLabel(target: Extract<Overlay, { kind: "rename" }>, label: string): void;
@@ -112,6 +115,16 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
                 : undefined
           }
           onConfirm={() => actions.closeWorktree(o)}
+          onCancel={close}
+        />
+      );
+    case "remove-project":
+      return (
+        <ConfirmModal
+          title="Remove project"
+          message={`Remove ${o.name} and its worktrees from agentree?`}
+          detail="Their terminals end (and anything running in them); the clone and its worktrees stay on disk."
+          onConfirm={() => actions.removeProject(o)}
           onCancel={close}
         />
       );
