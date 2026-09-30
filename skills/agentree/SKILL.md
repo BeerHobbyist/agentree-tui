@@ -75,6 +75,10 @@ a `tab new --cwd` in your own worktree, which would file it under the wrong one.
 4. After changing code, read again to see reloads or new errors.
 5. When you're done with it, `agentree tab send dev --key C-c` and `agentree tab close dev` — unless the user wants it left running.
 
+## In a sandbox
+
+Inside fence (`$FENCE_SANDBOX` is set), `agentree` asks the app to do it, on the sandbox's terms: what `tab new` starts runs in the sandbox too, and `tab send` types only into tabs opened that way — not into the user's tabs or other agents'. It needs the app open. If it can't reach agentree, or refuses, tell the user; don't look for a way around it.
+
 ## Etiquette
 
 - **Don't take over the user's screen.** `tab new` opens in the background; only pass `--select` (or run `tab select`) when the user asked to see the tab.
