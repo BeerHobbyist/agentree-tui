@@ -151,6 +151,8 @@ the app polls those and cross-checks tmux (see **Agent status**).
   (pre-attach cursor override, status off + global theme, `mouse on`, optional
   startup command and session `env`), window/pane helpers
   (list/new/select/next/prev/split/killPane), `listPaneActivity`, `sessionName`.
+- `src/services/broker.ts` — the tmux broker for sandboxed agents: the app's
+  socket (`startBroker`), the CLI's client (`brokerTmux`), `sandboxArgv`.
 - `src/services/agents.ts` — agent status: the Claude hooks settings file,
   `agentLaunchCommand`, reading and correcting per-pane reports (`readAgentStatuses`).
 - `src/queries.ts` — every query (keys, fetchers, timings); `src/queryClient.ts`
@@ -282,7 +284,8 @@ that worktree), ○ idle — from `src/services/agents.ts`:
   silent for 10s was interrupted (Esc fires no hook); a "needs action" agent
   that prints again was answered.
 - `AGENTREE_AGENT_CMD` overrides still get the hooks if they run `claude` (and
-  don't pass their own `--settings`); other agents run untouched and show no
+  don't pass it their own `--settings` — a wrapper's before it, like `fence
+  --settings …`, doesn't count); other agents run untouched and show no
   status. Claude only sends the permission notification after ~6s, so
   "needs action" can lag a fresh prompt by that much.
 - **Tracking every claude** (`H`, asks first): a `claude` typed by hand doesn't
@@ -531,6 +534,45 @@ names another. Tabs are tmux windows, so the app's tab bar follows.
   steal the user's view, name and close your tabs, notify sparingly). Bundled
   into the binary; `agentree skill install` copies it to Claude's skills
   (`$CLAUDE_CONFIG_DIR` or `~/.claude/skills/agentree/`), `uninstall` removes it.
+
+## Sandbox broker (fence)
+
+tmux runs every command it's given outside any sandbox, so a sandbox (fence)
+allowed onto agentree's tmux socket isn't one: `tmux new-window 'anything'`
+runs unsandboxed. Instead of tmux's socket, the sandbox is allowed the app's —
+`<tmux dir>/<socket>.broker`, beside tmux's own, where `startTui` listens
+(`src/services/broker.ts`; one per tmux server, the first app to start). Inside
+fence (`$FENCE_SANDBOX`) the CLI sends its tmux calls there: one JSON line per
+connection, the calls the CLI makes and nothing else (`OPS`), each argument
+type-checked. It carries them out on the sandbox's terms:
+
+- **What it starts runs in the sandbox**: `AGENTREE_SANDBOX_CMD`, a command
+  prefix (read by `/bin/sh`), in front of the tab's shell, a `diff`'s viewer, a
+  `--worktree` session's first shell. The pane starts at the session's
+  directory — fence's "." — and `--cwd` is only `cd`'d to inside, so it can't
+  widen the sandbox. A session's directory comes from state, not the request.
+  With no `AGENTREE_SANDBOX_CMD`, nothing is started.
+- **Typing only into those panes**: `tab send` into the user's shell would run
+  the text outside. The broker marks each pane it starts (`@agentree-sandboxed`,
+  a pane option: a split off such a tab is the user's plain shell, and only
+  something outside the sandbox can set a tmux option) and types only into a
+  marked one, resolved to its pane id first. `send-keys` gets a `--` before
+  the keys, so `-X copy-pipe …` or `-K` can't make tmux run anything.
+- **No `#` where tmux reads a format** — a session, target, tab name or
+  directory (`-n`, `rename-window`, `-c` all expand formats): `#(…)` in one
+  would have tmux's server run it. A `--worktree` session's directory must
+  also be a checkout (`.git`).
+- **No argument ending in `;`**: tmux ends a command there, and would run
+  what follows (a `--key ';' --key run-shell …`) as one of its own.
+- Listing, reading, selecting, renaming and closing tabs work on any tab.
+
+`agentree status` inside fence can't see the panes: a socket the sandbox
+blocks reads as unknown (`listPaneActivity` → null), not as no server — which
+would call every agent's report stale and delete it.
+
+It lives in the app, so a sandboxed agent's tabs need agentree open. The
+socket sits in tmux's directory, which the sandbox can write to: an agent
+could replace it with its own, fooling only other sandboxed agents.
 
 ## Hints
 
@@ -827,6 +869,8 @@ merged) and linked by commit. Scenes: `agents`, `palette`, `themes`.
 - PR panel sections fold by mouse only — keyboard folding needs a way to move
   through the panel's sections.
 - No LICENSE yet (the README says so) — the owner's call.
+- The broker needs the app open: sandboxed agents can't open tabs while it's
+  closed (a broker of its own, living as long as the tmux server, would lift that).
 
 ## Caveats
 
