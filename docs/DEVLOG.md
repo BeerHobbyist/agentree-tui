@@ -139,8 +139,8 @@ the app polls those and cross-checks tmux (see **Agent status**).
 - `src/store.ts` — sync `loadState`, atomic `saveState`, `reconcile()` vs
   `git worktree list` (adopt orphans, mark missing, surface main copy).
 - `src/services/proc.ts` — `run()`/`runOrThrow()` over `Bun.spawn`.
-- `src/services/diff.ts` — diff viewers (hunk, diffnav, delta, difftastic, nvim
-  diffview, git): which are installed, and `diffCommand(viewer, target, arg?)`.
+- `src/services/diff.ts` — diff viewers (hunk, diffnav, delta, difftastic, lumen,
+  nvim diffview, git): which are installed, and `diffCommand(viewer, target, arg?)`.
 - `src/services/gh.ts` — `fetchRepoPage` (paginated `gh api user/repos`), cache,
   `clone`, `isAuthenticated`, `prForBranch` (a branch's PR: open, else merged
   from this branch; cached).
@@ -227,12 +227,13 @@ viewer closes the tab.
 
 Viewers (`DIFF_VIEWERS`): **hunk** (`hunk diff …`), **diffnav** (`git diff |
 diffnav` — a file tree beside delta's rendering), **delta** (side by side,
-`--navigate`), **difftastic** (`diff.external=difft`), **nvim diffview**
+`--navigate`), **difftastic** (`diff.external=difft`), **lumen** (`lumen
+diff …`; staged changes open in plain git, as it has no flag for them), **nvim diffview**
 (`DiffviewOpen …`; only when chosen — the plugin can't be detected) and plain
 **git diff**, which is always there. The picker's title names the one in use:
 the one picked with `v` in the picker (cycles through the installed ones,
 remembered as `ui.diffViewer`), else the first installed of hunk, diffnav,
-delta, difftastic — else git. "Installed" is `Bun.which` on each program the
+delta, difftastic, lumen — else git. "Installed" is `Bun.which` on each program the
 viewer needs (diffnav needs delta too); `AGENTREE_DIFF_VIEWERS` overrides the
 list (tests).
 

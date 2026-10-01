@@ -33,7 +33,7 @@ agentree keeps every branch you're working on in its own [git worktree](https://
 - **[tmux](https://github.com/tmux/tmux) 3.x** — locally, and on any SSH host you add
 - **git**, and the **[GitHub CLI](https://cli.github.com)** (`gh`, logged in) for repos and pull requests
 - Linux or macOS
-- Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (started in new worktrees by default), a diff viewer ([hunk](https://www.npmjs.com/package/hunkdiff), [delta](https://github.com/dandavison/delta), [difftastic](https://difftastic.wilfred.me.uk), [diffnav](https://github.com/dlvhdr/diffnav)), `notify-send` on Linux for notifications
+- Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (started in new worktrees by default), a diff viewer ([hunk](https://www.npmjs.com/package/hunkdiff), [delta](https://github.com/dandavison/delta), [difftastic](https://difftastic.wilfred.me.uk), [diffnav](https://github.com/dlvhdr/diffnav), [lumen](https://github.com/jnsahaj/lumen)), `notify-send` on Linux for notifications
 
 ## Install
 
