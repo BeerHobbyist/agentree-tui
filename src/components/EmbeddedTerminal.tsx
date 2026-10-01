@@ -7,12 +7,16 @@
  */
 import {
   EmbeddedTerminalRenderable,
+  type CliRenderer,
   type CursorStyleOptions,
+  type KeyEvent,
   type MouseEvent,
   type OptimizedBuffer,
+  type PasteEvent,
   type RGBA,
 } from "@opentui/core";
 import { extend, type ExtendedComponentProps } from "@opentui/react";
+import { EXIT_COPY_MODE_KEY } from "../services/tmux";
 
 /** `AGENTREE_CURSOR_SMOOTH=off` restores the stock (flashing) behavior for A/B. */
 const SMOOTH_ON = (process.env.AGENTREE_CURSOR_SMOOTH ?? "on") !== "off";
@@ -24,6 +28,7 @@ const DECSCUSR = /\x1b\[(\d*) q/g;
 /** A DECSCUSR cut off at the end of a chunk, to be completed by the next one. */
 const DECSCUSR_PARTIAL = /\x1b(?:\[\d*(?: )?)?$/;
 const utf8 = new TextDecoder();
+const EXIT_COPY_MODE_BYTES = new TextEncoder().encode(EXIT_COPY_MODE_KEY);
 
 /**
  * Ps of the last DECSCUSR in `text` (0 for "terminal default"), or undefined if
@@ -33,6 +38,34 @@ export function lastCursorStyleRequest(text: string): number | undefined {
   let ps: string | undefined;
   for (const m of text.matchAll(DECSCUSR)) ps = m[1];
   return ps === undefined ? undefined : Number(ps || "0");
+}
+
+/** OSC 52, "set the clipboard": `ESC ] 52 ; targets ; base64`, ended by BEL or ST. */
+const OSC52 = /\x1b\]52;[^;\x07\x1b]*;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
+/** The start of an OSC 52 that a chunk ends before finishing. */
+const OSC52_UNFINISHED = /\x1b(?:\](?:5(?:2(?:;[^\x07\x1b]*(?:;[^\x07\x1b]*\x1b?)?)?)?)?)?$/;
+/** Longest unfinished OSC 52 kept waiting for its end; past it, it's dropped. */
+const OSC52_MAX = 8 * 1024 * 1024;
+const OSC52_START = "\x1b]52";
+
+/**
+ * The texts the OSC 52 sequences in `text` put on the clipboard (a query, `?`,
+ * puts nothing), and the unfinished one at its end, to put in front of the
+ * next chunk. Exported for tests.
+ */
+export function clipboardWrites(text: string): { texts: string[]; rest: string } {
+  const texts: string[] = [];
+  for (const m of text.matchAll(OSC52)) {
+    if (m[1] !== "?") texts.push(Buffer.from(m[1] ?? "", "base64").toString("utf8"));
+  }
+  const rest = OSC52_UNFINISHED.exec(text)?.[0] ?? "";
+  return { texts, rest: rest.length > OSC52_MAX ? "" : rest };
+}
+
+/** Whether a chunk can hold the start of an OSC 52, perhaps cut off at its end. */
+function mayHoldOsc52(data: string | Uint8Array): boolean {
+  const s = typeof data === "string" ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  return s.indexOf(OSC52_START) >= 0 || s.indexOf("\x1b", Math.max(0, s.length - OSC52_START.length + 1)) >= 0;
 }
 
 /**
@@ -82,7 +115,22 @@ class StableCursorEmbeddedTerminal extends EmbeddedTerminalRenderable {
     this.decscusrCarry = DECSCUSR_PARTIAL.exec(text)?.[0] ?? "";
   }
 
+  private osc52Carry = "";
+
+  /**
+   * tmux copies a selection by sending OSC 52 to its terminal, and the
+   * emulator drops it, so hand the text to the host terminal's clipboard.
+   */
+  private forwardClipboard(data: string | Uint8Array): void {
+    if (!this.osc52Carry && !mayHoldOsc52(data)) return; // cheap skip: no OSC 52 possible
+    const { texts, rest } = clipboardWrites(this.osc52Carry + (typeof data === "string" ? data : utf8.decode(data)));
+    this.osc52Carry = rest;
+    const renderer = this._ctx as Partial<Pick<CliRenderer, "copyToClipboardOSC52">>;
+    for (const text of texts) renderer.copyToClipboardOSC52?.(text);
+  }
+
   override write(data: string | Uint8Array): void {
+    this.forwardClipboard(data);
     // Mark output active and (re)arm the settle timer; a burst keeps pushing it
     // out, so we only re-assert the cursor once the child stops writing.
     if (SMOOTH_ON) {
@@ -170,6 +218,10 @@ class StableCursorEmbeddedTerminal extends EmbeddedTerminalRenderable {
 
   /** Whether the mouse button currently held went down on this terminal. */
   private pressStartedHere = false;
+  /** Whether tmux has taken a mouse press here, so it may hold a mouse selection. */
+  private tmuxHasTheMouse = false;
+  /** Whether the pane in front may hold a mouse selection; see exitCopyModeOnNextInput. */
+  private exitCopyModeOnInput = false;
 
   /**
    * Drop a button release whose press began somewhere else — e.g. dragging the
@@ -186,6 +238,46 @@ class StableCursorEmbeddedTerminal extends EmbeddedTerminalRenderable {
       if (!startedHere) return;
     }
     super.processMouseEvent(event);
+    // Forwarded, so tmux has the mouse: the press may make a selection, or put
+    // another split pane in front.
+    if (event.type === "down" && event.defaultPrevented) {
+      this.tmuxHasTheMouse = true;
+      this.exitCopyModeOnInput = true;
+    }
+  }
+
+  /**
+   * A mouse selection stays on screen in tmux copy mode, where keys are
+   * copy-mode commands. So once the pane in front may hold one — after a
+   * press in the terminal, or a switch of tab or pane — the next key or paste
+   * goes out behind EXIT_COPY_MODE_KEY, which takes such a pane out of copy
+   * mode and lets the typing through to the shell, as in a plain terminal.
+   * Only the next one: tmux prompts read every key, the exit key included.
+   * And only once tmux has had a press here: before that, there's no
+   * selection to leave, and what reads the keys may not be tmux at all (an
+   * SSH host's password prompt).
+   */
+  exitCopyModeOnNextInput(): void {
+    if (this.tmuxHasTheMouse) this.exitCopyModeOnInput = true;
+  }
+
+  private sendAfterExitingCopyMode(output: Uint8Array): void {
+    if (output.byteLength === 0) return;
+    this.exitCopyModeOnInput = false;
+    this.onData?.(EXIT_COPY_MODE_BYTES, "input");
+    this.onData?.(output, "input");
+  }
+
+  override handleKeyPress(key: KeyEvent): boolean {
+    if (!this.exitCopyModeOnInput) return super.handleKeyPress(key);
+    const output = this.encodeKey(key);
+    this.sendAfterExitingCopyMode(output);
+    return output.byteLength > 0;
+  }
+
+  override handlePaste(event: PasteEvent): void {
+    if (this.exitCopyModeOnInput) this.sendAfterExitingCopyMode(this.encodePaste(event.bytes));
+    else super.handlePaste(event);
   }
 
   protected override destroySelf(): void {
@@ -198,6 +290,11 @@ class StableCursorEmbeddedTerminal extends EmbeddedTerminalRenderable {
 }
 
 extend({ "embedded-terminal": StableCursorEmbeddedTerminal });
+
+/** See StableCursorEmbeddedTerminal.exitCopyModeOnNextInput. */
+export function exitCopyModeOnNextInput(terminal: EmbeddedTerminalRenderable | null): void {
+  if (terminal instanceof StableCursorEmbeddedTerminal) terminal.exitCopyModeOnNextInput();
+}
 
 declare module "@opentui/react" {
   interface OpenTUIComponents {
