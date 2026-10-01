@@ -45,6 +45,11 @@ describe("the viewers' commands", () => {
     expect(viewer("diffnav").command([])).toMatch(/color\.ui=never.* diff \| diffnav$/);
   });
 
+  test("lumen takes the git diff arguments, except staged changes, which open in plain git", () => {
+    expect(viewer("lumen").command(["main...HEAD"])).toBe("lumen diff main...HEAD");
+    expect(viewer("lumen").command(["--staged"])).toBe(viewer("git").command(["--staged"]));
+  });
+
   test("diffview speaks its own flag for staged changes", () => {
     expect(words(viewer("diffview").command(["--staged"]))).toEqual(["nvim", "-c", "DiffviewOpen --cached"]);
   });

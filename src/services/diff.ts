@@ -4,14 +4,14 @@
  *
  * Every diff choice is a set of `git diff` arguments, so any viewer that takes
  * a git diff fits. Which one: the one picked in the diff picker (`v`), else the
- * first installed of hunk, diffnav, delta, difftastic — else plain `git diff`,
+ * first installed of hunk, diffnav, delta, difftastic, lumen — else plain `git diff`,
  * which is always there.
  */
 import { shellJoin, shq } from "./shell";
 
 export type DiffTarget = "working" | "staged" | "base" | "ref";
 
-export type DiffViewerId = "hunk" | "diffnav" | "delta" | "difftastic" | "diffview" | "git";
+export type DiffViewerId = "hunk" | "diffnav" | "delta" | "difftastic" | "lumen" | "diffview" | "git";
 
 /** The `git diff` arguments for a diff choice. */
 export function diffArgs(target: DiffTarget, arg?: string): string[] {
@@ -82,6 +82,14 @@ export const DIFF_VIEWERS: DiffViewer[] = [
     auto: true,
     command: (args) =>
       `DFT_COLOR=always DFT_WIDTH=$(tput cols 2>/dev/null || echo 120) ${git(args, ["diff.external=difft", "core.pager=less -R"])}`,
+  },
+  {
+    // Side by side. It has no flag for staged changes, so those open in plain git.
+    id: "lumen",
+    label: "lumen",
+    needs: ["lumen"],
+    auto: true,
+    command: (args) => (args.includes("--staged") ? git(args) : shellJoin(["lumen", "diff", ...args])),
   },
   {
     // Neovim with the diffview.nvim plugin (can't tell if it's installed, so only when chosen).
