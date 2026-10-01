@@ -36,7 +36,7 @@ async function oneProject() {
 }
 
 async function selectFeatureX(app: RenderedApp) {
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· x");
   app.mockInput.pressKey("j"); // onto main
   app.mockInput.pressKey("j"); // onto x
   await waitForSelection(app, "x");
@@ -115,7 +115,7 @@ describe("closing a worktree", () => {
   test("the main working copy can't be closed this way", async () => {
     await oneProject();
     app = await renderApp();
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
     app.mockInput.pressKey("j"); // onto main
     await waitForSelection(app, "main");
 

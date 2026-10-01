@@ -49,7 +49,7 @@ describe("adding a worktree from scratch", () => {
     app.mockInput.pressEnter(); // acme/widget is first (most recently pushed)
     await waitForText(app, "Create new worktree");
 
-    app.mockInput.pressEnter(); // "＋ Create new worktree" is row 0
+    app.mockInput.pressEnter(); // "+ Create new worktree" is row 0
     await waitForText(app, "New branch name");
 
     await app.mockInput.typeText("feature/x");

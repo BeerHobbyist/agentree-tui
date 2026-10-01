@@ -61,7 +61,7 @@ async function start() {
   await saveState(state);
   await reconcile(state);
   app = await renderApp({ width: 120 });
-  await waitForText(app, "feature/y");
+  await waitForText(app, "· y");
 }
 
 /** Select a worktree row by name (g, then j until it's selected). */
@@ -99,10 +99,10 @@ describe("tracking every claude (H)", () => {
     await start();
     await select("x");
     app.mockInput.pressEnter(); // its terminal: a shell, in an agentree session
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     await Bun.sleep(300);
     hookInPane(X, "needs-action"); // what a hand-typed claude's hook would run
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ x");
   });
 });
 
@@ -113,7 +113,7 @@ describe("telling you", () => {
     await start();
     await select("x");
     app.mockInput.pressEnter(); // x on screen
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     await Bun.sleep(1500);
     expect(sandbox.notifications()).toEqual([]);
 
@@ -133,7 +133,7 @@ describe("telling you", () => {
     const paneY = agentPane(Y);
     await start();
     report(Y, paneY, "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ y");
     await Bun.sleep(500);
     expect(sandbox.notifications()).toEqual([]);
   });
@@ -144,10 +144,10 @@ describe("going to it", () => {
     const paneY = agentPane(Y);
     await start();
     report(Y, paneY, "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ y");
     app.mockInput.pressTab();
     await waitForSelection(app, "y");
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
   });
 
   test("⌥n from inside another terminal does the same", async () => {
@@ -155,9 +155,9 @@ describe("going to it", () => {
     await start();
     await select("x");
     app.mockInput.pressEnter();
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     report(Y, paneY, "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ y");
     app.mockInput.pressKey("n", { meta: true });
     await waitForSelection(app, "y");
   });
@@ -214,7 +214,7 @@ describe("agents on an SSH host", () => {
     await waitUntil(app, () => Bun.spawnSync([...tmux(), "has-session", "-t", session]).exitCode === 0, "its session");
     await Bun.sleep(300);
     hookInPane(session, "needs-action");
-    await waitForText(app, "needs action", { timeoutMs: 8_000 });
+    await waitForText(app, "◆ api", { timeoutMs: 8_000 });
     expect(existsSync(join(agentStatusDir(), `${session}.0`))).toBe(false); // reported on the host
   });
 });

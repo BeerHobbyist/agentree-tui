@@ -1,5 +1,5 @@
 /**
- * Hiding the sidebar (b, or its footer's ⇤) gives the terminal the whole
+ * Hiding the sidebar (b, or its footer's «) gives the terminal the whole
  * width; going back to the sidebar (Ctrl+g, the tab bar's ‹, or b) shows it.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -23,7 +23,7 @@ afterEach(() => {
 
 const HELP = "Keyboard & mouse";
 /** Only the sidebar shows this: its project header. */
-const SIDEBAR = "◈ widget";
+const SIDEBAR = "▾ widget";
 
 async function start() {
   const root = await makeRepo(join(sandbox.workspace, "widget"), {
@@ -34,7 +34,7 @@ async function start() {
   await saveState(state);
   await reconcile(state);
   app = await renderApp();
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· x");
 }
 
 /** Press `?` and report whether the app took it (help opened), then close help. */
@@ -66,7 +66,7 @@ async function openTerminal() {
   app.mockInput.pressKey("j");
   await waitForSelection(app, "x");
   app.mockInput.pressEnter();
-  await waitForText(app, "^g sidebar");
+  await waitForText(app, "^g");
   app.mockInput.pressKey("g", { ctrl: true });
   await Bun.sleep(100);
 }
@@ -106,10 +106,10 @@ describe("hiding the sidebar", () => {
     expect(await appHasKeys()).toBe(true);
   });
 
-  test("the ⇤ in its corner hides it; the tab bar's ‹ brings it back", async () => {
+  test("the « in its footer hides it; the tab bar's ‹ brings it back", async () => {
     await start();
     await openTerminal();
-    const hide = locate("⇤");
+    const hide = locate("«");
     await app.mockMouse.click(hide.x, hide.y);
     await waitForTextGone(app, SIDEBAR);
     const back = locate("‹");

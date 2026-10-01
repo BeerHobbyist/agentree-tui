@@ -11,7 +11,7 @@ import { Hints, hintsFrom } from "./Hints";
 
 interface SshModalProps {
   state: State;
-  /** Adding a directory to this host (its ＋ / `a`): skip straight to the directory. */
+  /** Adding a directory to this host (its + / `a`): skip straight to the directory. */
   host?: string;
   onClose: () => void;
   /** Added: the new project list, and the directory to select. */

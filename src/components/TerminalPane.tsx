@@ -23,7 +23,7 @@ import { RenameModal } from "./RenameModal";
 import "./EmbeddedTerminal"; // registers <embedded-terminal>
 
 const MENU_ITEMS: MenuItem[] = [
-  { label: "＋ New shell", hint: "" },
+  { label: "+ New shell", hint: "" },
   { label: "✻ New agent", hint: "⌥a" },
   { label: "◨ New diff", hint: "⌥d" },
 ];
@@ -214,7 +214,7 @@ function TerminalView({
       });
   };
 
-  // ＋ menu / diff picker / tab rename overlay.
+  // + menu / diff picker / tab rename overlay.
   const [overlay, setOverlay] = useState<"none" | "menu" | "diff" | "diffInput" | "rename">("none");
   const [menuIndex, setMenuIndex] = useState(0);
   const [refInput, setRefInput] = useState("");
@@ -347,7 +347,7 @@ function TerminalView({
       return;
     }
 
-    // An overlay (＋ menu / diff picker) owns the keyboard while open.
+    // An overlay (+ menu / diff picker) owns the keyboard while open.
     if (overlay !== "none") {
       const len = overlay === "menu" ? menuItems.length : DIFF_ITEMS.length;
       if (n === "escape") {
