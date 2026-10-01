@@ -35,7 +35,7 @@ test("opened terminals don't pile up keypress listeners", async () => {
   await saveState(state);
   await reconcile(state);
   app = await renderApp();
-  await waitForText(app, "feature/c");
+  await waitForText(app, "· c");
   app.mockInput.pressKey("j"); // the main worktree
   const idle = keypressListeners();
 

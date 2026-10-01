@@ -25,10 +25,13 @@ afterEach(() => {
   sandbox.cleanup();
 });
 
+/** A worktree name too long for the default sidebar. */
+const NAME = "a-worktree-name-too-long-for-the-sidebar";
+
 /** One project in state, optionally with a remembered sidebar width. */
 async function oneProject(sidebarWidth?: number) {
   const root = await makeRepo(join(sandbox.workspace, "widget"), {
-    worktrees: [{ branch: "feature/x" }],
+    worktrees: [{ branch: `feature/${NAME}` }],
   });
   const state = loadState();
   upsertRepo(state, { nameWithOwner: "acme/widget", name: "widget", root });
@@ -50,9 +53,14 @@ function waitForDivider(app: RenderedApp, col: number) {
   return waitUntil(app, () => dividerColumn(app) === col, `the divider at column ${col}`);
 }
 
-/** The project's path, as the sidebar shows it (shortened to fit) — the row under its name. */
-function shownPath(app: RenderedApp): string {
-  return (app.captureCharFrame().split("\n")[2] ?? "").slice(0, dividerColumn(app)).trim();
+/** The worktree's row, as the sidebar shows it (its name cut short to fit). */
+function shownRow(app: RenderedApp): string {
+  const row =
+    app
+      .captureCharFrame()
+      .split("\n")
+      .find((l) => l.includes("· a-worktree")) ?? "";
+  return row.slice(0, dividerColumn(app)).trim();
 }
 
 function storedWidth(): number | undefined {
@@ -62,7 +70,7 @@ function storedWidth(): number | undefined {
 async function start(sidebarWidth?: number) {
   await oneProject(sidebarWidth);
   app = await renderApp();
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· a-worktree");
 }
 
 describe("dragging the divider", () => {
@@ -73,12 +81,12 @@ describe("dragging the divider", () => {
 
   test("resizes the sidebar live and remembers the width", async () => {
     await start();
-    const before = shownPath(app);
+    const before = shownRow(app);
     await app.mockMouse.drag(DEFAULT_COL, 10, 50, 10);
     await waitForDivider(app, 50);
-    // The wider sidebar shows more of the project's path (all of it, if the temp dir's is short).
-    expect(shownPath(app).length).toBeGreaterThan(before.length);
-    expect(shownPath(app)).toEndWith("/workspace/widget");
+    // The wider sidebar shows more of the worktree's name — all of it.
+    expect(before).not.toEndWith(NAME);
+    expect(shownRow(app)).toEndWith(NAME);
     await waitUntil(app, () => storedWidth() === 51, "the width to be saved");
   });
 

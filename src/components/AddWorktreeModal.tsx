@@ -630,7 +630,7 @@ function RepoList(p: BodyProps) {
 function Actions(p: BodyProps) {
   const theme = useTheme();
   const rows = [
-    { label: "＋ Create new worktree", hint: "" },
+    { label: "+ Create new worktree", hint: "" },
     ...p.existing.map((w) => ({
       label: (w.isMain ? "◆ " : "○ ") + w.name,
       hint: w.branch,

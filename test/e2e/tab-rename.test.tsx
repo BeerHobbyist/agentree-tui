@@ -9,7 +9,7 @@ import { MouseButtons } from "@opentui/core/testing";
 import { sessionName } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
+import { tabBar, waitForSelection, waitForTab, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -75,7 +75,7 @@ async function start() {
   await saveState(state);
   await reconcile(state);
   app = await renderApp();
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· x");
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "x");
@@ -86,24 +86,15 @@ async function start() {
     app,
     () => {
       const tab = tmuxTabs()[0];
-      return !!tab && tab.name !== "tmux" && app.captureCharFrame().includes(`● ${tab.name} `);
+      return !!tab && tab.name !== "tmux" && tabBar(app).includes(` ${tab.name} `);
     },
     "the tab bar to show the terminal's tab",
   );
 }
 
-/** Where `text` first appears on screen. */
-function locate(text: string): { x: number; y: number } {
-  const lines = app.captureCharFrame().split("\n");
-  const y = lines.findIndex((l) => l.includes(text));
-  if (y < 0) throw new Error(`"${text}" not on screen`);
-  return { x: lines[y]!.indexOf(text), y };
-}
-
-/** Right-click the first tab and wait for the rename prompt. */
+/** Right-click the first tab (right after the bar's ‹) and wait for the rename prompt. */
 async function rightClickTab() {
-  const { x, y } = locate("● ");
-  await app.mockMouse.click(x + 2, y, MouseButtons.RIGHT);
+  await app.mockMouse.click(tabBar(app).indexOf("‹") + 3, 0, MouseButtons.RIGHT);
   await waitForText(app, PROMPT);
 }
 
@@ -121,7 +112,7 @@ describe("renaming a terminal tab", () => {
     app.mockInput.pressEnter();
     await waitForTextGone(app, PROMPT);
 
-    await waitForText(app, "● Dev Server");
+    await waitForTab(app, "Dev Server");
     expect(tmuxTabs()).toEqual([{ name: "Dev Server", auto: false }]);
   });
 
@@ -145,7 +136,7 @@ describe("renaming a terminal tab", () => {
     app.mockInput.pressKey("u", { ctrl: true });
     type("Scratch");
     app.mockInput.pressEnter();
-    await waitForText(app, "● Scratch");
+    await waitForTab(app, "Scratch");
 
     await rightClickTab();
     await waitForText(app, "❯ Scratch");
@@ -157,7 +148,7 @@ describe("renaming a terminal tab", () => {
     // it called the tab at first, while the shell was still starting that program.
     await waitUntil(
       app,
-      () => tmuxTabs()[0]?.name === runningProgram() && app.captureCharFrame().includes(`● ${runningProgram()} `),
+      () => tmuxTabs()[0]?.name === runningProgram() && tabBar(app).includes(` ${runningProgram()} `),
       "the tab to be named after its program again",
     );
   });
@@ -178,7 +169,7 @@ describe("renaming a terminal tab", () => {
     app.mockInput.pressKey("u", { ctrl: true });
     type("Dev server on port 3000 (vite)");
     app.mockInput.pressEnter();
-    await waitForText(app, "● Dev server on port…");
+    await waitForTab(app, "Dev server on port…");
     expect(tmuxTabs()[0]!.name).toBe("Dev server on port 3000 (vite)");
     // …and the prompt starts from the whole name.
     await rightClickTab();

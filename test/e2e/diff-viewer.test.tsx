@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { sessionName } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { waitForSelection, waitForText, waitUntil } from "../helpers/frame";
+import { activeTab, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -41,12 +41,12 @@ async function start(opts: { viewers?: string; saved?: string } = {}): Promise<s
   await reconcile(state);
   if (opts.viewers) process.env.AGENTREE_DIFF_VIEWERS = opts.viewers;
   app = await renderApp({ width: 120 });
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· x");
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "x");
   app.mockInput.pressEnter();
-  await waitForText(app, "^g sidebar");
+  await waitForText(app, "^g");
   return join(root, ".worktrees", "feature-x");
 }
 
@@ -81,7 +81,7 @@ describe("the diff picker", () => {
     await openPicker();
     app.mockInput.pressEnter(); // Working changes
     await waitUntil(app, () => diffTab().includes("+a change to review"), "the diff tab to show the change");
-    await waitForText(app, "● diff");
+    await waitUntil(app, () => activeTab(app) === "diff", "the diff tab to be the one on screen");
   });
 
   test("an empty diff says so instead of the tab flashing shut", async () => {

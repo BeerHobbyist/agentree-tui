@@ -94,7 +94,7 @@ async function setup(opts: { prView?: boolean; branchPr?: boolean } = {}) {
 /** Render at a comfortable size and select feature/login's row. */
 async function openOnLogin(width = 140) {
   app = await renderApp({ width, height: 40 });
-  await waitForText(app, "feature/login");
+  await waitForText(app, "· login");
   app.mockInput.pressKey("j"); // main
   app.mockInput.pressKey("j"); // login
   await waitForSelection(app, "login");
@@ -124,9 +124,9 @@ describe("showing the PR", () => {
     for (const text of [
       "ignacy · main ← feature/login",
       "+412 −37 · 9 files",
-      "alice · approved",
-      "bob · changes requested",
-      "carol · review requested",
+      "✓ alice",
+      "✗ bob",
+      "◌ carol",
       "✗ 1  ◌ 1  ✓ 1", // checks summary
       "✗ lint · CI",
       "auth",
@@ -244,7 +244,7 @@ describe("folding sections", () => {
     const frame = await waitForText(app, "▸ Checks");
     expect(frame).toContain("✗ 1  ◌ 1  ✓ 1"); // the counts, still there
     expect(frame).not.toContain("✗ lint · CI");
-    expect(frame).toContain("alice · approved"); // other sections untouched
+    expect(frame).toContain("✓ alice"); // other sections untouched
 
     await clickHeader("Checks"); // and back
     await waitForText(app, "✗ lint · CI");

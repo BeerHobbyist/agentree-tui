@@ -19,9 +19,9 @@ import { MAX_LABEL_LENGTH, type State } from "../store";
 import { useLive } from "./live";
 
 export type Overlay =
-  /** Add a worktree (or a project): `n`, `a`, a header's ＋. */
+  /** Add a worktree (or a project): `n`, `a`, a header's +. */
   | { kind: "add"; preselect: PreselectRepo | null }
-  /** Add an SSH host, or a directory to one: `s`, its ＋. */
+  /** Add an SSH host, or a directory to one: `s`, its +. */
   | { kind: "ssh"; host?: string }
   | { kind: "help" }
   /** The command palette (`ctrl+p`). */

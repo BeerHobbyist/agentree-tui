@@ -58,7 +58,7 @@ async function start(opts: { view?: Record<string, unknown>; settings?: Record<s
   sandbox.setPrView(42, prView(opts.view));
   if (opts.settings) sandbox.setRepoSettings(opts.settings);
   app = await renderApp({ width: 140, height: 40 });
-  await waitForText(app, "feature/login");
+  await waitForText(app, "· login");
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
