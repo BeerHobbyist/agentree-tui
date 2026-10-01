@@ -11,18 +11,19 @@ by tmux, with tabs and pane splitting.
 
 Working, at MVP+ level:
 
-- **Sidebar** — projects as foldable groups under header bands; each worktree
-  a two-line card (blank line between cards): status glyph, name and PR badge
-  `⇡#N` via `gh` coloured by CI (`⇡#N merged` once merged, until the worktree
-  is closed); then the branch, an uncommitted-changes count (`●3`), +/− and
-  ahead/behind, and the **agent status** label (◆ needs action · ⠹ working ·
-  ✓ done · ○ idle) — animated: working spins, needs-action pulses. Scrolls when it's taller than the screen, keeping the
-  selection in view; keyboard + mouse nav, and clicking it gives it
-  the keyboard. **Resizable** (drag its edge or `[` / `]`), width remembered;
-  **hideable** (`b` or its `⇤`; back with `b`, Ctrl+g or the tab bar's `‹`).
-  Worktrees can be **renamed** (`R` / right-click): a label shown instead of the
-  branch's leaf name — the branch and directory keep their names. The footer's
-  hint line is one line of keys for the selected row.
+- **Sidebar** — projects as foldable groups; each worktree one line: the
+  **agent status** glyph (◆ needs you · ⠹ working · ✓ done · ○ idle —
+  animated: working spins, needs-action pulses), name, an uncommitted-changes
+  count (`●3`) and PR badge via `gh` (`⇡#N` coloured by CI, `⇡#N◌` a draft,
+  `✓#N` once merged, until the worktree is closed). The selected one opens a
+  second line: its branch (when it isn't the name), +/− and ahead/behind.
+  Scrolls when it's taller than the screen, keeping the selection in view;
+  keyboard + mouse nav, and clicking it gives it the keyboard. **Resizable**
+  (drag its edge or `[` / `]`), width remembered; **hideable** (`b` or its
+  footer's `«`; back with `b`, Ctrl+g or the tab bar's `‹`). Worktrees can be
+  **renamed** (`R` / right-click): a label shown instead of the branch's leaf
+  name — the branch and directory keep their names. The footer is one row:
+  agent counts, then `◑` theme, `?` help, `«` hide.
 - **Agents** — status for the agents agentree starts, and (with `H`, which adds
   its hooks to Claude's user settings) for any claude started in its terminals,
   on SSH hosts too. A desktop notification when one needs you or finishes while
@@ -32,15 +33,15 @@ Working, at MVP+ level:
   comments; `p` / ⌥p toggles, `o` opens on GitHub, `r` refreshes, **`m`
   merges** (pick a method the repo allows, then confirm; a blocked PR can be
   set to auto-merge). Once merged, **closing the worktree** is one key: `d`
-  (the sidebar hint leads with it), the panel's `Close worktree…`, or `d` on the
-  merge dialog's done screen. Sections fold (click their header band), remembered.
+  (the badge says `✓#N`), the panel's `Close worktree…`, or `d` on the
+  merge dialog's done screen. Sections fold (click their title), remembered.
 - **Add / load worktree** — modal: pick from **every gh-accessible repo**
   (paginated, relevance-ranked filter), clone if missing, `git worktree add`,
-  persisted; `＋` on a header or `a` preselects the project. The repo's open
+  persisted; `+` on a header or `a` preselects the project. The repo's open
   PRs are listed alongside existing worktrees as one-key picks, fetched via
   `refs/pull/<n>/head` (works for forks) and named after the PR's branch.
 - **SSH projects** — `s` adds a host (typed, or from `~/.ssh/config`) and a
-  directory on it; `＋`/`a` add more directories. Their terminals run on the
+  directory on it; `+`/`a` add more directories. Their terminals run on the
   host, in tmux there. Key or password login (asked for, never stored); only
   `ssh` is needed locally. Remote shells only: no git status, PRs or diff.
 - **Embedded terminals** — OpenTUI `EmbeddedTerminal` + **Bun native PTY** + tmux
@@ -169,7 +170,7 @@ the app polls those and cross-checks tmux (see **Agent status**).
   `CommandPalette`, `Sidebar`, `WorktreeItem` (+ `AgentGlyph`), `ResizeHandle` (sidebar / PR
   panel divider), `PrPanel`, `AddWorktreeModal`, `ConfirmModal`, `EmbeddedTerminal` (registers a
   `StableCursorEmbeddedTerminal` subclass — see **Terminal fidelity**),
-  `TerminalPane`, `TabBar`, `HelpOverlay`, `MenuOverlay` (＋ menu / diff picker).
+  `TerminalPane`, `TabBar`, `HelpOverlay`, `MenuOverlay` (+ menu / diff picker).
 - `src/hooks/useTerminalSession.ts` — Bun PTY lifecycle wired to the emulator.
 - `scripts/` — `check-coverage.ts` (CI's coverage minimum), `screenshots.tsx`
   and `record.tsx` (README screenshots, demo recordings; see **Quality
@@ -198,10 +199,11 @@ the app polls those and cross-checks tmux (see **Agent status**).
   sidebar gives it the keyboard, inside a terminal gives that terminal the
   keyboard. Sidebar rows: worktree → select and show its terminal (keys stay in
   the sidebar), double-click (400ms) → type in it, right-click → rename; header →
-  select+fold. `＋` add worktree, footer theme + `?` help; **drag the sidebar's
-  right edge** to resize (double-click resets); the add-worktree modal
-  repo/action rows; tab bar (tab, right-click → rename, `×` close tab, `＋`
-  menu, `⬌`/`⬍` split, `✕` close pane, `‹` back). Inside a terminal tmux has `mouse on`: clicks, drags
+  select+fold. `+` add worktree; footer `◑` theme, `?` help, `«` hide; **drag
+  the sidebar's right edge** to resize (double-click resets); the add-worktree
+  modal repo/action rows; tab bar (tab, right-click → rename, `×` close the lit
+  tab, `+` menu, `◫`/`⊟` split, `✕` close pane, `‹` back). Inside a terminal
+  tmux has `mouse on`: clicks, drags
   and the wheel reach the program (nvim, pagers), and clicking a split pane
   selects it (this replaced the old coordinate → `list-panes` hit-testing).
   Click anywhere to close help.
@@ -212,14 +214,16 @@ the app polls those and cross-checks tmux (see **Agent status**).
 `midnight`, `opencode` — OpenCode's default palette), `getTheme`/`setTheme`/
 `cycleTheme`, `mix(a, b, t)` for blending two colours, and a `useTheme()` hook
 (`useSyncExternalStore`) so the whole UI re-renders on change. Every component
-reads `const theme = useTheme()`. `t` (or the footer swatch) cycles themes.
+reads `const theme = useTheme()`. `t` (or the footer's `◑`, or the palette)
+cycles themes, and a toast names the new one (`◑ midnight`) — the footer has
+no room for it.
 Terminals re-theme live: `TerminalView` re-applies tmux `window-style` /
 `pane-border-style` globally (`applyTheme`) on theme change. Pane borders carry
 the pane `bg` so the divider blends (no seam) — this was the "scuffed borders" fix.
 
 ## Diff viewers
 
-The tab-bar `＋` opens a small menu (`MenuOverlay`): **New shell** / **New
+The tab-bar `+` opens a small menu (`MenuOverlay`): **New shell** / **New
 agent** / **New diff**; `⌥d` opens the diff picker directly: **Working
 changes** / **Staged** / **vs base branch** (`git.baseRef` finds it, e.g.
 `origin/main`) / **Specific ref / commit…**. Each is a set of `git diff`
@@ -262,7 +266,7 @@ plain shell the first time its tmux session is created: `claude`, or
 it only runs on session creation, so re-opening an already-open worktree just
 re-attaches to the running shell/agent instead of relaunching it
 (`attachCommand`'s new `startupCommand` param, `src/services/tmux.ts`).
-The ＋ menu / `⌥a` (`openAgent` in `TerminalPane.tsx`) opens the same command
+The + menu / `⌥a` (`openAgent` in `TerminalPane.tsx`) opens the same command
 in a fresh tab, the same way `⌥d` opens a diff.
 
 ## Agent status
@@ -362,7 +366,7 @@ A host and directories on it, opened as terminals there — remote shells, no gi
 features. Project id `ssh:<host>`; `state.hosts[]` holds the host, its `$HOME`
 (to show paths as `~/…`) and each directory's absolute path.
 
-- **Adding** (`SshModal`, `s`; `＋`/`a` on the host skip to the directory):
+- **Adding** (`SshModal`, `s`; `+`/`a` on the host skip to the directory):
   `probeRemoteDir` connects once in batch mode, `cd`s into the directory
   (`~` → `"$HOME"`), prints its absolute path and `$HOME`, and checks tmux is
   there. Missing directory, no tmux, or an unknown host key → says why;
@@ -430,34 +434,45 @@ without losing the chosen width, and saved as `ui.sidebarWidth` in state.json
 OpenTUI only captures on the first drag event, by which time the pointer is
 usually over the terminal, which would take the drag and hand it to nvim.
 
-**Hiding it**: `b`, or the `⇤` in its top-right corner (the row that used to be
-padding), gives the content the whole width; with a terminal on screen, the
+**Hiding it**: `b`, or the `«` at the end of its footer, gives the content the
+whole width; with a terminal on screen, the
 keys go to it. Anything that goes back to the sidebar shows it again — `b`,
 Ctrl+g, the tab bar's `‹` — so there's no separate "show" to learn. Remembered
 (`ui.sidebarHidden`); with nothing open, the placeholder says `b` shows it.
 `fitPanels(…, sidebarHidden)` gives it 0 columns, so the PR panel can use them.
 
-**Layout** (#50; it was crammed): project headers are bands (`theme.panelAlt`,
-like the PR panel's sections) with the path under them; worktrees are
-`WorktreeItem` cards two lines tall with a blank line between them and no tree
-rule. Line 1 — status, name, PR; line 2 — branch, changes, agent label (the
-label used to squeeze the name on line 1). The branch is `fgFaint` (muted on
-the selected card), not dimmed on top. The list is a `scrollbox`: every row
-has an id (`sidebar-row:<key>`) and `scrollChildIntoView` follows the
-selection; the footer is `flexShrink={0}` or the list squeezes it to one row.
+**Layout** (#59; #50's spaced two-line cards, header bands and project paths
+read as clutter): a project header is `▾ name … +` (a folded one adds its most
+urgent agent glyph, `●` if anything's dirty, and its worktree count); a blank
+line between projects; under it, its worktrees one line each (`WorktreeItem`)
+— status glyph aligned under the project's name, the name (muted unless
+selected), `●N`, the PR badge (`prBadge`, shared with the tab bar). The status
+words went: the glyph says it, and `?`'s Icons section is the legend. Only
+the selected row grows a second line, and only when there's something for it
+— the branch when it isn't the name (so not `main`), +/−, ahead/behind. The
+list is a `scrollbox`: every row has an id (`sidebar-row:<key>`) and
+`scrollChildIntoView` follows the selection — after layout, too (see **Key
+learnings**); the footer is `flexShrink={0}` or the list squeezes it to one
+row. The footer is one row — agent counts (each clickable), then `◑ ? «` — and
+its line of hints for the selected row (`footerHint`) is gone: the palette
+(`^p`) and `?` cover them, and the empty pane still says what to do next.
 
 ## PR panel
 
 `src/components/PrPanel.tsx`, on the right of the content pane, for the
 worktree on screen (the open terminal's, else the selected row's) when it has
 an open PR. Sections: header (number, state, title — click to open —,
-author, `base ← head`, +/−, files, last update), **Merge** (`mergeStatus`:
+author, `base ← head`, +/−, files), **Merge** (`mergeStatus`:
 ready, conflicts, behind, blocked and why, draft, merged/closed), **Reviews**
-(decision, each reviewer's latest verdict, pending requests), **Checks**
+(decision as a glyph in its title, each reviewer's latest verdict as a glyph —
+✓ approved, ✗ changes requested, ◌ requested, ● commented, – dismissed —
+pending requests), **Checks**
 (counts; each check failing-first, click to open its log), **Labels**,
 **Description**, **Comments** (conversation, review summaries and inline code
-comments with `file:line`, newest first; click to open). Details are cached per PR
-(TanStack Query): switching back to a PR seen in the last 30s fetches nothing;
+comments with `file:line`, newest first; click to open). The footer says how
+fresh it is (`↻ just now`, `↻ refreshing…`, `↻ failed`), then `m merge · o
+open` — `r refresh` left it, since it no longer fit the default width.
+Details are cached per PR (TanStack Query): switching back to a PR seen in the last 30s fetches nothing;
 after that the cached copy shows at once while it refreshes. It re-fetches every
 30s while on screen and on `r`; the sections scroll (wheel, PgUp/PgDn). Toggle with `p` / ⌥p /
 its ✕ / the tab bar's `⇡#N` button; drag its left edge to resize. Both are
@@ -465,13 +480,14 @@ remembered (`ui.prPanelHidden`, `ui.prPanelWidth`). `fitPanels` narrows the
 sidebar to make room and hides the panel on a screen too narrow for it.
 
 Layout: the header is ruled off from the sections, and the footer from them
-too. Each section's title sits on a band (`theme.panelAlt`) across the panel;
-**clicking it folds the section** down to that band, which keeps its summary
+too. Each section's title is a bold line with a fold glyph (`▾ Reviews ✓`; it
+used to sit on a `panelAlt` band, #59 dropped those); **clicking it folds the
+section** down to that line, which keeps its summary
 (check counts, review verdict, comment count; the merge status and labels
 appear there once folded). Folded sections apply to every PR and are
 remembered (`ui.prPanelCollapsed`). Comments and the description are set off
-by a rule on their left (`Quote`). Bodies are indented one column, not to the
-title: the panel is often ~34 columns wide.
+by a rule on their left (`Quote`). Bodies are indented two columns, under the
+title (the panel is often ~34 columns wide, so no more).
 
 **Merging** (`m`, or the panel's `Merge…` button): `MergeModal` offers the methods
 the repo allows (`gh api repos/{repo}` → `allow_*_merge`; GitHub leaves those
@@ -484,7 +500,7 @@ Nothing runs before a separate confirm step. `gh pr merge -R … --<method>
 haven't seen fails the merge instead of riding along. Never `--delete-branch` —
 the worktree still has the branch checked out, and the repo's own "delete head
 branch" setting handles the remote. Afterwards the PR's details and every
-branch's PR lookup are invalidated, so the badge turns to `merged` — and the
+branch's PR lookup are invalidated, so the badge turns to `✓#N` — and the
 done screen offers `d` to close the worktree (the usual confirm follows).
 
 The sidebar's PR lookup (`prForBranch`) also asks for `statusCheckRollup` to
@@ -493,7 +509,7 @@ colour the `⇡#N` badge, and is re-run every 60s, when an agent changes state
 the cache keeps the last good badge through a network hiccup.
 
 It asks for every state (`--state all`): an open PR wins; with none, a
-**merged** one shows (`⇡#N merged`, purple; the panel says Merged and offers
+**merged** one shows (`✓#N`, purple; the panel says Merged and offers
 `Close worktree…`) — but only if it was this branch's. `--head` matches a
 branch *name*, so an older branch's PR with the same name, or a fork's `main`
 merged into ours, would otherwise turn up. Its commits must be the worktree's
@@ -580,15 +596,17 @@ could replace it with its own, fooling only other sandboxed agents.
 Key hints stay short — and styled as in OpenCode: each key bright, what it
 does muted (`Hints`, from pairs, or `hintsFrom("↑↓ choose · y / ⏎ confirm")`).
 Every action is in the command palette (`ctrl+p`), every key in the help
-overlay (`?`). The tab bar shows
-only `^g sidebar` (the way back — it used to list ten ⌥ chords, which pushed
-the tabs and even the `＋` button out of view). The sidebar footer's hint line
-is one line for the selected row (`footerHint`, at most 33 columns — the
-default sidebar's room), always ending in `^p commands`: `⏎ open · d close`
-on a worktree, `d close (merged)` once its PR is merged, `a dir · d remove`
-on an SSH host, `n repo · s host` with nothing yet — `Tab next agent` first
-when one needs you. It was three wrapped lines of every sidebar key. The empty
-pane (a row selected, no terminal open) says what to do next the same way.
+overlay (`?`). The tab bar shows only a faint `^g` (the way back — it used to
+list ten ⌥ chords, which pushed the tabs and even the `+` button out of view;
+then `^g sidebar`, until #59 cut the word). The sidebar footer had a hint line
+for the selected row (`footerHint`: `⏎ open · d close · ^p commands`, …) —
+#59 dropped it for icons only; the empty pane (a row selected, no terminal
+open) still says what to do next, the same way.
+
+Controls are icons, not words (#59): the sidebar footer's `◑ ? «`, `+` on a
+project and in the tab bar (`+`, not the double-width `＋`), `◫ ⊟ ✕` for
+split / split / close pane, `✕` in a dialog's corner. A tab is just its name,
+lit when it's on screen (no `●`/`○`, no pane count); only the lit tab has `×`.
 
 The tab bar also can't shrink any more (`flexShrink={0}`): on a screen under
 ~20 rows the terminal below used to take its row, and the tabs vanished.
@@ -614,8 +632,10 @@ if-chain of keys. Now (646 lines + `src/app/`):
 ## Help
 
 `?` (or the footer `?`) opens `HelpOverlay` — a top-most overlay listing all
-sidebar / terminal / mouse shortcuts, an agent-status legend, and the active
-theme; `esc` / `?` / click closes. The sections scroll (`↑↓`/`j k`, PgUp/PgDn,
+sidebar / terminal / mouse shortcuts, an **Icons** legend (agent statuses,
+`●3`, `+12 −3 ↑1 ↓2`, the PR badges, `⌁`) — the sidebar shows glyphs only,
+so this is where they're spelled out — and the active theme; `esc` / `?` /
+click closes. The sections scroll (`↑↓`/`j k`, PgUp/PgDn,
 `g`/`G`, wheel): they had outgrown a 30-row screen and started drawing over
 each other.
 
@@ -637,8 +657,8 @@ screenshots, for the details):
   next theme). Enter or a click runs the key's own handler.
 - **Dialogs** (`Dialog`, `rowLook`): borderless panel (`panelAlt`) over a
   dimmed screen (`#00000099`, OpenTUI blends it), a quarter of the way down,
-  bold title with a clickable `esc`; the selected row is filled with the
-  accent (and keeps its ▶, a cue that isn't only colour). Every pop-up uses
+  bold title with a clickable `✕` (`esc` until #59); the selected row is
+  filled with the accent (and keeps its ▶, a cue that isn't only colour). Every pop-up uses
   it; a click outside closes, except while busy.
 - **Toasts** (`src/app/toasts.tsx`): top right, `┃` edges in the kind's colour,
   one at a time, 4–8s by kind (failures longest), `esc` or a click dismisses.
@@ -766,6 +786,11 @@ screenshots, for the details):
   gave the first README screenshots misaligned rows (symbols from fallback
   fonts at other widths), stripes between rows, gappy box lines and boxes
   behind dim text. They're drawn by xterm.js now (#48).
+- **`scrollChildIntoView` measures the last layout** (#59): the selected
+  sidebar row grows a line, but the effect that scrolls to it runs before
+  that's laid out, so the last row's second line ended up just below the
+  list. The row passes `onSizeChange` (fired from `updateFromLayout`, with its
+  new `y` and height) and the sidebar scrolls to it again from there.
 
 ## Tests
 
@@ -809,6 +834,12 @@ test's sandbox has already replaced that environment — so a save still in
 flight (a merge's `.then` saving the method used) lands in the *next* test's
 state file, which then starts with a stale worktree. Seen once in CI (#34); the
 merge tests now wait for the save.
+**Waiting for the app** (#59): a worktree's branch only shows on the selected
+row, so tests wait for its row by name — `· x` (status glyph, name) — not
+`feature/x`; where an agent may already have reported, for the row whatever
+its glyph. The tab bar has helpers (`tabBar`, `activeTab` — the lit tab is
+the bar's only bold text — and `waitForTab`), as the tabs lost their `●`/`○`.
+
 Terminal-focused chords *can* be driven: mock keys reach the app's global key
 handlers before the focused emulator, as real input does (checked with Ctrl+g
 and ⌥r; this file used to say otherwise). The tab-rename tests do it, and read
@@ -852,7 +883,11 @@ merged) and linked by commit. Scenes: `agents`, `palette`, `themes`.
 
 ## Deferred / follow-ups
 
-- Test coverage for the rest of the terminal pane (panes, the ＋ menu) — its
+- README screenshots predate #59's UI; `bun scripts/screenshots.tsx` needs tmux
+  and Chrome outside a sandbox — and on macOS `google-chrome` on PATH, as
+  `scripts/lib/terminal.ts` doesn't look in `/Applications`.
+
+- Test coverage for the rest of the terminal pane (panes, the + menu) — its
   keys can be driven now (see **Tests**); the diff picker is covered.
 - Restore/list live sessions on startup; layout-restore JSON (reboot survival).
 - Agent status: "needs action" lags a permission prompt by Claude's ~6s
@@ -889,6 +924,15 @@ merged) and linked by commit. Scenes: `agents`, `palette`, `themes`.
   a shared socket — kill specific sessions only.
 
 ## Commit history
+
+### 2026-10-01
+
+- #59 `a748bb9` Icons over words: one line per worktree (the selected one adds
+  its branch, +/−, ahead/behind), status glyphs without labels, `✓#N` for a
+  merged PR and `⇡#N◌` a draft, a one-row sidebar footer (`◑ ? «`; its hint
+  line gone), an icon tab bar (`◫ ⊟ ✕`, `^g`), PR panel sections without bands,
+  `✕` in dialogs; the theme is named in a toast, the help has an Icons legend.
+  `158f841` a test's wait for a row whatever its agent's glyph
 
 ### 2026-09-25
 
