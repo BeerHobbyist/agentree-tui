@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
-import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { Worktree } from "../data/model";
 import {
@@ -15,6 +14,7 @@ import { diffCommand, nextViewer, resolveViewer, viewer, type DiffTarget, type D
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { baseRefQuery, diffViewersQuery, queryKeys, tmuxAvailableQuery, tmuxWindowsQuery } from "../queries";
 import { useTerminalSession } from "../hooks/useTerminalSession";
+import { useKeyboardWhile } from "../hooks/useKeyboardWhile";
 import { agentLaunchCommand, agentSessionEnv, remoteSessionEnv } from "../services/agents";
 import { remoteAgentCommand } from "../config";
 import { TabBar } from "./TabBar";
@@ -319,8 +319,7 @@ function TerminalView({
   // preventDefault/stopPropagation so these chords don't also reach the shell
   // (verified: useKeyboard runs before the focused renderable). Everything else
   // falls through to the terminal. tmux-native Ctrl+b keys keep working.
-  useKeyboard((key) => {
-    if (!focused) return;
+  useKeyboardWhile(focused, (key) => {
     // The rename prompt owns the keyboard (it consumes every key itself).
     if (overlay === "rename") return;
     const n = key.name;

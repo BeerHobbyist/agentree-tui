@@ -50,6 +50,21 @@ function tmuxTabs(): { name: string; auto: boolean }[] {
     });
 }
 
+/** The program running in the session's pane: what tmux names a tab after. */
+function runningProgram(): string {
+  const out = Bun.spawnSync([
+    "tmux",
+    "-L",
+    sandbox.tmuxSocket,
+    "display",
+    "-p",
+    "-t",
+    SESSION,
+    "#{pane_current_command}",
+  ]);
+  return new TextDecoder().decode(out.stdout).trim();
+}
+
 /** Open feature/x's terminal and wait for its first tab. */
 async function start() {
   const root = await makeRepo(join(sandbox.workspace, "widget"), {
@@ -117,7 +132,6 @@ describe("renaming a terminal tab", () => {
 
   test("an empty name gives the tab back to tmux's automatic naming", async () => {
     await start();
-    const automatic = tmuxTabs()[0]!.name;
     await rightClickTab();
     app.mockInput.pressKey("u", { ctrl: true });
     type("Scratch");
@@ -130,7 +144,13 @@ describe("renaming a terminal tab", () => {
     await waitForText(app, "automatic — the program running in it");
     app.mockInput.pressEnter();
     await waitUntil(app, () => tmuxTabs()[0]?.auto === true, "automatic naming to be back on");
-    await waitForTab(app, automatic, { timeoutMs: 5_000 });
+    // tmux names it after the program running in it now — not necessarily what
+    // it called the tab at first, while the shell was still starting that program.
+    await waitUntil(
+      app,
+      () => tmuxTabs()[0]?.name === runningProgram() && tabBar(app).includes(` ${runningProgram()} `),
+      "the tab to be named after its program again",
+    );
   });
 
   test("⌥r renames the current tab from the keyboard", async () => {

@@ -163,12 +163,14 @@ function shellQuote(s: string): string {
 
 /**
  * `command` with the status hooks attached, when it launches `claude` (and
- * doesn't already pass its own `--settings`). Anything else — another agent, a
+ * doesn't already pass it its own `--settings` — a wrapper's before it, like
+ * `fence --settings …`, doesn't count). Anything else — another agent, a
  * custom override — runs untouched.
  */
 export function withStatusHooks(command: string, settingsPath = hooksSettingsPath()): string {
   const words = command.trim().split(/\s+/);
-  if (!words.includes("claude") || words.includes("--settings")) return command;
+  const claude = words.indexOf("claude");
+  if (claude < 0 || words.slice(claude + 1).includes("--settings")) return command;
   return `${command} --settings ${shellQuote(settingsPath)}`;
 }
 

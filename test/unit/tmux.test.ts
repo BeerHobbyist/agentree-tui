@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   DEFAULT_SOCKET,
   attachCommand,
   behaviorOptions,
+  listPaneActivity,
   preAttachOptions,
   sessionName,
   socketName,
@@ -186,5 +190,25 @@ describe("tmuxInstallHint", () => {
 
   test("a plain hint when there's none it knows", () => {
     expect(tmuxInstallHint("linux", has())).toBe("install tmux with your package manager");
+  });
+});
+
+describe("listPaneActivity", () => {
+  /** Put a `tmux` first on PATH that fails the way `message` says. */
+  const failingTmux = (message: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "agentree-fake-tmux-"));
+    writeFileSync(join(dir, "tmux"), `#!/bin/sh\necho '${message}' >&2\nexit 1\n`);
+    chmodSync(join(dir, "tmux"), 0o755);
+    process.env.PATH = `${dir}:${process.env.PATH}`;
+  };
+
+  test("no server: no panes", async () => {
+    failingTmux("error connecting to /tmp/tmux-501/agentree (No such file or directory)");
+    expect(await listPaneActivity()).toEqual(new Map());
+  });
+
+  test("a sandbox keeping us off the socket: unknown, so no agent's report counts as stale", async () => {
+    failingTmux("error connecting to /private/tmp/tmux-501/agentree (Operation not permitted)");
+    expect(await listPaneActivity()).toBeNull();
   });
 });

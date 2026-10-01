@@ -8,9 +8,13 @@
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { App } from "./app";
+import { startBroker } from "./services/broker";
 import { loadState, reconcile } from "./store";
 
 export async function startTui(): Promise<void> {
+  // Tabs for the agents in a sandbox (src/services/broker.ts), while the app runs.
+  const broker = await startBroker().catch(() => null);
+  if (broker) process.on("exit", () => broker.stop());
   const state = loadState();
   const initialProjects = await reconcile(state);
   // exitOnCtrlC is disabled so Ctrl+C reaches the focused terminal (the shell);
