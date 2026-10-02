@@ -95,6 +95,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["+ in the tab bar", "new shell · new agent · new diff (hunk)"],
       ["tab bar", "× close tab · ◫ ⊟ split · ✕ close pane"],
       ["click a pane", "focus that split pane"],
+      ["drag in a shell", "select + copy · click or type to clear"],
     ],
   },
 ];
