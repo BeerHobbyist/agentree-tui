@@ -213,6 +213,8 @@ export async function listPaneActivity(): Promise<Map<string, number> | null> {
     return null;
   }
   if (res.code !== 0) {
+    // A sandbox keeping us off the socket isn't "no server": the panes are unknown.
+    if (/not permitted|permission denied/i.test(res.stderr)) return null;
     return /no server running|error connecting|no sessions/i.test(res.stderr) ? new Map() : null;
   }
   const panes = new Map<string, number>();
@@ -305,13 +307,26 @@ export function tmuxOn(host?: string, opts: { onlyIfConnected?: boolean } = {}) 
     },
 
     /**
-     * Create a detached session running the plain shell, if it doesn't exist
-     * yet — no theming, no startup command (the app applies those itself the
-     * first time it opens the worktree's terminal via `attachCommand`).
+     * Create a detached session running the plain shell (or `command`, an
+     * argv), if it doesn't exist yet — no theming, no startup command (the app
+     * applies those itself the first time it opens the worktree's terminal via
+     * `attachCommand`). Returns its pane's id.
      */
-    async newSession(session: string, cwd: string): Promise<void> {
-      const { code, stderr } = await exec("new-session", "-d", "-s", session, "-c", cwd);
+    async newSession(session: string, cwd: string, command: string[] = []): Promise<string> {
+      const { code, stdout, stderr } = await exec(
+        "new-session",
+        "-d",
+        "-P",
+        "-F",
+        "#{pane_id}",
+        "-s",
+        session,
+        "-c",
+        cwd,
+        ...command,
+      );
       if (code !== 0) throw new Error(stderr.trim() || `couldn't start a session for ${session}`);
+      return stdout.trim();
     },
 
     /** List a session's windows (tabs). Empty if the session is gone. */
@@ -405,18 +420,38 @@ export function tmuxOn(host?: string, opts: { onlyIfConnected?: boolean } = {}) 
     },
 
     /**
-     * Open a tab (window) running the user's shell, without switching to it
-     * unless `select`; returns its index. `cwd` defaults to the session's
-     * directory.
+     * Open a tab (window) running the user's shell (or `command`, an argv),
+     * without switching to it unless `select`; returns its index and its
+     * pane's id. `cwd` defaults to the session's directory.
      */
-    async openTab(session: string, opts: { name?: string; cwd?: string; select?: boolean } = {}): Promise<number> {
-      const args = ["new-window", "-P", "-F", "#{window_index}", "-t", `${session}:`];
+    async openTab(
+      session: string,
+      opts: { name?: string; cwd?: string; select?: boolean; command?: string[] } = {},
+    ): Promise<{ index: number; pane: string }> {
+      const args = ["new-window", "-P", "-F", "#{window_index}\t#{pane_id}", "-t", `${session}:`];
       if (!opts.select) args.push("-d");
       if (opts.name) args.push("-n", opts.name);
       if (opts.cwd) args.push("-c", opts.cwd);
-      const { code, stdout, stderr } = await exec(...args);
+      const { code, stdout, stderr } = await exec(...args, ...(opts.command ?? []));
       if (code !== 0) throw new Error(stderr.trim() || `couldn't open a tab in ${session}`);
-      return parseInt(stdout.trim(), 10);
+      const [index, pane] = stdout.trim().split("\t");
+      return { index: parseInt(index || "0", 10), pane: pane || "" };
+    },
+
+    /** Set a user option (`@name`) on one pane, to mark it. */
+    async tagPane(pane: string, option: string): Promise<void> {
+      const { code, stderr } = await exec("set-option", "-p", "-t", pane, option, "1");
+      if (code !== 0) throw new Error(stderr.trim() || `couldn't mark ${pane}`);
+    },
+
+    /**
+     * The pane `target` names (a window: its active pane) and whether it's
+     * marked with `option`; null when there's no such pane.
+     */
+    async paneTag(target: string, option: string): Promise<{ pane: string; tagged: boolean } | null> {
+      const { code, stdout } = await exec("display-message", "-p", "-t", target, `#{pane_id}\t#{${option}}`);
+      const [pane, value] = stdout.trim().split("\t");
+      return code === 0 && pane ? { pane, tagged: value === "1" } : null;
     },
 
     /** The last `lines` lines a pane shows (scrollback included), wrapped lines joined. */
@@ -441,9 +476,13 @@ export function tmuxOn(host?: string, opts: { onlyIfConnected?: boolean } = {}) 
       if (enter) await exec("send-keys", "-t", target, "Enter");
     },
 
-    /** Press keys in a pane, tmux-style names (`C-c`, `Enter`, `Up`). */
+    /**
+     * Press keys in a pane, tmux-style names (`C-c`, `Enter`, `Up`). `--`: a
+     * key is never a flag — `-X copy-pipe …` or `-K` would have tmux itself
+     * run a command.
+     */
     async sendKeys(target: string, ...keys: string[]): Promise<void> {
-      const { code, stderr } = await exec("send-keys", "-t", target, ...keys);
+      const { code, stderr } = await exec("send-keys", "-t", target, "--", ...keys);
       if (code !== 0) throw new Error(stderr.trim() || `couldn't send keys to ${target}`);
     },
 

@@ -67,7 +67,7 @@ async function start(opts: RenderAppOptions = {}) {
     mergeable: "MERGEABLE",
   });
   app = await renderApp({ width: 140, height: 40, ...opts });
-  await waitForText(app, "feature/login");
+  await waitForText(app, "· login");
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
@@ -120,7 +120,7 @@ describe("terminal focus", () => {
     mkdirSync(agentStatusDir(), { recursive: true });
     writeFileSync(join(agentStatusDir(), `${session}.${pane}`), `needs-action ${Math.floor(Date.now() / 1000)}\n`);
 
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ login");
   });
 
   test("the app going away leaves the cache's focus state as it found it", async () => {

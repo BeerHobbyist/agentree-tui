@@ -10,7 +10,7 @@ import { sessionName, tmuxInstallHint } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { makeRepo } from "../helpers/repo";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
+import { activeTab, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
 let sandbox: Sandbox;
@@ -68,7 +68,6 @@ describe("adding an SSH host", () => {
     await addApi();
     const frame = app.captureCharFrame();
     expect(frame).toContain("⌁ dev-box");
-    expect(frame).toContain("ssh dev-box");
     expect(frame).toContain("· api");
     expect(sandbox.readState()!.hosts).toEqual([
       {
@@ -133,11 +132,11 @@ describe("adding an SSH host", () => {
     expect(sandbox.readState()?.hosts).toBeUndefined();
   });
 
-  test("＋ on the host adds another directory, straight to the directory step", async () => {
+  test("+ on the host adds another directory, straight to the directory step", async () => {
     await addApi();
-    // The host header's ＋ (the tab bar has one too, for a new tab).
+    // The host header's + (the first on its line: the sidebar is on the left).
     const header = locate("⌁ dev-box");
-    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf("＋");
+    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf("+");
     await app.mockMouse.click(plusX, header.y);
     await waitForText(app, "Add a directory on dev-box");
     app.mockInput.pressEnter(); // the default: ~
@@ -153,7 +152,7 @@ describe("adding an SSH host", () => {
     app.dispose();
     app = await renderApp();
     await waitForText(app, "⌁ dev-box");
-    await waitForText(app, "~/code/api");
+    await waitForText(app, "· api");
   });
 });
 
@@ -190,7 +189,7 @@ describe("what SSH projects leave out", () => {
     await addApi();
     await Bun.sleep(300);
     expect(sandbox.ghCalls().filter((c) => c.includes("--head"))).toEqual([]);
-    // No changed-files marker in the sidebar (the tab bar's "● tab" is fine).
+    // No changed-files marker in the sidebar (the tab bar is to its right).
     const sidebar = app
       .captureCharFrame()
       .split("\n")
@@ -245,7 +244,7 @@ describe("a host that logs in with a password", () => {
     sandbox.dropSshConnection(); // it expired while agentree was closed
 
     app = await renderApp();
-    await waitForText(app, "~/code/api");
+    await waitForText(app, "· api");
     const before = sandbox.sshLoginAttempts().length;
     app.mockInput.pressKey("g");
     app.mockInput.pressKey("j");
@@ -260,7 +259,7 @@ describe("a host that logs in with a password", () => {
     await waitUntil(app, () => sandbox.sshConnected(), "the terminal's login to connect");
     await waitUntil(
       app,
-      () => sandbox.sshCalls().some((c) => c.includes("list-windows")) && /● \S/.test(app.captureCharFrame()),
+      () => sandbox.sshCalls().some((c) => c.includes("list-windows")) && activeTab(app) !== "",
       "the tab bar to come back over the connection",
     );
   });
@@ -271,7 +270,7 @@ describe("without tmux on this machine (a Mac without it)", () => {
     sandbox.hideLocalTmux();
     await addApi();
     await waitUntil(app, () => tmuxPath(SESSION) !== null, "the remote tmux session");
-    await waitUntil(app, () => /● \S/.test(app.captureCharFrame()), "its tab bar");
+    await waitUntil(app, () => activeTab(app) !== "", "its tab bar");
     expect(app.captureCharFrame()).not.toContain("tmux not found");
   });
 
@@ -283,7 +282,7 @@ describe("without tmux on this machine (a Mac without it)", () => {
     await reconcile(state);
     sandbox.hideLocalTmux();
     app = await renderApp({ width: 120 });
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j");
     await waitForSelection(app, "x");

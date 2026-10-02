@@ -94,6 +94,10 @@ describe("withStatusHooks", () => {
     expect(withStatusHooks("claude", path)).toBe(`claude --settings '${path}'`);
     expect(withStatusHooks("caffeinate -is claude", path)).toBe(`caffeinate -is claude --settings '${path}'`);
     expect(withStatusHooks("claude --model opus", path)).toBe(`claude --model opus --settings '${path}'`);
+    // A sandbox's own --settings, before claude, is the sandbox's.
+    expect(withStatusHooks("fence --settings f.json -- claude", path)).toBe(
+      `fence --settings f.json -- claude --settings '${path}'`,
+    );
   });
 
   test("leaves other agents and explicit --settings alone", () => {

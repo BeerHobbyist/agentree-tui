@@ -59,6 +59,16 @@ export function checkLook(state: CheckState | undefined, theme: Theme): { glyph:
   }
 }
 
+/**
+ * A worktree's PR as a badge (the sidebar's, the tab bar's): `⇡#42` while
+ * open (`⇡#42◌` a draft), coloured by its checks; `✓#42` once merged.
+ */
+export function prBadge(pr: PrInfo, theme: Theme): { text: string; color: string } {
+  if (pr.merged) return { text: `✓#${pr.number}`, color: theme.agentWaiting };
+  const color = pr.checks ? checkLook(pr.checks, theme).color : pr.draft ? theme.fgMuted : theme.added;
+  return { text: `⇡#${pr.number}${pr.draft ? "◌" : ""}`, color };
+}
+
 function toneColor(tone: Tone, theme: Theme): string {
   switch (tone) {
     case "good":
@@ -97,9 +107,8 @@ const STATE_LABEL: Record<PrDetails["state"], string> = {
 };
 
 /**
- * A titled block. Its header is a band across the panel so sections don't run
- * together; clicking it folds the section down to that band. `extra` (counts,
- * a verdict) shows either way, `folded` only while folded.
+ * A titled block; clicking its title folds it down to that line. `extra`
+ * (counts, a verdict) shows either way, `folded` only while folded.
  */
 function Section({
   title,
@@ -119,20 +128,19 @@ function Section({
   const theme = useTheme();
   return (
     <box flexDirection="column" flexShrink={0} marginBottom={1}>
-      <box flexDirection="row" flexShrink={0} backgroundColor={theme.panelAlt} onMouseDown={onToggle}>
+      <box flexDirection="row" flexShrink={0} onMouseDown={onToggle}>
         <text fg={theme.fgFaint} flexShrink={0}>
-          {collapsed ? " ▸ " : " ▾ "}
+          {collapsed ? "▸ " : "▾ "}
         </text>
-        <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>
+        <text fg={theme.fg} attributes={TextAttributes.BOLD} flexShrink={0}>
           {title}
         </text>
         {extra}
         {collapsed && folded}
       </box>
       {!collapsed && (
-        // Glyphs line up under the band's ▾ — the band itself sets the
-        // section apart, and the panel is often narrow.
-        <box flexDirection="column" flexShrink={0} paddingLeft={1}>
+        // Glyphs line up under the title.
+        <box flexDirection="column" flexShrink={0} paddingLeft={2}>
           {children}
         </box>
       )}
@@ -247,11 +255,11 @@ export function PrPanel({
   });
   const decision =
     d?.reviewDecision === "approved"
-      ? { label: "approved", color: theme.added }
+      ? reviewerLook("approved", theme)
       : d?.reviewDecision === "changes-requested"
-        ? { label: "changes requested", color: theme.removed }
+        ? reviewerLook("changes-requested", theme)
         : d?.reviewDecision === "review-required"
-          ? { label: "review required", color: theme.dirty }
+          ? reviewerLook("requested", theme)
           : null;
 
   return (
@@ -273,7 +281,7 @@ export function PrPanel({
           {/* number + state ................ checks overall, close */}
           <box flexDirection="row" flexShrink={0} paddingTop={1}>
             <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>
-              {`⇡ #${pr.number} `}
+              {`⇡#${pr.number} `}
             </text>
             {d && (
               <text
@@ -314,9 +322,7 @@ export function PrPanel({
             <text flexShrink={0} wrapMode="none" truncate>
               <span fg={theme.added}>{`+${d.additions}`}</span>
               <span fg={theme.removed}>{` −${d.deletions}`}</span>
-              <span
-                fg={theme.fgMuted}
-              >{` · ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"} · updated ${relativeTime(d.updatedAt)}`}</span>
+              <span fg={theme.fgMuted}>{` · ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"}`}</span>
             </text>
           )}
         </box>
@@ -385,14 +391,14 @@ export function PrPanel({
             <Section
               title="Reviews"
               {...fold("reviews")}
-              extra={decision && <text fg={decision.color}>{"  " + decision.label}</text>}
+              extra={decision && <text fg={decision.color}>{"  " + decision.glyph}</text>}
             >
               {d.reviewers.length === 0 ? (
                 <text fg={theme.fgFaint}>{"No reviews yet"}</text>
               ) : (
                 d.reviewers.map((r) => {
                   const look = reviewerLook(r.state, theme);
-                  return <Row key={r.login} glyph={look.glyph} color={look.color} text={r.login} dim={look.label} />;
+                  return <Row key={r.login} glyph={look.glyph} color={look.color} text={r.login} />;
                 })
               )}
             </Section>
@@ -455,7 +461,7 @@ export function PrPanel({
             <Section
               title="Comments"
               {...fold("comments")}
-              extra={d.comments.length > 0 && <text fg={theme.fgFaint}>{`  ${d.comments.length} · newest first`}</text>}
+              extra={d.comments.length > 0 && <text fg={theme.fgFaint}>{`  ${d.comments.length}`}</text>}
             >
               {d.comments.length === 0 ? (
                 <text fg={theme.fgFaint}>{"No comments"}</text>
@@ -497,17 +503,17 @@ export function PrPanel({
           <Hints
             hints={[
               {
+                // How fresh this is (r refreshes).
                 text: query.isFetching
-                  ? "refreshing…"
+                  ? "↻ refreshing…"
                   : error && details
-                    ? "refresh failed"
+                    ? "↻ failed"
                     : query.dataUpdatedAt
-                      ? `updated ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
+                      ? `↻ ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
                       : "",
               },
               ...(d?.state === "open" ? [{ key: "m", text: "merge" }] : []),
               { key: "o", text: "open" },
-              { key: "r", text: "refresh" },
             ].filter((h) => h.text)}
           />
         </box>

@@ -27,7 +27,7 @@ afterEach(() => {
 
 const HELP = "Keyboard & mouse";
 /** The tab bar's hint — on screen once a worktree's terminal is showing. */
-const TERMINAL_SHOWN = "^g sidebar";
+const TERMINAL_SHOWN = "^g";
 
 async function start() {
   const root = await makeRepo(join(sandbox.workspace, "widget"), {
@@ -38,7 +38,7 @@ async function start() {
   await saveState(state);
   await reconcile(state);
   app = await renderApp();
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· x");
 }
 
 /** Where `text` first appears on screen (single-width text before it). */
@@ -85,7 +85,7 @@ describe("clicking the sidebar", () => {
   test("the footer does too", async () => {
     await start();
     await openTerminalWithKeys();
-    const { y } = locate("no agent activity");
+    const { y } = locate("◑");
     await app.mockMouse.click(3, y);
     expect(await sidebarHasKeys()).toBe(true);
   });
@@ -115,7 +115,7 @@ describe("clicking the sidebar", () => {
     await openTerminalWithKeys();
     const { x, y } = locate("widget");
     await app.mockMouse.click(x, y);
-    await waitForTextGone(app, "feature/x");
+    await waitForTextGone(app, "· x");
     expect(await sidebarHasKeys()).toBe(true);
   });
 });
@@ -128,7 +128,7 @@ describe("on a short screen", () => {
     await saveState(state);
     await reconcile(state);
     app = await renderApp({ width: 100, height: 14 });
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j");
     await waitForSelection(app, "x");

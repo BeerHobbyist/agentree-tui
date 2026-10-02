@@ -232,6 +232,9 @@ export function createSandbox(): Sandbox {
     GIT_COMMITTER_NAME: "agentree test",
     GIT_COMMITTER_EMAIL: "test@example.invalid",
   });
+  // Run from inside fence or not, the CLI reaches tmux directly unless a test says otherwise.
+  delete process.env.FENCE_SANDBOX;
+  delete process.env.AGENTREE_SANDBOX_CMD;
 
   // Module-level caches and the theme store are global; a leak between tests
   // shows up as an unrelated test seeing the previous one's repos.

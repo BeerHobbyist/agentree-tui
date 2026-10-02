@@ -57,7 +57,7 @@ async function start(opts: RenderAppOptions = {}) {
   sandbox.setPrView(42, prView(42, "Add login screen", "feature/login"));
   sandbox.setPrView(43, prView(43, "Add billing page", "feature/billing"));
   app = await renderApp({ width: 140, height: 40, ...opts });
-  await waitForText(app, "feature/login");
+  await waitForText(app, "· login");
 }
 
 /** Select a worktree row: find its place in the sidebar, then g + that many j. */
@@ -130,7 +130,7 @@ describe("PR details cache", () => {
     await waitForText(app, "Add login screen");
     sandbox.failGh("pr");
     app.mockInput.pressKey("r");
-    await waitForText(app, "refresh failed", { timeoutMs: 10_000 }); // after its one retry
+    await waitForText(app, "↻ failed", { timeoutMs: 10_000 }); // after its one retry
     expect(app.captureCharFrame()).toContain("Add login screen");
     // …and the sidebar badge, whose lookup failed too, keeps its last answer.
     expect(app.captureCharFrame()).toContain("⇡#42");

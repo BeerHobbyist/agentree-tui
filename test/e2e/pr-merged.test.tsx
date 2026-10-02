@@ -1,5 +1,5 @@
 /**
- * A merged PR stays on its worktree — `⇡#42 merged` in the sidebar, "Merged"
+ * A merged PR stays on its worktree — `✓#42` in the sidebar, "Merged"
  * in the panel — until the worktree is closed, and closing it is one key away:
  * `d` in the sidebar, the panel's Close button, or `d` right after merging.
  */
@@ -71,7 +71,7 @@ async function start(state: "OPEN" | "MERGED") {
   await reconcile(s);
   await branchPr(state);
   app = await renderApp({ width: 140, height: 40 });
-  await waitForText(app, "feature/login");
+  await waitForText(app, "· login");
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
@@ -93,7 +93,7 @@ function closeButtonLine(): string {
 
 async function expectClosed() {
   await waitForTextGone(app, "Close worktree");
-  await waitForTextGone(app, "feature/login");
+  await waitForTextGone(app, "· login");
   expect(existsSync(join(sandbox.workspace, WORKTREE))).toBe(false);
   await waitUntil(app, () => sandbox.readState()?.repos[0]?.worktrees.length === 0, "the worktree to leave state");
 }
@@ -101,18 +101,17 @@ async function expectClosed() {
 describe("a merged PR", () => {
   test("stays on its worktree, marked merged; the panel says so and offers to close it", async () => {
     await start("MERGED");
-    await waitForText(app, "⇡#42 merged");
+    await waitForText(app, "✓#42");
     await waitForText(app, " Close worktree… ");
     const frame = app.captureCharFrame();
     expect(frame).toContain("Merged");
     expect(frame).not.toContain(" Merge… "); // nothing left to merge
-    expect(frame).toContain("d close (merged) · ^p commands"); // the sidebar's hint
     expect(closeButtonLine()).toStartWith(" Close worktree…  d");
   });
 
   test("d closes the worktree (asking first)", async () => {
     await start("MERGED");
-    await waitForText(app, "⇡#42 merged");
+    await waitForText(app, "✓#42");
     app.mockInput.pressKey("d");
     await waitForText(app, 'Delete "login" from disk?');
     app.mockInput.pressKey("y");
@@ -142,12 +141,12 @@ describe("a merged PR", () => {
     await start("MERGED");
     await waitForText(app, " Close worktree… ");
     app.mockInput.pressEnter(); // its terminal: the panel now follows that
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     app.mockInput.pressKey("g", { ctrl: true });
     app.mockInput.pressKey("k"); // select main; login's terminal (and PR) stay on screen
     await waitForSelection(app, "main");
     await waitUntil(app, () => !closeButtonLine().startsWith(" Close worktree…  d"), "the d hint to go");
-    expect(app.captureCharFrame()).toContain("⇡#42 merged");
+    expect(app.captureCharFrame()).toContain("✓#42");
   });
 });
 
@@ -163,7 +162,7 @@ describe("right after merging it with m", () => {
     app.mockInput.pressKey("y");
     await waitForText(app, "✓ Merged #42 into main.");
     await waitForText(app, "d close the worktree");
-    await waitForText(app, "⇡#42 merged");
+    await waitForText(app, "✓#42");
     await waitUntil(app, () => !!sandbox.readState()?.ui?.mergeMethod, "the merge method to be saved");
 
     app.mockInput.pressKey("d");

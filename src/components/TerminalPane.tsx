@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
-import { useKeyboard } from "@opentui/react";
 import { useTheme } from "../theme";
 import type { Worktree } from "../data/model";
 import {
@@ -30,6 +29,7 @@ import {
   tmuxWindowsQuery,
 } from "../queries";
 import { useTerminalSession } from "../hooks/useTerminalSession";
+import { useKeyboardWhile } from "../hooks/useKeyboardWhile";
 import { agentLaunchCommand, agentSessionEnv, remoteSessionEnv } from "../services/agents";
 import { remoteAgentCommand } from "../config";
 import { TabBar } from "./TabBar";
@@ -39,7 +39,7 @@ import { CommitPicker } from "./CommitPicker";
 import "./EmbeddedTerminal"; // registers <embedded-terminal>
 
 const MENU_ITEMS: MenuItem[] = [
-  { label: "＋ New shell", hint: "" },
+  { label: "+ New shell", hint: "" },
   { label: "✻ New agent", hint: "⌥a" },
   { label: "◨ New diff", hint: "⌥d" },
 ];
@@ -231,7 +231,7 @@ function TerminalView({
       });
   };
 
-  // ＋ menu / diff picker / tab rename overlay.
+  // + menu / diff picker / tab rename overlay.
   const [overlay, setOverlay] = useState<"none" | "menu" | "diff" | "diffInput" | "diffCommits" | "rename">("none");
   const [menuIndex, setMenuIndex] = useState(0);
   const [refInput, setRefInput] = useState("");
@@ -352,8 +352,7 @@ function TerminalView({
   // preventDefault/stopPropagation so these chords don't also reach the shell
   // (verified: useKeyboard runs before the focused renderable). Everything else
   // falls through to the terminal. tmux-native Ctrl+b keys keep working.
-  useKeyboard((key) => {
-    if (!focused) return;
+  useKeyboardWhile(focused, (key) => {
     // The rename prompt owns the keyboard (it consumes every key itself).
     if (overlay === "rename") return;
     const n = key.name;
@@ -403,7 +402,7 @@ function TerminalView({
       return;
     }
 
-    // An overlay (＋ menu / diff picker) owns the keyboard while open.
+    // An overlay (+ menu / diff picker) owns the keyboard while open.
     if (overlay !== "none") {
       const len = overlay === "menu" ? menuItems.length : DIFF_ITEMS.length;
       if (n === "escape") {

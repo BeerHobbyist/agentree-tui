@@ -2,7 +2,7 @@ import { MouseButton, TextAttributes } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { PrInfo } from "../data/model";
 import type { WindowInfo } from "../services/tmux";
-import { checkLook } from "./PrPanel";
+import { prBadge } from "./PrPanel";
 
 interface TabBarProps {
   windows: WindowInfo[];
@@ -56,6 +56,7 @@ export function TabBar({
   onTogglePr,
 }: TabBarProps) {
   const theme = useTheme();
+  const badge = pr && prBadge(pr, theme);
   return (
     // Never squeezed out: on a short screen the terminal below would take its row.
     <box
@@ -71,7 +72,7 @@ export function TabBar({
         {"‹ "}
       </text>
 
-      {/* Tabs (each its own click target) */}
+      {/* Tabs (each its own click target); the one on screen is lit. */}
       <box flexDirection="row" flexGrow={1} flexShrink={1} minWidth={0} overflow="hidden">
         {windows.map((w) => (
           <box
@@ -87,52 +88,52 @@ export function TabBar({
               wrapMode="none"
               onMouseDown={(e) => (e.button === MouseButton.RIGHT ? onRenameTab?.(w.index) : onSelect(w.index))}
             >
-              {` ${w.active ? "●" : "○"} ${tabLabel(w.name)}${w.panes > 1 ? ` ⑂${w.panes}` : ""} `}
+              {` ${tabLabel(w.name)} `}
             </text>
-            {/* Per-tab close button (delete this window). Hidden for the last
-                remaining tab: tmux can't have a session with zero windows, so
-                closing it would kill the session and strand the pane. */}
-            {windows.length > 1 && (
-              <text fg={w.active ? theme.removed : theme.fgFaint} onMouseDown={() => onCloseTab(w.index)}>
+            {/* The lit tab's close button (delete this window). Hidden for the
+                last remaining tab: tmux can't have a session with zero windows,
+                so closing it would kill the session and strand the pane. */}
+            {w.active && windows.length > 1 && (
+              <text fg={theme.fgFaint} onMouseDown={() => onCloseTab(w.index)}>
                 {"× "}
               </text>
             )}
           </box>
         ))}
-        <text fg={theme.accent} flexShrink={0} onMouseDown={onNewTab}>
-          {" ＋"}
+        <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onNewTab}>
+          {" + "}
         </text>
       </box>
 
-      {/* Pane toolbar */}
+      {/* Pane toolbar: split side by side, split top / bottom, close the pane. */}
       <text fg={theme.fgMuted} flexShrink={0} onMouseDown={() => onSplit("h")}>
-        {"  ⬌"}
+        {" ◫"}
       </text>
       <text fg={theme.fgMuted} flexShrink={0} onMouseDown={() => onSplit("v")}>
-        {" ⬍"}
+        {" ⊟"}
       </text>
       <text
-        fg={canClosePane ? theme.removed : theme.fgFaint}
+        fg={canClosePane ? theme.fgMuted : theme.fgFaint}
         flexShrink={0}
         onMouseDown={canClosePane ? onClosePane : undefined}
       >
-        {"  ✕"}
+        {" ✕"}
       </text>
       {/* PR button: ⇡#N, coloured by its checks; lit while the panel is open. */}
-      {pr && (
+      {badge && (
         <text
-          fg={checkLook(pr.checks, theme).color}
+          fg={badge.color}
           bg={prPanelShown ? theme.activeBg : undefined}
           flexShrink={0}
+          marginLeft={1}
           onMouseDown={onTogglePr}
         >
-          {`  ⇡#${pr.number}${pr.checks ? " " + checkLook(pr.checks, theme).glyph : ""} `}
+          {` ${badge.text} `}
         </text>
       )}
       {/* The one key worth always showing: the way back. The rest are in `?`. */}
-      <text flexShrink={1000} minWidth={0} wrapMode="none" truncate>
-        <span fg={theme.fg}>{"  ^g"}</span>
-        <span fg={theme.fgMuted}>{" sidebar"}</span>
+      <text fg={theme.fgFaint} flexShrink={1000} minWidth={0} wrapMode="none" truncate>
+        {" ^g"}
       </text>
     </box>
   );
