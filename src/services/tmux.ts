@@ -141,13 +141,73 @@ export function themeOptions(style: TermStyle): string[] {
  * focused pane's program — clicking in vim/nvim, scrolling in a pager, and
  * selecting split panes all start working. It's a `-g` option, so setting it on
  * attach persists for every session and window on the server.
+ *
+ * A mouse selection in a shell (drag, double- or triple-click) is made in copy
+ * mode. tmux's own bindings copy it and leave copy mode, wiping it off the
+ * screen; ours copy it and keep it there, and mark the pane (MOUSE_SELECTION)
+ * so EXIT_COPY_MODE_KEY can tell it from copy mode entered any other way. A
+ * click leaves copy mode — or, scrolled back, only clears the selection, so you
+ * keep your place in the history.
+ *
+ * Quotes inside a binding are tmux's `"`: an SSH project's attach command goes
+ * through the remote login shell, and fish reads a `'` there differently.
  */
 export function behaviorOptions(): string[] {
-  return ["set-option", "-g", "mouse", "on"];
+  const keep = `send-keys -X copy-pipe-no-clear ; set-option -p ${MOUSE_SELECTION} 1`;
+  const bindings: [table: string, key: string, command: string][] = [];
+  for (const table of ["copy-mode", "copy-mode-vi"]) {
+    bindings.push(
+      [table, "MouseDragEnd1Pane", keep],
+      [table, "DoubleClick1Pane", `select-pane ; send-keys -X select-word ; ${keep}`],
+      [table, "TripleClick1Pane", `select-pane ; send-keys -X select-line ; ${keep}`],
+      [
+        table,
+        "MouseDown1Pane",
+        `select-pane ; if-shell -F "#{scroll_position}" "send-keys -X clear-selection" "send-keys -X cancel"` +
+          ` ; set-option -pu ${MOUSE_SELECTION}`,
+      ],
+      [
+        table,
+        EXIT_COPY_MODE_KEY_NAME,
+        `if-shell -F "#{&&:#{${MOUSE_SELECTION}},#{selection_present}}" "send-keys -X cancel ; set-option -pu ${MOUSE_SELECTION}"`,
+      ],
+    );
+  }
+  // Outside copy mode: tmux's defaults, but keeping the word or line.
+  const program = "#{||:#{pane_in_mode},#{mouse_any_flag}}";
+  for (const [key, select] of [
+    ["DoubleClick1Pane", "select-word"],
+    ["TripleClick1Pane", "select-line"],
+  ] as const) {
+    bindings.push([
+      "root",
+      key,
+      `select-pane -t = ; if-shell -F "${program}" "send-keys -M" "copy-mode -H ; send-keys -X ${select} ; ${keep}"`,
+    ]);
+  }
+  const out = ["set-option", "-g", "mouse", "on"];
+  for (const [table, key, command] of bindings) out.push(";", "bind-key", "-T", table, key, command);
+  return out;
 }
+
+/** Set on a pane holding a mouse selection, in copy mode. */
+const MOUSE_SELECTION = "@agentree_mouse_selection";
 
 /** Our slot in tmux's `terminal-overrides` array (indexed, so re-setting it on every attach is idempotent and leaves the user's own entries alone). */
 const CURSOR_RESET_OVERRIDE_INDEX = 90;
+
+/** Our slot in tmux's `user-keys` array, which names the key `User<index>`. */
+const EXIT_COPY_MODE_KEY_INDEX = 90;
+const EXIT_COPY_MODE_KEY_NAME = `User${EXIT_COPY_MODE_KEY_INDEX}`;
+
+/**
+ * What the terminal sends ahead of a key or paste when the pane in front may
+ * hold a mouse selection: if it does, tmux leaves copy mode, and the typing
+ * reaches the shell. Anywhere else tmux drops it — copy mode entered another
+ * way ignores it, and outside copy mode it's bound to nothing (a user key is
+ * never passed on to the pane). No terminal sends it.
+ */
+export const EXIT_COPY_MODE_KEY = "\x1b[5;30090~";
 
 /**
  * Options that must be set *before* the client attaches: tmux reads
@@ -158,9 +218,22 @@ const CURSOR_RESET_OVERRIDE_INDEX = 90;
  * `Se=\E[2 q`, i.e. a *steady* block, so after quitting nvim the shell cursor
  * would stop blinking. `\E[0 q` asks for the terminal's own default instead, so
  * the user's configured cursor (usually blinking) comes back.
+ *
+ * `user-keys` is read then too: it teaches tmux EXIT_COPY_MODE_KEY. tmux takes
+ * the sequence as raw bytes, so it's the ESC character itself, not `\e`.
  */
 export function preAttachOptions(): string[] {
-  return ["set-option", "-g", `terminal-overrides[${CURSOR_RESET_OVERRIDE_INDEX}]`, "*:Se=\\E[0 q"];
+  return [
+    "set-option",
+    "-g",
+    `terminal-overrides[${CURSOR_RESET_OVERRIDE_INDEX}]`,
+    "*:Se=\\E[0 q",
+    ";",
+    "set-option",
+    "-s",
+    `user-keys[${EXIT_COPY_MODE_KEY_INDEX}]`,
+    EXIT_COPY_MODE_KEY,
+  ];
 }
 
 /**

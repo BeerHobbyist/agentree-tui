@@ -359,6 +359,15 @@ are in `docs/terminal-rendering-glitches.md`.
   which always clears and redraws.
 - **Orphan releases** — the terminal drops a mouse release whose press started
   elsewhere (e.g. letting go of the sidebar divider over it).
+- **Mouse selection** — a drag, double- or triple-click in a shell selects in
+  tmux copy mode, and tmux's own bindings copied and left copy mode, wiping the
+  selection off the screen. Ours (`behaviorOptions`) copy and keep it, and mark
+  the pane (`@agentree_mouse_selection`). tmux copies with OSC 52, which the
+  emulator drops, so the terminal hands the text to the host's clipboard. After
+  a press in the terminal or a switch of tab or pane, the next key or paste goes
+  out behind `EXIT_COPY_MODE_KEY` (tmux's `User90`): a marked pane leaves copy
+  mode, so typing reaches the shell, and other copy mode ignores it. A click
+  leaves copy mode too, unless the pane is scrolled back.
 
 ## SSH projects
 

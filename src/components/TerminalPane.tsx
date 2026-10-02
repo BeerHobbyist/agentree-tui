@@ -36,7 +36,7 @@ import { TabBar } from "./TabBar";
 import { MenuOverlay, type MenuItem } from "./MenuOverlay";
 import { RenameModal } from "./RenameModal";
 import { CommitPicker } from "./CommitPicker";
-import "./EmbeddedTerminal"; // registers <embedded-terminal>
+import { exitCopyModeOnNextInput } from "./EmbeddedTerminal"; // also registers <embedded-terminal>
 
 const MENU_ITEMS: MenuItem[] = [
   { label: "+ New shell", hint: "" },
@@ -221,8 +221,16 @@ function TerminalView({
   const activeWindow = windows.find((w) => w.active);
   const canClosePane = windows.length > 1 || (activeWindow?.panes ?? 1) > 1;
 
+  // A tab coming to the front may hold a mouse selection: leave it before
+  // typing there. `act` covers our own switches at once; this one catches the
+  // rest (tmux keys, the CLI), on the tab bar's next poll.
+  useEffect(() => {
+    exitCopyModeOnNextInput(ref.current);
+  }, [activeWindow?.index, ref]);
+
   // Run a tmux action, then refresh the bar and keep keys on the terminal.
   const act = (fn: () => Promise<void>) => {
+    exitCopyModeOnNextInput(ref.current);
     fn()
       .catch(() => {})
       .finally(() => {
