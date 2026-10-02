@@ -7,6 +7,7 @@
  * first installed of hunk, diffnav, delta, difftastic — else plain `git diff`,
  * which is always there.
  */
+import type { Commit } from "./git";
 import { shellJoin, shq } from "./shell";
 
 export type DiffTarget = "working" | "staged" | "base" | "ref";
@@ -26,6 +27,32 @@ export function diffArgs(target: DiffTarget, arg?: string): string[] {
     default: // "working": the uncommitted changes
       return [];
   }
+}
+
+/** What the commit picker opens: a range for `git diff`, and how it reads. */
+export interface CommitPick {
+  range: string;
+  label: string;
+}
+
+/**
+ * The commit picker's choice from `commits` (newest first): the commits from
+ * the marked one to the one under the cursor, both included — or, with nothing
+ * marked, from the cursor's to HEAD.
+ */
+export function pickCommits(commits: Commit[], cursor: number, mark?: string | null): CommitPick | null {
+  const at = commits[cursor];
+  if (!at) return null;
+  const count = (n: number) => `${n} commit${n === 1 ? "" : "s"}`;
+  const m = mark ? commits.findIndex((c) => c.sha === mark) : -1;
+  if (m < 0) return { range: `${at.parent}..HEAD`, label: `${at.short} → HEAD · ${count(cursor + 1)}` };
+  const older = commits[Math.max(m, cursor)]!;
+  const newer = commits[Math.min(m, cursor)]!;
+  const n = Math.abs(m - cursor) + 1;
+  return {
+    range: `${older.parent}..${newer.sha}`,
+    label: n === 1 ? `${newer.short} · ${count(1)}` : `${older.short} → ${newer.short} · ${count(n)}`,
+  };
 }
 
 export interface DiffViewer {
