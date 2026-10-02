@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { sessionName } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { activeTab, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
+import { activeTab, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { commitAll, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -100,15 +100,20 @@ describe("the diff picker", () => {
       await commitAll(path, `feature ${n}`);
     }
     await openPicker();
-    for (let i = 0; i < 4; i++) app.mockInput.pressKey("j"); // Pick commits…
+    // Each key waits for the screen: ⏎ and space act on the row drawn last.
+    for (let i = 0; i < 4; i++) app.mockInput.pressKey("j");
+    await waitForSelection(app, "Pick commits…");
     app.mockInput.pressEnter();
     await waitForText(app, "Diff commits ·");
     await waitForText(app, "feature 1"); // newest first: feature 3, 2, 1 — not main's init
     await waitForText(app, "→ HEAD · 1 commit");
 
-    app.mockInput.pressKey("j"); // feature 2
-    app.mockInput.pressKey(" "); // marked
-    app.mockInput.pressKey("j"); // feature 1
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "feature 2");
+    app.mockInput.pressKey(" "); // marked: just feature 2
+    await waitForTextGone(app, "→ HEAD");
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "feature 1");
     await waitForText(app, "· 2 commits");
     app.mockInput.pressEnter();
     await waitUntil(app, () => diffTab().includes("+change 2"), "the diff tab to show the picked commits");
