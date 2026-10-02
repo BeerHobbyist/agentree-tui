@@ -6,9 +6,11 @@ import {
   diffArgs,
   diffCommand,
   nextViewer,
+  pickCommits,
   resolveViewer,
   viewer,
 } from "../../src/services/diff";
+import type { Commit } from "../../src/services/git";
 
 /** What `sh` makes of a command line: its arguments. */
 function words(line: string): string[] {
@@ -103,5 +105,39 @@ describe("which viewer", () => {
     expect(nextViewer("hunk", ["hunk", "delta", "git"])).toBe("delta");
     expect(nextViewer("git", ["hunk", "delta", "git"])).toBe("hunk");
     expect(nextViewer("git", ["git"])).toBe("git");
+  });
+});
+
+describe("pickCommits", () => {
+  // Newest first, as the commit picker lists them; c1 is the repo's first commit.
+  const commit = (n: number, parent: string): Commit => ({
+    sha: `c${n}`,
+    short: `c${n}`,
+    subject: `commit ${n}`,
+    parent,
+  });
+  const commits = [commit(4, "c3"), commit(3, "c2"), commit(2, "c1"), commit(1, "EMPTY")];
+
+  test("nothing marked: from the cursor's commit to HEAD", () => {
+    expect(pickCommits(commits, 1)).toEqual({ range: "c2..HEAD", label: "c3 → HEAD · 2 commits" });
+    expect(pickCommits(commits, 0)).toEqual({ range: "c3..HEAD", label: "c4 → HEAD · 1 commit" });
+  });
+
+  test("marked: the commits between the mark and the cursor, both included, either way round", () => {
+    expect(pickCommits(commits, 0, "c3")).toEqual({ range: "c2..c4", label: "c3 → c4 · 2 commits" });
+    expect(pickCommits(commits, 1, "c4")).toEqual({ range: "c2..c4", label: "c3 → c4 · 2 commits" });
+  });
+
+  test("the mark under the cursor: just that commit", () => {
+    expect(pickCommits(commits, 2, "c2")).toEqual({ range: "c1..c2", label: "c2 · 1 commit" });
+  });
+
+  test("the first commit is diffed against what it has for a parent: the empty tree", () => {
+    expect(pickCommits(commits, 3)?.range).toBe("EMPTY..HEAD");
+  });
+
+  test("a mark no longer listed is ignored; no commits, nothing to pick", () => {
+    expect(pickCommits(commits, 1, "gone")?.range).toBe("c2..HEAD");
+    expect(pickCommits([], 0)).toBeNull();
   });
 });

@@ -10,9 +10,24 @@ import {
   MAX_TAB_NAME_LENGTH,
   type WindowInfo,
 } from "../services/tmux";
-import { diffCommand, nextViewer, resolveViewer, viewer, type DiffTarget, type DiffViewerId } from "../services/diff";
+import {
+  diffCommand,
+  nextViewer,
+  pickCommits,
+  resolveViewer,
+  viewer,
+  type DiffTarget,
+  type DiffViewerId,
+} from "../services/diff";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { baseRefQuery, diffViewersQuery, queryKeys, tmuxAvailableQuery, tmuxWindowsQuery } from "../queries";
+import {
+  baseRefQuery,
+  branchCommitsQuery,
+  diffViewersQuery,
+  queryKeys,
+  tmuxAvailableQuery,
+  tmuxWindowsQuery,
+} from "../queries";
 import { useTerminalSession } from "../hooks/useTerminalSession";
 import { useKeyboardWhile } from "../hooks/useKeyboardWhile";
 import { agentLaunchCommand, agentSessionEnv, remoteSessionEnv } from "../services/agents";
@@ -20,6 +35,7 @@ import { remoteAgentCommand } from "../config";
 import { TabBar } from "./TabBar";
 import { MenuOverlay, type MenuItem } from "./MenuOverlay";
 import { RenameModal } from "./RenameModal";
+import { CommitPicker } from "./CommitPicker";
 import { exitCopyModeOnNextInput } from "./EmbeddedTerminal"; // also registers <embedded-terminal>
 
 const MENU_ITEMS: MenuItem[] = [
@@ -34,8 +50,9 @@ const DIFF_ITEMS: MenuItem[] = [
   { label: "Staged", hint: "index" },
   { label: "vs base branch", hint: "<base>...HEAD" },
   { label: "Specific ref / commit…", hint: "type a ref or range" },
+  { label: "Pick commits…", hint: "a range, like rebase -i" },
 ];
-const DIFF_TARGETS: DiffTarget[] = ["working", "staged", "base", "ref"];
+const DIFF_TARGETS: (DiffTarget | "commits")[] = ["working", "staged", "base", "ref", "commits"];
 
 interface TerminalPaneProps {
   repoId: string;
@@ -223,9 +240,11 @@ function TerminalView({
   };
 
   // + menu / diff picker / tab rename overlay.
-  const [overlay, setOverlay] = useState<"none" | "menu" | "diff" | "diffInput" | "rename">("none");
+  const [overlay, setOverlay] = useState<"none" | "menu" | "diff" | "diffInput" | "diffCommits" | "rename">("none");
   const [menuIndex, setMenuIndex] = useState(0);
   const [refInput, setRefInput] = useState("");
+  /** The commit list's marked commit (a sha): one end of the range. */
+  const [commitMark, setCommitMark] = useState<string | null>(null);
   /** The tab being renamed. */
   const [renameTab, setRenameTab] = useState<WindowInfo | null>(null);
 
@@ -242,6 +261,8 @@ function TerminalView({
   // The installed diff viewers, and the one a diff opens in.
   const viewers = useQuery(diffViewersQuery()).data ?? [];
   const diffIn = resolveViewer(diffViewer, viewers);
+  // The commit list — read when it opens (pickOverlay drops the last answer).
+  const commits = useQuery({ ...branchCommitsQuery(worktree.path), enabled: overlay === "diffCommits" }).data;
 
   const openMenu = () => {
     setOverlay("menu");
@@ -283,6 +304,11 @@ function TerminalView({
       if (t === "ref") {
         setRefInput("");
         setOverlay("diffInput");
+      } else if (t === "commits") {
+        queryClient.removeQueries({ queryKey: queryKeys.branchCommits(worktree.path) });
+        setMenuIndex(0);
+        setCommitMark(null);
+        setOverlay("diffCommits");
       } else if (t) {
         openDiff(t);
         closeOverlay();
@@ -308,6 +334,13 @@ function TerminalView({
     const ref = refInput.trim();
     if (!ref) return;
     openDiff("ref", ref);
+    closeOverlay();
+  };
+  /** Diff the commit list's pick, with the cursor on row `i`. */
+  const submitCommits = (i: number) => {
+    const pick = pickCommits(commits ?? [], i, commitMark);
+    if (!pick) return;
+    openDiff("ref", pick.range);
     closeOverlay();
   };
 
@@ -350,6 +383,29 @@ function TerminalView({
       } else if (/^[A-Za-z0-9._/~^-]$/.test(n)) {
         eat();
         setRefInput((v) => v + n);
+      }
+      return;
+    }
+
+    // The commit list: the cursor, a mark, and ⏎ to diff.
+    if (overlay === "diffCommits") {
+      const last = (commits?.length ?? 1) - 1;
+      if (n === "escape") {
+        eat();
+        openDiffPicker(); // back to the picker
+      } else if (n === "down" || n === "j") {
+        eat();
+        setMenuIndex((i) => Math.min(i + 1, last));
+      } else if (n === "up" || n === "k") {
+        eat();
+        setMenuIndex((i) => Math.max(i - 1, 0));
+      } else if (n === "space") {
+        eat();
+        const sha = commits?.[menuIndex]?.sha ?? null;
+        setCommitMark((m) => (m === sha ? null : sha));
+      } else if (n === "return") {
+        eat();
+        submitCommits(menuIndex);
       }
       return;
     }
@@ -511,6 +567,16 @@ function TerminalView({
           note={
             viewers.length > 1 ? `v switches viewer · ${viewers.map((id) => viewer(id).label).join(", ")}` : undefined
           }
+        />
+      )}
+      {overlay === "diffCommits" && (
+        <CommitPicker
+          title={`Diff commits · ${diffIn.label}`}
+          commits={commits}
+          cursor={menuIndex}
+          mark={commitMark}
+          onPick={submitCommits}
+          onClose={openDiffPicker}
         />
       )}
       {overlay === "rename" && renameTab && (

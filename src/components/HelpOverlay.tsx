@@ -50,7 +50,7 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["⌥ r", "rename tab"],
       ["⌥ n", "next agent that needs you"],
       ["⌥ a", "open agent in a new tab"],
-      ["⌥ d", "open a diff in a new tab (v there: viewer)"],
+      ["⌥ d", "open a diff in a new tab — changes, a ref, or picked commits (v there: viewer)"],
       ["⌥ p", "show / hide the PR panel"],
       ["⌥ w", "close pane"],
       ["⌥ W", "close tab (whole window)"],

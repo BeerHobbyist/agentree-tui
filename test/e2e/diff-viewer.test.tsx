@@ -1,15 +1,16 @@
 /**
  * The diff picker (⌥d in a terminal): its title names the viewer the diff
  * opens in, `v` switches between the installed ones (remembered), and the
- * chosen diff opens in a tmux tab of its own.
+ * chosen diff opens in a tmux tab of its own — or, from its commit list, a
+ * range of the branch's commits.
  */
-import { afterEach, beforeEach, describe, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { sessionName } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { activeTab, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
-import { makeRepo, writeFile } from "../helpers/repo";
+import { activeTab, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
+import { commitAll, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
 let sandbox: Sandbox;
@@ -90,5 +91,33 @@ describe("the diff picker", () => {
     app.mockInput.pressKey("j"); // Staged — nothing is
     app.mockInput.pressEnter();
     await waitUntil(app, () => diffTab().includes("No changes to show."), "the empty-diff message");
+  });
+
+  test("picked commits: a range from the branch's own, marked with space", async () => {
+    const path = await start();
+    for (const n of [1, 2, 3]) {
+      writeFile(path, `f${n}.txt`, `change ${n}\n`);
+      await commitAll(path, `feature ${n}`);
+    }
+    await openPicker();
+    // Each key waits for the screen: ⏎ and space act on the row drawn last.
+    for (let i = 0; i < 4; i++) app.mockInput.pressKey("j");
+    await waitForSelection(app, "Pick commits…");
+    app.mockInput.pressEnter();
+    await waitForText(app, "Diff commits ·");
+    await waitForText(app, "feature 1"); // newest first: feature 3, 2, 1 — not main's init
+    await waitForText(app, "→ HEAD · 1 commit");
+
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "feature 2");
+    app.mockInput.pressKey(" "); // marked: just feature 2
+    await waitForTextGone(app, "→ HEAD");
+    app.mockInput.pressKey("j");
+    await waitForSelection(app, "feature 1");
+    await waitForText(app, "· 2 commits");
+    app.mockInput.pressEnter();
+    await waitUntil(app, () => diffTab().includes("+change 2"), "the diff tab to show the picked commits");
+    expect(diffTab()).toContain("+change 1");
+    expect(diffTab()).not.toContain("+change 3");
   });
 });

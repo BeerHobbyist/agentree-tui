@@ -32,7 +32,7 @@ agentree tab read dev --lines 40        # its last 40 lines (default 50)
 agentree tab send dev --key C-c         # stop it (tmux key names: C-c, Enter, Up, …)
 agentree tab send dev "rs"              # type a line into it (Enter follows unless --no-enter)
 agentree tab close dev
-agentree diff                           # working changes, in a tab for the user (also: staged, base, a ref)
+agentree diff                           # working changes, in a tab for the user (also: staged, base, a ref, or a range like SHA^..SHA)
 agentree notify "Migration ready — review the SQL in tab db"
 agentree status                         # every worktree and its agent's status
 agentree worktree new --repo OWNER/NAME --branch agent/task   # create/adopt a worktree; prints its id
