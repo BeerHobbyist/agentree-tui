@@ -81,7 +81,9 @@ function finalizeWorktree(w: Partial<GitWorktree>): GitWorktree {
 
 /**
  * Add a worktree. `newBranch` creates the branch (`-b`); `base` (only meaningful
- * with `newBranch`) is the ref it starts from, default the current HEAD.
+ * with `newBranch`) is the ref it starts from, default the current HEAD. A new
+ * branch never tracks its base: started from `origin/main` it would otherwise
+ * push to main, and report ahead/behind against it.
  */
 export async function addWorktree(
   root: string,
@@ -90,9 +92,45 @@ export async function addWorktree(
   opts: { newBranch: boolean; base?: string },
 ): Promise<void> {
   const args = opts.newBranch
-    ? ["git", "worktree", "add", path, "-b", branch, ...(opts.base ? [opts.base] : [])]
+    ? [
+        "git",
+        "worktree",
+        "add",
+        ...(opts.base ? ["--no-track"] : []),
+        path,
+        "-b",
+        branch,
+        ...(opts.base ? [opts.base] : []),
+      ]
     : ["git", "worktree", "add", path, branch];
   await runOrThrow(args, { cwd: root });
+}
+
+export interface Branches {
+  /** The branch the working copy has checked out, or null when detached. */
+  current: string | null;
+  /** Local branches, most recently committed first. */
+  local: string[];
+  /** Remote-tracking branches (`origin/main`), most recently committed first. */
+  remote: string[];
+}
+
+/** Every branch a new one could start from, as of the last fetch. */
+export async function listBranches(root: string): Promise<Branches> {
+  const [head, refs] = await Promise.all([
+    run(["git", "symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: root }),
+    runOrThrow(["git", "for-each-ref", "--sort=-committerdate", "--format=%(refname)", "refs/heads", "refs/remotes"], {
+      cwd: root,
+    }),
+  ]);
+  const local: string[] = [];
+  const remote: string[] = [];
+  for (const ref of refs.split("\n")) {
+    if (ref.startsWith("refs/heads/")) local.push(ref.slice("refs/heads/".length));
+    // `origin/HEAD` only points at another remote branch.
+    else if (ref.startsWith("refs/remotes/") && !ref.endsWith("/HEAD")) remote.push(ref.slice("refs/remotes/".length));
+  }
+  return { current: head.code === 0 ? head.stdout.trim() || null : null, local, remote };
 }
 
 /**

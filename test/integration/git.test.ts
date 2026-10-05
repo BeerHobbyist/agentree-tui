@@ -7,6 +7,7 @@ import {
   baseRef,
   branchCommits,
   ignoreWorktreesDir,
+  listBranches,
   listWorktrees,
   localBranchExists,
   removeWorktree,
@@ -67,6 +68,14 @@ describe("addWorktree", () => {
     expect((await listWorktrees(repo)).map((w) => w.branch)).toContain("existing");
   });
 
+  test("starts a new branch at its base, without tracking it", async () => {
+    await withUpstream(repo, { ahead: 1 }); // main is now one commit past origin/main
+    const path = join(repo, ".worktrees", "feat-x");
+    await addWorktree(repo, path, "feature/x", { newBranch: true, base: "origin/main" });
+    expect(await git(["rev-parse", "feature/x"], repo)).toBe(await git(["rev-parse", "origin/main"], repo));
+    expect(git(["rev-parse", "--abbrev-ref", "feature/x@{upstream}"], repo)).rejects.toThrow();
+  });
+
   test("fails loudly when the branch is already checked out", async () => {
     const path = join(repo, ".worktrees", "dup");
     await addWorktree(repo, path, "dup", { newBranch: true });
@@ -102,6 +111,24 @@ describe("localBranchExists", () => {
     expect(await localBranchExists(repo, "feature/x")).toBe(true);
     expect(await localBranchExists(repo, "feature")).toBe(false);
     expect(await localBranchExists(repo, "nope")).toBe(false);
+  });
+});
+
+describe("listBranches", () => {
+  test("lists local and remote branches, and which one is checked out", async () => {
+    await withUpstream(repo);
+    await git(["remote", "set-head", "origin", "main"], repo);
+    await git(["branch", "develop"], repo);
+    const branches = await listBranches(repo);
+    expect(branches.current).toBe("main");
+    expect(branches.local.toSorted()).toEqual(["develop", "main"]);
+    // origin/HEAD is only an alias for origin/main.
+    expect(branches.remote).toEqual(["origin/main"]);
+  });
+
+  test("has no current branch when the copy is detached", async () => {
+    await git(["checkout", "-q", "--detach"], repo);
+    expect((await listBranches(repo)).current).toBeNull();
   });
 });
 
