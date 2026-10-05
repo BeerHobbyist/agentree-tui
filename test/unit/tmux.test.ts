@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   DEFAULT_SOCKET,
+  EXIT_COPY_MODE_KEY,
   attachCommand,
   behaviorOptions,
+  listPaneActivity,
   preAttachOptions,
   sessionName,
   socketName,
@@ -147,9 +152,69 @@ describe("attachCommand", () => {
   });
 });
 
+/** behaviorOptions split into its `;`-separated commands. */
+function behaviorCommands(): string[][] {
+  const cmds: string[][] = [[]];
+  for (const arg of behaviorOptions()) {
+    if (arg === ";") cmds.push([]);
+    else cmds.at(-1)!.push(arg);
+  }
+  return cmds;
+}
+
 describe("behaviorOptions", () => {
   test("turns mouse on globally", () => {
-    expect(behaviorOptions().join(" ")).toBe("set-option -g mouse on");
+    expect(behaviorCommands()[0]).toEqual(["set-option", "-g", "mouse", "on"]);
+  });
+
+  /** The command bound to `key` in `table`. */
+  const binding = (table: string, key: string) =>
+    behaviorCommands().find((c) => c[0] === "bind-key" && c[2] === table && c[3] === key)?.[4];
+  const copyModes = ["copy-mode", "copy-mode-vi"];
+  const keep = "send-keys -X copy-pipe-no-clear ; set-option -p @agentree_mouse_selection 1";
+
+  test("a mouse selection is copied and stays on screen, the pane marked", () => {
+    for (const table of copyModes) {
+      expect(binding(table, "MouseDragEnd1Pane")).toBe(keep);
+      expect(binding(table, "DoubleClick1Pane")).toBe(`select-pane ; send-keys -X select-word ; ${keep}`);
+      expect(binding(table, "TripleClick1Pane")).toBe(`select-pane ; send-keys -X select-line ; ${keep}`);
+    }
+  });
+
+  test("a double- or triple-click outside copy mode keeps tmux's checks, and the word or line", () => {
+    const program = '"#{||:#{pane_in_mode},#{mouse_any_flag}}" "send-keys -M"';
+    expect(binding("root", "DoubleClick1Pane")).toBe(
+      `select-pane -t = ; if-shell -F ${program} "copy-mode -H ; send-keys -X select-word ; ${keep}"`,
+    );
+    expect(binding("root", "TripleClick1Pane")).toBe(
+      `select-pane -t = ; if-shell -F ${program} "copy-mode -H ; send-keys -X select-line ; ${keep}"`,
+    );
+  });
+
+  test("the terminal's exit key leaves copy mode only for a mouse selection still on screen", () => {
+    for (const table of copyModes) {
+      expect(binding(table, "User90")).toBe(
+        'if-shell -F "#{&&:#{@agentree_mouse_selection},#{selection_present}}"' +
+          ' "send-keys -X cancel ; set-option -pu @agentree_mouse_selection"',
+      );
+    }
+  });
+
+  test("a click leaves copy mode, or only clears the selection when scrolled back", () => {
+    for (const table of copyModes) {
+      expect(binding(table, "MouseDown1Pane")).toBe(
+        'select-pane ; if-shell -F "#{scroll_position}" "send-keys -X clear-selection" "send-keys -X cancel"' +
+          " ; set-option -pu @agentree_mouse_selection",
+      );
+    }
+  });
+
+  test("every binding is one command string, so tmux parses its `;`s itself", () => {
+    for (const c of behaviorCommands().filter((c) => c[0] === "bind-key")) expect(c).toHaveLength(5);
+  });
+
+  test("has no single quote, which a fish login shell would misread in an SSH attach", () => {
+    expect([...behaviorOptions(), ...preAttachOptions()].join(" ")).not.toContain("'");
   });
 });
 
@@ -157,7 +222,12 @@ describe("preAttachOptions", () => {
   test("makes tmux reset the cursor to the terminal default, not a steady block", () => {
     // terminfo's Se is \E[2 q (steady block); \E[0 q hands back the user's own
     // (usually blinking) cursor when a program like nvim stops setting a shape.
-    expect(preAttachOptions()).toEqual(["set-option", "-g", "terminal-overrides[90]", "*:Se=\\E[0 q"]);
+    expect(preAttachOptions().slice(0, 4)).toEqual(["set-option", "-g", "terminal-overrides[90]", "*:Se=\\E[0 q"]);
+  });
+
+  test("names the terminal's leave-copy-mode sequence User90, as raw bytes", () => {
+    expect(preAttachOptions().slice(4)).toEqual([";", "set-option", "-s", "user-keys[90]", EXIT_COPY_MODE_KEY]);
+    expect(EXIT_COPY_MODE_KEY.startsWith("\x1b[")).toBe(true);
   });
 
   test("runs before new-session, since tmux reads overrides when the client attaches", () => {
@@ -186,5 +256,25 @@ describe("tmuxInstallHint", () => {
 
   test("a plain hint when there's none it knows", () => {
     expect(tmuxInstallHint("linux", has())).toBe("install tmux with your package manager");
+  });
+});
+
+describe("listPaneActivity", () => {
+  /** Put a `tmux` first on PATH that fails the way `message` says. */
+  const failingTmux = (message: string) => {
+    const dir = mkdtempSync(join(tmpdir(), "agentree-fake-tmux-"));
+    writeFileSync(join(dir, "tmux"), `#!/bin/sh\necho '${message}' >&2\nexit 1\n`);
+    chmodSync(join(dir, "tmux"), 0o755);
+    process.env.PATH = `${dir}:${process.env.PATH}`;
+  };
+
+  test("no server: no panes", async () => {
+    failingTmux("error connecting to /tmp/tmux-501/agentree (No such file or directory)");
+    expect(await listPaneActivity()).toEqual(new Map());
+  });
+
+  test("a sandbox keeping us off the socket: unknown, so no agent's report counts as stale", async () => {
+    failingTmux("error connecting to /private/tmp/tmux-501/agentree (Operation not permitted)");
+    expect(await listPaneActivity()).toBeNull();
   });
 });

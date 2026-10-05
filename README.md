@@ -14,7 +14,7 @@ agentree keeps every branch you're working on in its own [git worktree](https://
 - **Terminals that stay alive.** Every worktree's terminal runs in tmux, with tabs and splits — close agentree, come back, and everything is still running where you left it.
 - **See what every agent is doing.** ◆ needs you · ◐ working · ✓ done — for the agents agentree starts, and (opt-in) any `claude` you start in its terminals. A desktop notification when one needs you while you're elsewhere, and `Tab` jumps straight to it.
 - **Pull requests in view.** A badge on each worktree coloured by CI, and a panel with checks, reviews, merge status and comments. Merge from it, too — with a confirm step, pinned to the commit you're looking at. Once it's merged, the badge says so, and `d` closes the worktree.
-- **Diffs your way.** Working changes, staged, against the base branch, or any ref — in hunk, diffnav, delta, difftastic, nvim diffview or plain git, whichever you have.
+- **Diffs your way.** Working changes, staged, against the base branch, any ref, or a range of commits picked from a list — in hunk, diffnav, delta, difftastic, nvim diffview or plain git, whichever you have.
 - **Remote machines as projects.** Add an SSH host and a directory on it; its terminals run there, in tmux there, so they survive a dropped connection. Key or password login.
 - **A CLI for the agents themselves.** Inside an agentree terminal, `agentree tab new --name dev -- npm run dev` starts a dev server in its own tab and `agentree tab read dev` shows its output — so an agent can run and watch long-lived processes without blocking itself. Comes with a Claude Code skill that teaches it when and how.
 - **Keyboard first, mouse everywhere.** Every action has a key — and `Ctrl+p` opens a command palette listing them all, searchable, so none need remembering. Everything is also clickable, and the sidebar and PR panel resize by dragging.
@@ -33,7 +33,7 @@ agentree keeps every branch you're working on in its own [git worktree](https://
 - **[tmux](https://github.com/tmux/tmux) 3.x** — locally, and on any SSH host you add
 - **git**, and the **[GitHub CLI](https://cli.github.com)** (`gh`, logged in) for repos and pull requests
 - Linux or macOS
-- Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (started in new worktrees by default), a diff viewer ([hunk](https://www.npmjs.com/package/hunkdiff), [delta](https://github.com/dandavison/delta), [difftastic](https://difftastic.wilfred.me.uk), [diffnav](https://github.com/dlvhdr/diffnav)), `notify-send` on Linux for notifications
+- Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (started in new worktrees by default), a diff viewer ([hunk](https://www.npmjs.com/package/hunkdiff), [delta](https://github.com/dandavison/delta), [difftastic](https://difftastic.wilfred.me.uk), [diffnav](https://github.com/dlvhdr/diffnav), [lumen](https://github.com/jnsahaj/lumen)), `notify-send` on Linux for notifications
 
 ## Install
 
@@ -97,6 +97,71 @@ agentree skill install|uninstall|show
 
 Tabs are tmux windows, so the app's tab bar follows along. New tabs open in the background, so an agent never pulls your view away. See `agentree --help`.
 
+### Running agents in fence
+
+[fence](https://github.com/fencesandbox/fence) runs a program in a sandbox that limits which files it can write and which sites it can reach. To run agentree's agents in it:
+
+1. **Start the agent in fence.** Where you start agentree (your shell profile, say):
+
+   ```sh
+   export AGENTREE_AGENT_CMD='caffeinate -is fence --settings ~/.config/fence/fence.json -- claude'
+   ```
+
+   On Linux, leave out `caffeinate -is`. agentree still attaches its status hooks to `claude`.
+
+2. **Name the sandbox for what agents open.** A tab, diff or other worktree an agent opens runs in this:
+
+   ```sh
+   export AGENTREE_SANDBOX_CMD='fence --settings ~/.config/fence/fence.json --'
+   ```
+
+   Without it, agents can still list, read, select, rename and close tabs, but not open any.
+
+3. **Let the sandbox reach agentree, not tmux.** Add to `~/.config/fence/fence.json`:
+
+   ```jsonc
+   {
+     "network": {
+       // agentree's socket. Never tmux's own (/private/tmp/tmux-<uid>/agentree).
+       "allowUnixSockets": ["/private/tmp/tmux-<uid>/agentree.broker"]
+     },
+     "filesystem": {
+       "allowWrite": [
+         "~/.config/agentree/agents/**", // agents report their status here
+         "~/.config/agentree/state.json*" // `agentree worktree new` records worktrees here
+       ],
+       // An agent mustn't rewrite its own sandbox, or put programs on agentree's PATH.
+       "denyWrite": ["~/.config/fence/**", "~/.config/agentree/bin/**"]
+     }
+   }
+   ```
+
+   `<uid>` is what `id -u` prints. On Linux the socket is `/tmp/tmux-<uid>/agentree.broker`.
+
+4. **Restart agentree.** Terminals opened from then on start their agent in fence. Ones already running keep theirs.
+
+Check it from a sandboxed agent's terminal:
+
+```sh
+agentree tab new --name check -- echo hello   # prints the tab's index
+agentree tab read check                       # shows "hello"
+agentree tab close check
+```
+
+Keep `--settings` in both commands, and keep that file out of `allowWrite`. Without `--settings`, fence reads a `fence.json` from the worktree, which the agent can write.
+
+#### Why not just allow tmux's socket
+
+**The problem.** tmux runs the programs in agentree's terminals, and tmux itself is outside the sandbox. An agent that can talk to tmux can ask it to open a window running any command. That command then runs outside the sandbox, free of every limit fence sets. Allowing tmux's socket in fence, which the agent CLI used to need, gives an agent exactly that way out.
+
+**The fix.** Inside fence, the agent CLI no longer talks to tmux. It asks the agentree app, and the app asks tmux, only for what `agentree tab` and `agentree diff` do. The app keeps to these rules:
+
+- **What it starts, it starts in the sandbox** (`AGENTREE_SANDBOX_CMD`), at the worktree. `--cwd` only moves around inside that sandbox.
+- **It types only into tabs it started that way.** Typed into your own shell, the text would run outside the sandbox.
+- **It passes on nothing tmux would run as a command:** no `#` in names, and no argument ending in `;`.
+
+So an agent can still run a dev server in a tab and read its output, but tmux is no longer a way out of the sandbox. The one cost: agentree has to be open for an agent's tab commands to work.
+
 ## Configuration
 
 agentree keeps its state in `~/.config/agentree/state.json` (it follows `$XDG_CONFIG_HOME`) and remembers layout choices there too. A few environment variables change its behaviour:
@@ -110,6 +175,7 @@ agentree keeps its state in `~/.config/agentree/state.json` (it follows `$XDG_CO
 | `AGENTREE_ANIMATIONS` | `off` holds the status glyphs still |
 | `AGENTREE_TMUX_SOCKET` | the tmux server agentree uses (default: its own, `-L agentree`) |
 | `AGENTREE_OPEN_CMD` | how links are opened (default: `xdg-open` / `open`) |
+| `AGENTREE_SANDBOX_CMD` | the sandbox what a sandboxed agent starts runs in, as a command prefix (see [Running agents in fence](#running-agents-in-fence)) |
 | `CLAUDE_CONFIG_DIR` | where Claude Code's settings and skills live (default `~/.claude`) |
 
 ## How it works

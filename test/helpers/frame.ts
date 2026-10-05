@@ -5,6 +5,7 @@
  * OpenTUI's own `waitFor*` count render passes rather than wall-clock time, so
  * these poll: sleep, re-render, look at the frame.
  */
+import { TextAttributes } from "@opentui/core";
 import type { TestRendererSetup } from "@opentui/core/testing";
 import { getTheme } from "../../src/theme";
 
@@ -38,7 +39,8 @@ function spanHex(color: { buffer: ArrayLike<number> }): string {
 /**
  * The selected row's text. The sidebar marks the selection with colour only —
  * an accent-coloured gutter cell — so this reads the spans, not the glyphs.
- * A worktree row is two lines tall; both are returned, joined by a space.
+ * A selected worktree can be two lines tall (its branch under its name); both
+ * are returned, joined by a space.
  */
 export function selection(t: TestRendererSetup): string {
   const accent = getTheme().accent.toLowerCase();
@@ -54,6 +56,31 @@ export function selection(t: TestRendererSetup): string {
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** The terminal's tab bar: the screen's top row (the sidebar's is blank). */
+export function tabBar(t: TestRendererSetup): string {
+  return screen(t).split("\n")[0] ?? "";
+}
+
+/** The name of the tab on screen — the bar draws it bold, and nothing else. */
+export function activeTab(t: TestRendererSetup): string {
+  const top = t.captureSpans().lines[0]?.spans ?? [];
+  return top
+    .filter((s) => s.attributes & TextAttributes.BOLD)
+    .map((s) => s.text)
+    .join("")
+    .trim();
+}
+
+/** Wait until the tab bar shows a tab called `name`. */
+export function waitForTab(t: TestRendererSetup, name: string, opts?: WaitOptions): Promise<string> {
+  return poll(
+    t,
+    () => tabBar(t).includes(` ${name} `),
+    `a tab called ${JSON.stringify(name)} (bar: ${JSON.stringify(tabBar(t))})`,
+    opts,
+  );
 }
 
 /** Wait until the selected row's text contains `text`. */

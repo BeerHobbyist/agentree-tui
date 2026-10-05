@@ -56,20 +56,20 @@ function report(pane: string, state: string) {
 async function start() {
   const path = await oneProject();
   app = await renderApp();
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· x");
   return path;
 }
 
 describe("agent status", () => {
-  test("says so when no agent is doing anything", async () => {
+  test("the footer counts nothing when no agent is doing anything", async () => {
     await start();
-    expect(app.captureCharFrame()).toContain("no agent activity");
+    expect(app.captureCharFrame()).not.toMatch(/[◆◐✓] \d/);
   });
 
   test("a working agent shows on its worktree and in the footer", async () => {
     await start();
     report(agentPane(), "working");
-    const frame = await waitForText(app, "working");
+    const frame = await waitForText(app, "◐ x");
     expect(frame).toContain("◐ x");
     expect(frame).toContain("◐ 1"); // footer count
   });
@@ -77,9 +77,9 @@ describe("agent status", () => {
   test("an agent that needs you is surfaced even when its project is folded", async () => {
     await start();
     report(agentPane(), "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ x");
     app.mockInput.pressKey("h"); // fold "widget" (the selected header)
-    const frame = await waitForTextGone(app, "feature/x");
+    const frame = await waitForTextGone(app, "◆ x");
     const header = frame.split("\n").find((l) => l.includes("widget"))!;
     expect(header).toContain("◆");
   });
@@ -103,7 +103,7 @@ describe("agent status", () => {
     report("999", "working");
     const stale = join(agentStatusDir(), `${SESSION()}.999`);
     await waitUntil(app, () => !existsSync(stale), "the stale report to be removed");
-    expect(app.captureCharFrame()).not.toContain("working");
+    expect(app.captureCharFrame()).not.toContain("◐");
   });
 });
 
@@ -121,7 +121,7 @@ describe("animated (AGENTREE_ANIMATIONS on; the sandbox turns it off)", () => {
     process.env.AGENTREE_ANIMATIONS = "on";
     await start();
     report(agentPane(), "working");
-    await waitForText(app, "working");
+    await waitUntil(app, () => SPINNER.some((g) => app.captureCharFrame().includes(`${g} x`)), "x to be working");
     const seen = new Set<string>();
     await waitUntil(
       app,
@@ -139,7 +139,7 @@ describe("animated (AGENTREE_ANIMATIONS on; the sandbox turns it off)", () => {
     process.env.AGENTREE_ANIMATIONS = "on";
     await start();
     report(agentPane(), "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ x");
     const colours = new Set<string>();
     await waitUntil(
       app,

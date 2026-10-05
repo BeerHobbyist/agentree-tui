@@ -184,7 +184,7 @@ export async function openLogin(app: RenderedApp) {
 export async function loginTerminal(sb: Sandbox, app: RenderedApp) {
   await openLogin(app);
   app.mockInput.pressEnter();
-  await waitForText(app, "^g sidebar"); // the tab bar: the terminal is open
+  await waitForText(app, "^g"); // the tab bar: the terminal is open
   await Bun.sleep(1000);
   await agentTerminal(sb);
   app.mockInput.pressKey("g", { ctrl: true }); // the terminal shows unfocused

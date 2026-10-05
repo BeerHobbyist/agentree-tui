@@ -16,7 +16,7 @@ import { infiniteQueryOptions, queryOptions } from "@tanstack/react-query";
 import type { PrInfo } from "./data/model";
 import { readAgentStatuses, readRemoteAgentStatuses, trackingEveryClaude, type AgentReport } from "./services/agents";
 import { fetchRepoPage, listOpenPrs, prForBranch } from "./services/gh";
-import { baseRef, status as gitStatus } from "./services/git";
+import { baseRef, branchCommits, status as gitStatus } from "./services/git";
 import { availableViewers } from "./services/diff";
 import { createLimiter } from "./services/limit";
 import { fetchMergeSettings, fetchPrDetails } from "./services/pr";
@@ -56,6 +56,7 @@ export const queryKeys = {
   diffViewers: ["diff-viewers"] as const,
   tmuxWindows: (session: string) => ["tmux-windows", session] as const,
   baseRef: (path: string) => ["base-ref", path] as const,
+  branchCommits: (path: string) => ["branch-commits", path] as const,
 };
 
 /** The PR panel's details for one PR — polled while on screen. */
@@ -186,4 +187,16 @@ export const baseRefQuery = (path: string) =>
     queryKey: queryKeys.baseRef(path),
     queryFn: () => baseRef(path),
     staleTime: 5 * 60_000,
+  });
+
+/**
+ * The commits the diff picker's commit list offers. Read when the list opens
+ * (the opener drops the last answer) and not again while it's open, so the
+ * rows can't shift under the cursor.
+ */
+export const branchCommitsQuery = (path: string) =>
+  queryOptions({
+    queryKey: queryKeys.branchCommits(path),
+    queryFn: async () => branchCommits(path, await baseRef(path)),
+    staleTime: Infinity,
   });

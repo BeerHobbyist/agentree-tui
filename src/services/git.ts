@@ -170,6 +170,46 @@ export async function baseRef(path: string): Promise<string> {
   return "main";
 }
 
+export interface Commit {
+  sha: string;
+  /** The abbreviated sha, as git shows it. */
+  short: string;
+  subject: string;
+  /** What the commit is diffed against: its first parent, or the empty tree for a repo's first commit. */
+  parent: string;
+}
+
+/**
+ * The commits a diff can be picked from, newest first: the branch's own
+ * (`base..HEAD`), or — when it has none, as on the base branch itself — HEAD's
+ * latest. First parents only, so each commit's parent is the next one listed
+ * and a run of them is one range: a merged-in branch is its merge commit.
+ * Empty when git fails (no commits yet, not a repo).
+ */
+export async function branchCommits(path: string, base: string, limit = 200, fallback = 50): Promise<Commit[]> {
+  const log = async (args: string[]) => {
+    const { code, stdout } = await run(["git", "log", "--first-parent", "--format=%H%x1f%h%x1f%P%x1f%s", ...args], {
+      cwd: path,
+    });
+    return code === 0 ? stdout.split("\n").filter(Boolean) : [];
+  };
+  let lines = await log([`--max-count=${limit}`, `${base}..HEAD`]);
+  if (lines.length === 0) lines = await log([`--max-count=${fallback}`, "HEAD"]);
+
+  let emptyTree: string | undefined;
+  const commits: Commit[] = [];
+  for (const line of lines) {
+    const [sha = "", short = "", parents = "", subject = ""] = line.split("\x1f");
+    let parent = parents.split(" ")[0];
+    if (!parent) {
+      emptyTree ??= (await runOrThrow(["git", "hash-object", "-t", "tree", "/dev/null"], { cwd: path })).trim();
+      parent = emptyTree;
+    }
+    commits.push({ sha, short, subject, parent });
+  }
+  return commits;
+}
+
 /** The commit a worktree has checked out, or null. */
 export async function headCommit(path: string): Promise<string | null> {
   const { code, stdout } = await run(["git", "rev-parse", "HEAD"], { cwd: path });

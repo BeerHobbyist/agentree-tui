@@ -11,6 +11,7 @@ import { basename, dirname, resolve } from "node:path";
 import { addManagedWorktree, findRepo, loadState, saveState, upsertRepo, type State, type StoredRepo } from "./store";
 import { readAgentStatuses } from "./services/agents";
 import { branchLeaf, repoDir, sanitizeBranchForPath, worktreePath } from "./config";
+import { brokerTmux, type TabControl } from "./services/broker";
 import { availableViewers, diffCommand, resolveViewer, type DiffTarget } from "./services/diff";
 import { addWorktree, baseRef, canonicalPath, listWorktrees, localBranchExists } from "./services/git";
 import { clone } from "./services/gh";
@@ -18,7 +19,7 @@ import { notify } from "./services/notify";
 import { run } from "./services/proc";
 import { shellJoin } from "./services/shell";
 import { installSkill, skillPath, skillState, SKILL_TEXT, uninstallSkill } from "./services/skill";
-import { sessionName, tmuxOn, type Tmux, type WindowInfo } from "./services/tmux";
+import { sessionName, tmuxOn, type WindowInfo } from "./services/tmux";
 
 const COMMANDS = ["tab", "tabs", "diff", "notify", "status", "skill", "worktree", "help"];
 
@@ -64,6 +65,9 @@ control that worktree's tabs (tmux windows; the app's tab bar follows):
                                           agents all this (~/.claude/skills)
 
 TAB is a tab's index or name. --session S acts on another tmux session.
+Inside fence ($FENCE_SANDBOX), tab and diff commands go through the app: what
+they start runs in its sandbox ($AGENTREE_SANDBOX_CMD), and tab send types
+only into tabs opened that way.
 Any command accepts --help to print this instead of running.
 
 Examples (an agent running a dev server beside itself):
@@ -160,6 +164,14 @@ export async function runCli(argv: string[], io: Io = stdio): Promise<number> {
   }
 }
 
+/**
+ * tmux, for the CLI: agentree's server directly — or, inside fence, which
+ * keeps a sandbox away from tmux, through the app (src/services/broker.ts).
+ */
+function cliTmux(): TabControl {
+  return process.env.FENCE_SANDBOX ? brokerTmux() : tmuxOn();
+}
+
 /** The tmux session to act on: --session, else the agentree terminal we're in. */
 function currentSession(args: Args): string {
   const session = flag(args, "session") || process.env.AGENTREE_SESSION;
@@ -169,9 +181,9 @@ function currentSession(args: Args): string {
   return session;
 }
 
-async function findTab(session: string, ref: string | undefined): Promise<WindowInfo> {
+async function findTab(tmux: TabControl, session: string, ref: string | undefined): Promise<WindowInfo> {
   if (!ref) throw new CliError("which tab? give its index or name");
-  const tabs = await tmuxOn().listWindows(session);
+  const tabs = await tmux.listWindows(session);
   if (tabs.length === 0) throw new CliError(`no tmux session "${session}"`);
   const tab = (/^\d+$/.test(ref) && tabs.find((t) => t.index === Number(ref))) || tabs.find((t) => t.name === ref);
   if (!tab) throw new CliError(`no tab "${ref}" — tabs: ${tabs.map((t) => `${t.index}:${t.name}`).join(", ")}`);
@@ -202,7 +214,7 @@ function findWorktreeSession(
  * starting its session if it isn't running yet), else `--session`/the
  * agentree terminal we're in.
  */
-async function resolveSession(args: Args, tmux: Tmux): Promise<string> {
+async function resolveSession(args: Args, tmux: TabControl): Promise<string> {
   const worktreeId = flag(args, "worktree");
   if (!worktreeId) return currentSession(args);
   const repoArg = flag(args, "repo");
@@ -219,7 +231,7 @@ async function resolveSession(args: Args, tmux: Tmux): Promise<string> {
 }
 
 async function tabCommand(args: Args, io: Io): Promise<number> {
-  const tmux = tmuxOn();
+  const tmux = cliTmux();
   const session = await resolveSession(args, tmux);
   const [sub, ref, ...words] = args.positional;
   switch (sub) {
@@ -240,20 +252,21 @@ async function tabCommand(args: Args, io: Io): Promise<number> {
       const clash = name && tabs.find((t) => t.name === name);
       if (clash)
         throw new CliError(`a tab named "${name}" is already open (${clash.index}) — use it, or close it first`);
-      const index = await tmux.openTab(session, { name, cwd: flag(args, "cwd"), select: has(args, "select") });
+      const cwd = flag(args, "cwd");
+      const { index } = await tmux.openTab(session, { name, cwd: cwd && resolve(cwd), select: has(args, "select") });
       if (args.rest.length > 0) await tmux.sendText(`${session}:${index}`, shellJoin(args.rest));
       io.out(has(args, "json") ? JSON.stringify({ index, name: name ?? null }) : String(index));
       return 0;
     }
     case "read": {
-      const tab = await findTab(session, ref);
+      const tab = await findTab(tmux, session, ref);
       const lines = Number(flag(args, "lines") ?? 50);
       if (!Number.isFinite(lines) || lines < 1) throw new CliError("--lines needs a positive number");
       io.out(await tmux.capturePane(`${session}:${tab.index}`, lines));
       return 0;
     }
     case "send": {
-      const tab = await findTab(session, ref);
+      const tab = await findTab(tmux, session, ref);
       const target = `${session}:${tab.index}`;
       const keys = args.flags.get("key") ?? [];
       const text = [...words, ...args.rest].join(" ");
@@ -263,19 +276,19 @@ async function tabCommand(args: Args, io: Io): Promise<number> {
       return 0;
     }
     case "select": {
-      const tab = await findTab(session, ref);
+      const tab = await findTab(tmux, session, ref);
       await tmux.selectWindow(session, tab.index);
       return 0;
     }
     case "rename": {
-      const tab = await findTab(session, ref);
+      const tab = await findTab(tmux, session, ref);
       const name = words.join(" ").trim();
       if (!name) throw new CliError("rename to what? give a NAME");
       await tmux.renameWindow(session, tab.index, name);
       return 0;
     }
     case "close": {
-      const tab = await findTab(session, ref);
+      const tab = await findTab(tmux, session, ref);
       const tabs = await tmux.listWindows(session);
       // The last tab going would take the session — and the app's terminal — with it.
       if (tabs.length <= 1) throw new CliError("that's the only tab; it stays");
@@ -289,7 +302,7 @@ async function tabCommand(args: Args, io: Io): Promise<number> {
 
 async function diff(args: Args, io: Io): Promise<number> {
   const session = currentSession(args);
-  const tmux = tmuxOn();
+  const tmux = cliTmux();
   const cwd = await tmux.sessionPath(session);
   if (!cwd) throw new CliError(`no tmux session "${session}"`);
   const what = args.positional[0] ?? "working";

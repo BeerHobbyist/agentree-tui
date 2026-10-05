@@ -31,7 +31,7 @@ async function closeX() {
   await saveState(state);
   await reconcile(state);
   app = await renderApp();
-  await waitForText(app, "feature/x");
+  await waitForText(app, "· x");
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "feature/x");
