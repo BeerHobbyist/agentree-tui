@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadState, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
+import { screen, settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
 import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -336,6 +336,29 @@ describe("adding to the project under the cursor", () => {
 
     app.mockInput.pressEscape();
     await waitForModalClosed(app);
+  });
+
+  test("a quick ⏎ on the actions isn't pulled back to them once the worktrees are read", async () => {
+    await knownProject("acme/widget");
+    app = await renderApp();
+    await waitForText(app, "widget");
+    const listed = sandbox.slowGit("worktree list", 1);
+
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree"); // shown before the worktrees are read
+    app.mockInput.pressEnter();
+    await waitForText(app, "New branch name");
+    await app.mockInput.typeText("feature/y");
+
+    await waitUntil(app, listed, "the worktrees to be read");
+    // Nothing to wait for — the point is that nothing happens — so give a jump back time to land.
+    await Bun.sleep(300);
+    await settle(app);
+    expect(screen(app)).toContain("❯ feature/y");
+
+    app.mockInput.pressEnter();
+    await waitForModalClosed(app);
+    await waitUntil(app, () => sandbox.readState()?.repos[0]?.worktrees.length === 1, "the worktree to be registered");
   });
 });
 

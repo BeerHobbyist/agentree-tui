@@ -66,6 +66,8 @@ interface AddWorktreeModalProps {
 }
 
 const MAX_LIST_ROWS = 10;
+/** Phases reached only from the actions list, which loading the worktrees mustn't pull the user back out of. */
+const PAST_ACTIONS: readonly Phase[] = ["branchInput", "baseList", "creating", "createError"];
 const NO_BRANCHES: Branches = { current: null, local: [], remote: [] };
 
 /** A branch a new one can start from: `name` to show, `ref` in full for git, as a tag can share the name. */
@@ -182,6 +184,10 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
     ref.current.index = next;
     setIndex(next);
   };
+  const applyPhase = (next: Phase) => {
+    ref.current.phase = next;
+    setPhase(next);
+  };
   const applyBranch = (next: string) => {
     ref.current.branch = next;
     setBranch(next);
@@ -274,6 +280,8 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
         if (!mounted.current) return;
         setExisting(list);
         setExistingLoaded(true);
+        // A preselected repo's actions are on screen before this resolves, so the user may be past them already.
+        if (PAST_ACTIONS.includes(ref.current.phase)) return;
         setIndex(0);
         setPhase("actions");
       },
@@ -313,7 +321,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
   const newBranchInput = () => {
     applyBranch("");
     setBase(null);
-    setPhase("branchInput");
+    applyPhase("branchInput");
   };
 
   const openBaseList = () => {
