@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { loadState, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
-import { git, makeRemote, makeRepo } from "../helpers/repo";
+import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
 let sandbox: Sandbox;
@@ -210,6 +210,58 @@ describe("typing", () => {
     const frame = await waitForText(app, "filter W");
     expect(frame).toContain("acme/Widget");
     expect(frame).not.toContain("acme/gadget");
+  });
+});
+
+describe("choosing the base branch", () => {
+  test("tab picks a base from a filtered list; the new branch starts there", async () => {
+    const root = await knownProject("acme/widget");
+    await git(["branch", "release"], root);
+    writeFile(root, "later.txt", "later\n");
+    await commitAll(root, "later"); // main moves past release
+    await git(["tag", "release"], root); // a tag by the same name, elsewhere, must not make it ambiguous
+
+    app = await renderApp();
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree");
+    app.mockInput.pressEnter();
+    await waitForText(app, "from main");
+
+    await app.mockInput.typeText("feature/y");
+    await waitForText(app, "❯ feature/y");
+    app.mockInput.pressTab();
+    await waitForText(app, "Base for feature/y");
+
+    await app.mockInput.typeText("rel");
+    const frame = await waitForText(app, "filter rel");
+    expect(frame).not.toContain("current");
+    app.mockInput.pressEnter();
+    await waitForText(app, "from release");
+    app.mockInput.pressEnter();
+
+    await waitForModalClosed(app);
+    await waitUntil(app, () => sandbox.readState()?.repos[0]?.worktrees.length === 1, "the worktree to be registered");
+    expect(await git(["rev-parse", "feature/y"], root)).toBe(await git(["rev-parse", "refs/heads/release"], root));
+  });
+
+  test("esc leaves the base as it was, and an existing branch says the base won't apply", async () => {
+    const root = await knownProject("acme/widget");
+    await git(["branch", "release"], root);
+
+    app = await renderApp();
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree");
+    app.mockInput.pressEnter();
+    await waitForText(app, "New branch name");
+
+    app.mockInput.pressTab();
+    await waitForText(app, "main  current");
+    app.mockInput.pressArrow("down");
+    app.mockInput.pressEscape();
+    await waitForText(app, "from main");
+
+    await app.mockInput.typeText("release");
+    await waitForText(app, "existing branch");
   });
 });
 

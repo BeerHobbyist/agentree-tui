@@ -16,8 +16,10 @@ import {
   canonicalPath,
   fetchPrBranch,
   ignoreWorktreesDir,
+  listBranches,
   listWorktrees,
   localBranchExists,
+  type Branches,
 } from "../services/git";
 import { addManagedWorktree, findRepo, reconcile, saveState, upsertRepo, type State } from "../store";
 import { existsSync } from "node:fs";
@@ -30,6 +32,7 @@ type Phase =
   | "cloneError"
   | "actions"
   | "branchInput"
+  | "baseList"
   | "creating"
   | "createError";
 
@@ -63,6 +66,13 @@ interface AddWorktreeModalProps {
 }
 
 const MAX_LIST_ROWS = 10;
+const NO_BRANCHES: Branches = { current: null, local: [], remote: [] };
+
+/** A branch a new one can start from: `name` to show, `ref` in full for git, as a tag can share the name. */
+interface BaseOption {
+  name: string;
+  ref: string;
+}
 
 export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWorktreeModalProps) {
   const queryClient = useQueryClient();
@@ -80,6 +90,10 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
 
   const [pendingPr, setPendingPr] = useState<OpenPr | null>(null);
   const [branch, setBranch] = useState("");
+  const [branches, setBranches] = useState<Branches>(NO_BRANCHES);
+  /** The ref a new branch starts from; null = whatever the main copy has checked out. */
+  const [base, setBase] = useState<BaseOption | null>(null);
+  const [baseQuery, setBaseQuery] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
   // Every repo `gh` can see: page 1 on screen as soon as it arrives, the rest
@@ -137,6 +151,9 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
     prs: availablePrs,
     pendingPr,
     branch,
+    branches,
+    base,
+    baseQuery,
   });
   ref.current = {
     phase,
@@ -149,6 +166,9 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
     prs: availablePrs,
     pendingPr,
     branch,
+    branches,
+    base,
+    baseQuery,
   };
 
   // A burst of keystrokes (fast typing, a paste, key repeat) is delivered in a
@@ -165,6 +185,10 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
   const applyBranch = (next: string) => {
     ref.current.branch = next;
     setBranch(next);
+  };
+  const applyBaseQuery = (next: string) => {
+    ref.current.baseQuery = next;
+    setBaseQuery(next);
   };
 
   useEffect(() => {
@@ -237,6 +261,14 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
   const openActions = (repoRoot: string) => {
     ignoreWorktreesDir(repoRoot);
     setExistingLoaded(false);
+    // Only the base picker needs these, so they load on the side and a failure leaves it empty.
+    setBranches(NO_BRANCHES);
+    listBranches(repoRoot).then(
+      (br) => {
+        if (mounted.current) setBranches(br);
+      },
+      () => {},
+    );
     buildExisting(repoRoot).then(
       (list) => {
         if (!mounted.current) return;
@@ -278,7 +310,30 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
     await apply({ repoId: repo.nameWithOwner, worktreeId: wt.id });
   };
 
-  const createWorktree = (branchName: string) => {
+  const newBranchInput = () => {
+    applyBranch("");
+    setBase(null);
+    setPhase("branchInput");
+  };
+
+  const openBaseList = () => {
+    const s = ref.current;
+    const want = s.base?.ref ?? (s.branches.current ? `refs/heads/${s.branches.current}` : "");
+    const at = baseOptions(s.branches).findIndex((o) => o.ref === want);
+    applyBaseQuery("");
+    applyIndex(Math.max(at, 0));
+    setPhase("baseList");
+  };
+
+  /** Back to the branch name, `chosen` as its base when given. Row 0 is where actions left off. */
+  const closeBaseList = (chosen?: BaseOption) => {
+    if (chosen) setBase(chosen);
+    applyIndex(0);
+    setPhase("branchInput");
+  };
+
+  /** `from` is the ref a new branch starts at, null for the main copy's HEAD. An existing branch ignores it. */
+  const createWorktree = (branchName: string, from: string | null) => {
     if (!repo) return;
     const name = branchName.trim();
     if (!name) return;
@@ -305,7 +360,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
       const path = worktreePath(root, name);
       mkdirSync(dirname(path), { recursive: true });
       const exists = await localBranchExists(root, name);
-      await addWorktree(root, path, name, { newBranch: !exists });
+      await addWorktree(root, path, name, { newBranch: !exists, base: from ?? undefined });
 
       const id = sanitizeBranchForPath(name);
       await addManagedWorktree(
@@ -386,6 +441,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
     if (name === "escape") {
       if (s.phase === "actions") return preselect ? onClose() : void setPhase("repoList");
       if (s.phase === "branchInput") return void setPhase("actions");
+      if (s.phase === "baseList") return closeBaseList();
       if (s.phase === "cloneError") return preselect ? onClose() : void setPhase("repoList");
       if (s.phase === "createError") return void setPhase(s.pendingPr ? "actions" : "branchInput");
       return onClose();
@@ -425,8 +481,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
           applyIndex(Math.max(s.index - 1, 0));
         } else if (name === "return") {
           if (s.index === 0) {
-            applyBranch("");
-            setPhase("branchInput");
+            newBranchInput();
           } else if (s.index <= s.existing.length) {
             const wt = s.existing[s.index - 1];
             if (wt) void loadExisting(wt);
@@ -439,11 +494,32 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
       }
       case "branchInput": {
         if (name === "return") {
-          createWorktree(s.branch);
+          createWorktree(s.branch, s.base?.ref ?? null);
+        } else if (name === "tab") {
+          openBaseList();
         } else if (name === "backspace") {
           applyBranch(s.branch.slice(0, -1));
         } else if (typed && isBranchChar(typed)) {
           applyBranch(s.branch + typed);
+        }
+        return;
+      }
+      case "baseList": {
+        // Arrows only: j/k are letters a branch filter needs.
+        const list = filterBases(baseOptions(s.branches), s.baseQuery);
+        if (name === "down") {
+          applyIndex(Math.min(s.index + 1, Math.max(list.length - 1, 0)));
+        } else if (name === "up") {
+          applyIndex(Math.max(s.index - 1, 0));
+        } else if (name === "return") {
+          const chosen = list[s.index];
+          if (chosen) closeBaseList(chosen);
+        } else if (name === "backspace") {
+          applyBaseQuery(s.baseQuery.slice(0, -1));
+          applyIndex(0);
+        } else if (typed && isBranchChar(typed)) {
+          applyBaseQuery(s.baseQuery + typed);
+          applyIndex(0);
         }
         return;
       }
@@ -454,7 +530,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
       case "createError": {
         if (name === "r") {
           if (s.pendingPr) createFromPr(s.pendingPr);
-          else createWorktree(s.branch);
+          else createWorktree(s.branch, s.base?.ref ?? null);
         }
         return;
       }
@@ -463,6 +539,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
 
   // Busy (loading, cloning, creating): it can't be closed until that's done.
   const busy = phase === "repoLoading" || phase === "cloning" || phase === "creating";
+  const filteredBases = filterBases(baseOptions(branches), baseQuery);
   return (
     <Dialog title="Add worktree" width={70} onClose={busy ? undefined : onClose}>
       {renderBody({
@@ -475,6 +552,10 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
         existing,
         prs: availablePrs,
         branch,
+        branches,
+        base,
+        baseQuery,
+        bases: filteredBases,
         errorMsg,
         loadingMore,
         onPick: (i: number) => {
@@ -483,8 +564,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
             if (r) chooseRepo(r);
           } else if (phase === "actions") {
             if (i === 0) {
-              setBranch("");
-              setPhase("branchInput");
+              newBranchInput();
             } else if (i <= existing.length) {
               const wt = existing[i - 1];
               if (wt) void loadExisting(wt);
@@ -492,6 +572,9 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
               const pr = availablePrs[i - existing.length - 1];
               if (pr) createFromPr(pr);
             }
+          } else if (phase === "baseList") {
+            const chosen = filteredBases[i];
+            if (chosen) closeBaseList(chosen);
           }
         },
       })}
@@ -511,6 +594,11 @@ interface BodyProps {
   existing: ExistingWorktree[];
   prs: OpenPr[];
   branch: string;
+  branches: Branches;
+  base: BaseOption | null;
+  baseQuery: string;
+  /** Base candidates matching `baseQuery`. */
+  bases: BaseOption[];
   errorMsg: string;
   loadingMore: boolean;
   /** Activate row `i` (click) — same as pressing Enter on it. */
@@ -543,6 +631,8 @@ function renderBody(p: BodyProps) {
       return <Actions {...p} />;
     case "branchInput":
       return <BranchInput {...p} />;
+    case "baseList":
+      return <BaseList {...p} />;
   }
 }
 
@@ -687,9 +777,75 @@ function BranchInput(p: BodyProps) {
         <text fg={theme.fg}>{p.branch.length ? p.branch : ""}</text>
         <text fg={theme.accent}>{"▏"}</text>
       </box>
-      <Hints marginTop={1} hints={hintsFrom("⏎ create · esc back")} />
+      <text fg={theme.fgFaint} wrapMode="none" truncate>
+        {p.branches.local.includes(p.branch.trim())
+          ? "existing branch"
+          : `from ${p.base?.name ?? p.branches.current ?? "HEAD"}`}
+      </text>
+      <Hints marginTop={1} hints={hintsFrom("⏎ create · tab base · esc back")} />
     </box>
   );
+}
+
+function BaseList(p: BodyProps) {
+  const theme = useTheme();
+  const { start, slice } = windowed(p.bases, p.index, MAX_LIST_ROWS);
+  return (
+    <box flexDirection="column">
+      <text fg={theme.fgMuted} marginBottom={1} wrapMode="none" truncate>
+        {`Base for ${p.branch.trim() || "the new branch"}`}
+      </text>
+      <box flexDirection="row" marginBottom={1}>
+        <text fg={theme.fgFaint}>{"filter "}</text>
+        <text fg={theme.fg}>{p.baseQuery}</text>
+        <text fg={theme.accent}>{"▏"}</text>
+      </box>
+
+      {slice.length === 0 && <text fg={theme.fgMuted}>{"No matching branches."}</text>}
+
+      {slice.map((b, i) => {
+        const active = start + i === p.index;
+        const look = rowLook(theme, active);
+        return (
+          <box
+            key={b.ref}
+            flexDirection="row"
+            alignItems="center"
+            backgroundColor={look.bg}
+            onMouseDown={() => p.onPick?.(start + i)}
+          >
+            <text fg={look.marker} flexShrink={0}>
+              {active ? " ▶ " : "   "}
+            </text>
+            <text fg={look.fg} attributes={look.bold} flexShrink={1} minWidth={0} wrapMode="none" truncate>
+              {b.name}
+            </text>
+            {b.ref === `refs/heads/${p.branches.current}` ? (
+              <text fg={look.muted} flexShrink={0}>
+                {"  current"}
+              </text>
+            ) : null}
+          </box>
+        );
+      })}
+
+      <Hints marginTop={1} hints={hintsFrom("↑↓ move · ⏎ select · esc back")} />
+    </box>
+  );
+}
+
+/** Where a new branch can start: the checked-out branch first, then other local ones, then remote ones. */
+function baseOptions(b: Branches): BaseOption[] {
+  const local = b.current ? [b.current, ...b.local.filter((x) => x !== b.current)] : b.local;
+  return [
+    ...local.map((name) => ({ name, ref: `refs/heads/${name}` })),
+    ...b.remote.map((name) => ({ name, ref: `refs/remotes/${name}` })),
+  ];
+}
+
+function filterBases(options: BaseOption[], q: string): BaseOption[] {
+  const needle = q.trim().toLowerCase();
+  return needle ? options.filter((o) => o.name.toLowerCase().includes(needle)) : options;
 }
 
 /** Score a repo against a lowercased query; higher is more relevant, 0 = no match. */
