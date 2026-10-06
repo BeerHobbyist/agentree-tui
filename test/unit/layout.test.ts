@@ -38,10 +38,17 @@ describe("fitPanels", () => {
     expect(fitPanels(140, 38, 46, true)).toEqual({ sidebar: 38, panel: 46 });
   });
 
-  test("the sidebar makes room for the panel's minimum", () => {
-    const { sidebar, panel } = fitPanels(100, 60, 46, true);
-    expect(panel).toBeGreaterThanOrEqual(MIN_PR_PANEL_WIDTH);
-    expect(100 - sidebar - panel).toBeGreaterThanOrEqual(MIN_CONTENT_WIDTH);
+  test("the sidebar keeps its width for the panel: the panel gets what's left, or hides", () => {
+    expect(fitPanels(100, 38, 46, true)).toEqual({ sidebar: 38, panel: 0 });
+    expect(fitPanels(100, 34, 46, true)).toEqual({ sidebar: 34, panel: 36 });
+  });
+
+  test("a PR on screen or not, the sidebar is the same width", () => {
+    for (const screen of [80, 90, 100, 120, 140]) {
+      for (const width of [MIN_SIDEBAR_WIDTH, 38, 60]) {
+        expect(fitPanels(screen, width, 46, true).sidebar).toBe(fitPanels(screen, width, 46, false).sidebar);
+      }
+    }
   });
 
   test("a panel dragged too wide still leaves the content its minimum", () => {

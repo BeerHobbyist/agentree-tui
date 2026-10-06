@@ -14,6 +14,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -123,7 +124,7 @@ describe("telling you", () => {
 
     const paneX = Bun.spawnSync([...tmux(), "display", "-p", "-t", X, "#{pane_id}"]);
     report(X, new TextDecoder().decode(paneX.stdout).trim().replace("%", ""), "needs-action");
-    await waitForText(app, "◆ 2");
+    await waitForText(app, `${ICON.needsAction} 2`);
     await Bun.sleep(1200);
     expect(sandbox.notifications()).toEqual(["y needs you | widget"]); // x is the one you're looking at
   });
@@ -162,21 +163,21 @@ describe("going to it", () => {
     await waitForSelection(app, "y");
   });
 
-  test("with nobody needing you, Tab goes to one that's done; clicking ◆ 1 goes to the one that needs you", async () => {
+  test("with nobody needing you, Tab goes to one that's done; clicking its count goes to the one that needs you", async () => {
     const paneX = agentPane(X);
     const paneY = agentPane(Y);
     await start();
     report(X, paneX, "done");
-    await waitForText(app, "✓ 1");
+    await waitForText(app, `${ICON.done} 1`);
     app.mockInput.pressTab();
     await waitForSelection(app, "x");
 
     app.mockInput.pressKey("g", { ctrl: true }); // back to the sidebar
     report(Y, paneY, "needs-action");
-    await waitForText(app, "◆ 1");
+    await waitForText(app, `${ICON.needsAction} 1`);
     const lines = app.captureCharFrame().split("\n");
-    const y = lines.findIndex((l) => l.includes("◆ 1"));
-    await app.mockMouse.click(lines[y]!.indexOf("◆ 1"), y);
+    const y = lines.findIndex((l) => l.includes(`${ICON.needsAction} 1`));
+    await app.mockMouse.click(lines[y]!.indexOf(`${ICON.needsAction} 1`), y);
     await waitForSelection(app, "y");
   });
 });
@@ -199,7 +200,7 @@ describe("agents on an SSH host", () => {
     app.mockInput.pressKey("u", { ctrl: true });
     for (const ch of "~/code/api") app.mockInput.pressKey(ch);
     app.mockInput.pressEnter();
-    await waitForText(app, "⌁ dev-box");
+    await waitForText(app, `${ICON.host} dev-box`);
 
     // The host's Claude settings get the hooks (its own file, not this machine's).
     const hostSettings = join(sandbox.sshHome, ".claude", "settings.json");

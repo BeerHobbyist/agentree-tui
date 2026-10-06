@@ -9,6 +9,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -34,7 +35,7 @@ async function start() {
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
-  await waitForText(app, "⇡#42");
+  await waitForText(app, `${ICON.pr} #42`);
 }
 
 /** ctrl+p, and wait until it takes keys (its handler is attached once it's on screen). */

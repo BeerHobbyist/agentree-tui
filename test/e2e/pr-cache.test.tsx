@@ -10,6 +10,7 @@ import { renderApp, type RenderedApp, type RenderAppOptions } from "../helpers/a
 import { settle, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -66,7 +67,7 @@ async function select(name: "main" | "login" | "billing") {
     .captureCharFrame()
     .split("\n")
     .map((l) => l.slice(0, 38));
-  const row = (n: string) => sidebar.findIndex((l) => l.includes(`· ${n}`));
+  const row = (n: string) => sidebar.findIndex((l) => l.includes(`${ICON.noAgent} ${n}`));
   const order = (["main", "login", "billing"] as const).slice().sort((a, b) => row(a) - row(b));
   app.mockInput.pressKey("g"); // the project header
   for (let i = 0; i <= order.indexOf(name); i++) app.mockInput.pressKey("j");
@@ -133,7 +134,7 @@ describe("PR details cache", () => {
     await waitForText(app, "refresh failed", { timeoutMs: 10_000 }); // after its one retry
     expect(app.captureCharFrame()).toContain("Add login screen");
     // …and the sidebar badge, whose lookup failed too, keeps its last answer.
-    expect(app.captureCharFrame()).toContain("⇡#42");
+    expect(app.captureCharFrame()).toContain(`${ICON.pr} #42`);
   }, 20_000);
 
   test("a PR whose checks changed is fetched again when you come back to it", async () => {

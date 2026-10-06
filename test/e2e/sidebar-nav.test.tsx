@@ -13,6 +13,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { selection, settle, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -123,7 +124,7 @@ describe("a list taller than the sidebar", () => {
     await saveState(state);
     await reconcile(state);
   }
-  const HEADER = "▾ ◈ widget";
+  const HEADER = `${ICON.repo} widget`;
 
   test("scrolls to keep the selection in view, and back", async () => {
     await manyWorktrees();
@@ -140,6 +141,20 @@ describe("a list taller than the sidebar", () => {
     await waitForSelection(app, "widget");
     await waitForText(app, HEADER);
     expect(app.captureCharFrame()).not.toContain("feature/w8");
+  });
+
+  test("folding it so it fits moves nothing sideways (no scrollbar comes and goes)", async () => {
+    await manyWorktrees();
+    app = await renderApp({ height: 20 });
+    await waitForSelection(app, "widget");
+    const addColumn = () => {
+      const lines = app.captureCharFrame().split("\n");
+      return lines.find((l) => l.includes(HEADER))!.indexOf(ICON.add);
+    };
+    const before = addColumn();
+    app.mockInput.pressKey("h"); // fold widget: the list now fits
+    await waitForTextGone(app, "feature/w1");
+    expect(addColumn()).toBe(before);
   });
 
   test("moving down one row at a time never loses the selection off screen", async () => {

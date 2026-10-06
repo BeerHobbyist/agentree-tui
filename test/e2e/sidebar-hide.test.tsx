@@ -1,5 +1,5 @@
 /**
- * Hiding the sidebar (b, or its footer's ⇤) gives the terminal the whole
+ * Hiding the sidebar (b, or the button in its corner) gives the terminal the whole
  * width; going back to the sidebar (Ctrl+g, the tab bar's ‹, or b) shows it.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -9,6 +9,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -23,7 +24,7 @@ afterEach(() => {
 
 const HELP = "Keyboard & mouse";
 /** Only the sidebar shows this: its project header. */
-const SIDEBAR = "◈ widget";
+const SIDEBAR = `${ICON.repo} widget`;
 
 async function start() {
   const root = await makeRepo(join(sandbox.workspace, "widget"), {
@@ -106,10 +107,10 @@ describe("hiding the sidebar", () => {
     expect(await appHasKeys()).toBe(true);
   });
 
-  test("the ⇤ in its corner hides it; the tab bar's ‹ brings it back", async () => {
+  test("the button in its corner hides it; the tab bar's ‹ brings it back", async () => {
     await start();
     await openTerminal();
-    const hide = locate("⇤");
+    const hide = locate(ICON.hide);
     await app.mockMouse.click(hide.x, hide.y);
     await waitForTextGone(app, SIDEBAR);
     const back = locate("‹");

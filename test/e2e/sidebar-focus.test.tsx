@@ -13,6 +13,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForSelection, waitForText, waitForTextGone } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -29,7 +30,7 @@ const HELP = "Keyboard & mouse";
 /** The tab bar's hint — on screen once a worktree's terminal is showing. */
 const TERMINAL_SHOWN = "^g sidebar";
 
-async function start() {
+async function start(height?: number) {
   const root = await makeRepo(join(sandbox.workspace, "widget"), {
     worktrees: [{ branch: "feature/x" }],
   });
@@ -37,8 +38,8 @@ async function start() {
   upsertRepo(state, { nameWithOwner: "acme/widget", name: "widget", root });
   await saveState(state);
   await reconcile(state);
-  app = await renderApp();
-  await waitForText(app, "feature/x");
+  app = await renderApp({ height });
+  await waitForText(app, `${ICON.noAgent} x`);
 }
 
 /** Where `text` first appears on screen (single-width text before it). */
@@ -92,7 +93,7 @@ describe("clicking the sidebar", () => {
 
   test("a worktree row shows its terminal and keeps the keyboard in the sidebar", async () => {
     await start();
-    const { x, y } = locate("· x");
+    const { x, y } = locate(`${ICON.noAgent} x`);
     await app.mockMouse.click(x + 2, y);
     await waitForText(app, TERMINAL_SHOWN);
     await waitForSelection(app, "x");
@@ -102,9 +103,24 @@ describe("clicking the sidebar", () => {
     await waitForSelection(app, "main");
   });
 
+  test("a card cut off at the bottom is selected where it is: the list doesn't scroll", async () => {
+    await start(14); // x's card shows only its top lines
+    // Rows in the sidebar only: the terminal pane may say "widget" too.
+    const row = (text: string) =>
+      app
+        .captureCharFrame()
+        .split("\n")
+        .findIndex((l) => l.slice(0, 36).includes(text));
+    const before = { header: row(`${ICON.repo} widget`), card: row(`${ICON.noAgent} x`) };
+    const { x, y } = locate(`${ICON.noAgent} x`);
+    await app.mockMouse.click(x + 2, y);
+    await waitForSelection(app, "x");
+    expect({ header: row(`${ICON.repo} widget`), card: row(`${ICON.noAgent} x`) }).toEqual(before);
+  });
+
   test("double-clicking a worktree row types in its terminal", async () => {
     await start();
-    const { x, y } = locate("· x");
+    const { x, y } = locate(`${ICON.noAgent} x`);
     await app.mockMouse.doubleClick(x + 2, y);
     await waitForText(app, TERMINAL_SHOWN);
     expect(await sidebarHasKeys()).toBe(false);

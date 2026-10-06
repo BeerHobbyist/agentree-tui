@@ -1,5 +1,5 @@
 /**
- * A merged PR stays on its worktree — `⇡#42 merged` in the sidebar, "Merged"
+ * A merged PR stays on its worktree — `#42 merged` in the sidebar, "Merged"
  * in the panel — until the worktree is closed, and closing it is one key away:
  * `d` in the sidebar, the panel's Close button, or `d` right after merging.
  */
@@ -11,6 +11,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { git, makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -101,7 +102,7 @@ async function expectClosed() {
 describe("a merged PR", () => {
   test("stays on its worktree, marked merged; the panel says so and offers to close it", async () => {
     await start("MERGED");
-    await waitForText(app, "⇡#42 merged");
+    await waitForText(app, `${ICON.merged} #42 merged`);
     await waitForText(app, " Close worktree… ");
     const frame = app.captureCharFrame();
     expect(frame).toContain("Merged");
@@ -112,7 +113,7 @@ describe("a merged PR", () => {
 
   test("d closes the worktree (asking first)", async () => {
     await start("MERGED");
-    await waitForText(app, "⇡#42 merged");
+    await waitForText(app, `${ICON.merged} #42 merged`);
     app.mockInput.pressKey("d");
     await waitForText(app, 'Delete "login" from disk?');
     app.mockInput.pressKey("y");
@@ -147,7 +148,7 @@ describe("a merged PR", () => {
     app.mockInput.pressKey("k"); // select main; login's terminal (and PR) stay on screen
     await waitForSelection(app, "main");
     await waitUntil(app, () => !closeButtonLine().startsWith(" Close worktree…  d"), "the d hint to go");
-    expect(app.captureCharFrame()).toContain("⇡#42 merged");
+    expect(app.captureCharFrame()).toContain(`${ICON.merged} #42 merged`);
   });
 });
 
@@ -163,7 +164,7 @@ describe("right after merging it with m", () => {
     app.mockInput.pressKey("y");
     await waitForText(app, "✓ Merged #42 into main.");
     await waitForText(app, "d close the worktree");
-    await waitForText(app, "⇡#42 merged");
+    await waitForText(app, `${ICON.merged} #42 merged`);
     await waitUntil(app, () => !!sandbox.readState()?.ui?.mergeMethod, "the merge method to be saved");
 
     app.mockInput.pressKey("d");

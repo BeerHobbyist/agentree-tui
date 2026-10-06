@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import { Dialog } from "./Dialog";
 import { Hints, hintsFrom } from "./Hints";
@@ -63,11 +64,11 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Agent status",
     rows: [
-      ["◆  needs action", "waiting on you: approve or answer (it pulses)"],
+      [`${ICON.needsAction}  needs action`, "waiting on you: approve or answer (it pulses)"],
       ["⠹  working", "busy with your prompt (it spins)"],
-      ["✓  done", "finished; clears once you look"],
-      ["○  idle", "running, nothing to do"],
-      ["●3", "3 files with uncommitted changes"],
+      [`${ICON.done}  done`, "finished; clears once you look"],
+      [`${ICON.idle}  idle`, "running, nothing to do"],
+      [`${ICON.changed}3`, "3 files with uncommitted changes"],
       ["", "for agents agentree starts (⏎, ⌥a)"],
     ],
   },
@@ -80,10 +81,10 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["right-click tab", "rename it"],
       ["click the sidebar", "keys go to the sidebar"],
       ["click project header", "select + fold"],
-      ["click ＋", "add worktree"],
+      [`click ${ICON.add}`, "add worktree"],
       ["drag sidebar edge", "resize · double-click to reset"],
-      ["click ⇤ / ‹", "hide the sidebar / back to it"],
-      ["click ◆ 2 / ✓ 1", "next agent in that state"],
+      [`click ${ICON.hide} / ‹`, "hide the sidebar / back to it"],
+      [`click ${ICON.needsAction} 2 / ${ICON.done} 1`, "next agent in that state"],
       ["⇡#N in the tab bar", "show / hide the PR panel"],
       ["PR panel", "click a check → its log · a comment → GitHub"],
       ["＋ menu", "new shell · new agent · new diff (hunk)"],

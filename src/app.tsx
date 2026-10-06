@@ -304,7 +304,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     }
   };
 
-  /** Hide the sidebar (`b`, its ⇤): the keys go to the terminal on screen, if there is one. */
+  /** Hide the sidebar (`b`, its corner button): the keys go to the terminal on screen, if there is one. */
   const hideSidebar = () => {
     prefs.sidebar.setHidden(true);
     if (openRef.current) setFocusMode("terminal");
@@ -344,7 +344,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     setOpen({ repoId: sel.repoId, worktreeId: sel.worktreeId });
   };
 
-  /** `a` / a header's ＋: add a worktree to that project (or a directory, on an SSH host). */
+  /** `a` / a header's add button: add a worktree to that project (or a directory, on an SSH host). */
   const openAddForProject = (projectId: string) => {
     const proj = projectsRef.current.find((p) => p.id === projectId);
     if (!proj) return;

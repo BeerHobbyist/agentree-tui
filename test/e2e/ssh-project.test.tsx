@@ -12,6 +12,7 @@ import { makeRepo } from "../helpers/repo";
 import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -67,9 +68,9 @@ describe("adding an SSH host", () => {
   test("s → host → directory: the host shows as a project, the directory under it", async () => {
     await addApi();
     const frame = app.captureCharFrame();
-    expect(frame).toContain("⌁ dev-box");
+    expect(frame).toContain(`${ICON.host} dev-box`);
     expect(frame).toContain("ssh dev-box");
-    expect(frame).toContain("· api");
+    expect(frame).toContain(`${ICON.noAgent} api`);
     expect(sandbox.readState()!.hosts).toEqual([
       {
         host: "dev-box",
@@ -133,15 +134,15 @@ describe("adding an SSH host", () => {
     expect(sandbox.readState()?.hosts).toBeUndefined();
   });
 
-  test("＋ on the host adds another directory, straight to the directory step", async () => {
+  test("the host's add button adds another directory, straight to the directory step", async () => {
     await addApi();
-    // The host header's ＋ (the tab bar has one too, for a new tab).
-    const header = locate("⌁ dev-box");
-    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf("＋");
+    // The host header's add button (the tab bar has a ＋ too, for a new tab).
+    const header = locate(`${ICON.host} dev-box`);
+    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf(ICON.add);
     await app.mockMouse.click(plusX, header.y);
     await waitForText(app, "Add a directory on dev-box");
     app.mockInput.pressEnter(); // the default: ~
-    await waitForText(app, "· ~");
+    await waitForText(app, `${ICON.noAgent} ~`);
     expect(sandbox.readState()!.hosts![0]!.dirs.map((d) => d.path)).toEqual([
       join(sandbox.sshHome, "code", "api"),
       sandbox.sshHome,
@@ -152,7 +153,7 @@ describe("adding an SSH host", () => {
     await addApi();
     app.dispose();
     app = await renderApp();
-    await waitForText(app, "⌁ dev-box");
+    await waitForText(app, `${ICON.host} dev-box`);
     await waitForText(app, "~/code/api");
   });
 });
@@ -180,7 +181,7 @@ describe("removing", () => {
     app.mockInput.pressKey("d");
     await waitForText(app, "Remove dev-box and its directories from");
     app.mockInput.pressKey("y");
-    await waitForTextGone(app, "⌁ dev-box");
+    await waitForTextGone(app, `${ICON.host} dev-box`);
     expect(sandbox.readState()!.hosts).toBeUndefined();
   });
 });
@@ -190,13 +191,13 @@ describe("what SSH projects leave out", () => {
     await addApi();
     await Bun.sleep(300);
     expect(sandbox.ghCalls().filter((c) => c.includes("--head"))).toEqual([]);
-    // No changed-files marker in the sidebar (the tab bar's "● tab" is fine).
+    // No changed-files marker in the sidebar.
     const sidebar = app
       .captureCharFrame()
       .split("\n")
       .map((l) => l.slice(0, 36))
       .join("\n");
-    expect(sidebar).not.toContain("●");
+    expect(sidebar).not.toContain(ICON.changed);
   });
 });
 
@@ -228,7 +229,7 @@ describe("a host that logs in with a password", () => {
 
     type("hunter2");
     app.mockInput.pressEnter();
-    await waitForText(app, "⌁ dev-box");
+    await waitForText(app, `${ICON.host} dev-box`);
     expect(sandbox.readState()!.hosts![0]!.needsPassword).toBe(true);
     expect(JSON.stringify(sandbox.readState())).not.toContain("hunter2"); // never stored
     // Its terminal opens over the connection that login left open — no prompt.
@@ -240,7 +241,7 @@ describe("a host that logs in with a password", () => {
     await upToPassword();
     type("hunter2");
     app.mockInput.pressEnter();
-    await waitForText(app, "⌁ dev-box");
+    await waitForText(app, `${ICON.host} dev-box`);
     app.dispose();
     sandbox.dropSshConnection(); // it expired while agentree was closed
 

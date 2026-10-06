@@ -11,6 +11,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { git, makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -75,9 +76,9 @@ describe("renaming a worktree", () => {
     const root = await start();
     await rename("Login Screen");
 
-    const frame = await waitForText(app, "· Login Screen");
+    const frame = await waitForText(app, `${ICON.noAgent} Login Screen`);
     expect(frame).toContain("feature/x"); // the branch, still on the row's second line
-    expect(frame).not.toContain("· x ");
+    expect(frame).not.toContain(`${ICON.noAgent} x `);
     await waitUntil(app, () => labels()?.[X] === "Login Screen", "the label to be saved");
 
     const stored = sandbox.readState()!.repos[0]!.worktrees[0]!;
@@ -94,7 +95,7 @@ describe("renaming a worktree", () => {
     await waitForText(app, "❯ xyz");
     app.mockInput.pressEscape();
     await waitForTextGone(app, MODAL);
-    expect(app.captureCharFrame()).toContain("· x");
+    expect(app.captureCharFrame()).toContain(`${ICON.noAgent} x`);
     expect(labels()).toBeUndefined();
   });
 
@@ -105,13 +106,13 @@ describe("renaming a worktree", () => {
     app.dispose();
 
     app = await renderApp();
-    await waitForText(app, "· Spike");
+    await waitForText(app, `${ICON.noAgent} Spike`);
   });
 
   test("clearing the label goes back to the branch name", async () => {
     await start();
     await rename("Spike");
-    await waitForText(app, "· Spike");
+    await waitForText(app, `${ICON.noAgent} Spike`);
 
     app.mockInput.pressKey("R", { shift: true });
     await waitForText(app, "❯ Spike");
@@ -119,7 +120,7 @@ describe("renaming a worktree", () => {
     await waitForText(app, "❯ x"); // the name it falls back to, as a placeholder
     app.mockInput.pressEnter();
     await waitForTextGone(app, "Spike");
-    expect(app.captureCharFrame()).toContain("· x");
+    expect(app.captureCharFrame()).toContain(`${ICON.noAgent} x`);
     await waitUntil(app, () => labels() === undefined, "the label to be dropped");
   });
 
@@ -131,18 +132,18 @@ describe("renaming a worktree", () => {
     await app.mockInput.pasteBracketedText("Login\nscreen");
     await waitForText(app, "❯ Login screen");
     app.mockInput.pressEnter();
-    await waitForText(app, "· Login screen");
+    await waitForText(app, `${ICON.noAgent} Login screen`);
   });
 
   test("right-clicking a worktree renames it", async () => {
     await start();
-    const { x, y } = locate("· main");
+    const { x, y } = locate(`${ICON.noAgent} main`);
     await app.mockMouse.click(x + 2, y, MouseButtons.RIGHT);
     await waitForText(app, "Label for main");
     app.mockInput.pressKey("u", { ctrl: true });
     type("Trunk");
     app.mockInput.pressEnter();
-    await waitForText(app, "· Trunk");
+    await waitForText(app, `${ICON.noAgent} Trunk`);
     await waitUntil(app, () => labels()?.main === "Trunk", "the main copy's label to be saved");
   });
 
@@ -162,7 +163,7 @@ describe("renaming a worktree", () => {
   test("closing a labelled worktree names both the label and the branch", async () => {
     await start();
     await rename("Spike");
-    await waitForText(app, "· Spike");
+    await waitForText(app, `${ICON.noAgent} Spike`);
     app.mockInput.pressKey("d");
     await waitForText(app, 'Delete "Spike" (feature/x) from disk?');
   });
