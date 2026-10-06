@@ -10,6 +10,7 @@ import { renderApp, type RenderedApp, type RenderAppOptions } from "../helpers/a
 import { settle, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -57,7 +58,7 @@ async function start(opts: RenderAppOptions = {}) {
   sandbox.setPrView(42, prView(42, "Add login screen", "feature/login"));
   sandbox.setPrView(43, prView(43, "Add billing page", "feature/billing"));
   app = await renderApp({ width: 140, height: 40, ...opts });
-  await waitForText(app, "· login");
+  await waitForText(app, `${ICON.noAgent} login`);
 }
 
 /** Select a worktree row: find its place in the sidebar, then g + that many j. */
@@ -66,7 +67,7 @@ async function select(name: "main" | "login" | "billing") {
     .captureCharFrame()
     .split("\n")
     .map((l) => l.slice(0, 38));
-  const row = (n: string) => sidebar.findIndex((l) => l.includes(`· ${n}`));
+  const row = (n: string) => sidebar.findIndex((l) => l.includes(`${ICON.noAgent} ${n}`));
   const order = (["main", "login", "billing"] as const).slice().sort((a, b) => row(a) - row(b));
   app.mockInput.pressKey("g"); // the project header
   for (let i = 0; i <= order.indexOf(name); i++) app.mockInput.pressKey("j");
@@ -133,7 +134,7 @@ describe("PR details cache", () => {
     await waitForText(app, "↻ failed", { timeoutMs: 10_000 }); // after its one retry
     expect(app.captureCharFrame()).toContain("Add login screen");
     // …and the sidebar badge, whose lookup failed too, keeps its last answer.
-    expect(app.captureCharFrame()).toContain("⇡#42");
+    expect(app.captureCharFrame()).toContain(`${ICON.pr} #42`);
   }, 20_000);
 
   test("a PR whose checks changed is fetched again when you come back to it", async () => {

@@ -70,8 +70,11 @@ Things worth knowing:
   when it gives up. OpenTUI's own `waitForFrame` counts render passes rather than
   wall-clock time, so it can expire before a subprocess has answered.
 - **Selection is colour, not glyphs.** The selected row is marked by an
-  accent-coloured gutter cell, which `captureCharFrame()` cannot show. Use
-  `selection(app)` / `waitForSelection(app, "…")`, which read `captureSpans()`.
+  accent gutter cell (a project header) or an accent border (a worktree card),
+  which `captureCharFrame()` cannot show. Use `selection(app)` /
+  `waitForSelection(app, "…")`, which read `captureSpans()`.
+- **Sidebar icons are Nerd Font glyphs.** Match them through `ICON`
+  (`src/icons.ts`), not pasted characters.
 - **Keys are parsed, not typed.** `pressKey("G")` arrives as `name: "g"` with
   `shift: true`, and `pressKey(" ")` as `name: "space"`. Uppercase text has to come
   from `key.sequence`.

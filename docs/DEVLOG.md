@@ -11,19 +11,22 @@ by tmux, with tabs and pane splitting.
 
 Working, at MVP+ level:
 
-- **Sidebar** — projects as foldable groups; each worktree one line: the
-  **agent status** glyph (◆ needs you · ⠹ working · ✓ done · ○ idle —
-  animated: working spins, needs-action pulses), name, an uncommitted-changes
-  count (`●3`) and PR badge via `gh` (`⇡#N` coloured by CI, `⇡#N◌` a draft,
-  `✓#N` once merged, until the worktree is closed). The selected one opens a
-  second line: its branch (when it isn't the name), +/− and ahead/behind.
+- **Sidebar** — projects as foldable groups; each worktree a card in a
+  rounded border, Nerd Font icons throughout (`src/icons.ts`): the **agent
+  status** icon (needs you · working · done · idle — animated: working spins,
+  needs-action pulses), name, an uncommitted-changes count and PR badge via
+  `gh` (coloured by CI, its own icons for a draft and once merged, until the
+  worktree is closed); under them the branch, +/− and ahead/behind. Selecting
+  a card only recolours its border, and a clicked row isn't scrolled; with no
+  scrollbar, folding never shifts the rows sideways — nothing moves on a press.
   Scrolls when it's taller than the screen, keeping the selection in view;
   keyboard + mouse nav, and clicking it gives it the keyboard. **Resizable**
-  (drag its edge or `[` / `]`), width remembered; **hideable** (`b` or its
-  footer's `«`; back with `b`, Ctrl+g or the tab bar's `‹`). Worktrees can be
+  (drag its edge or `[` / `]`), width remembered, and kept when a PR is
+  selected (the PR panel waits for room instead); **hideable** (`b` or its
+  footer button; back with `b`, Ctrl+g or the tab bar's `‹`). Worktrees can be
   **renamed** (`R` / right-click): a label shown instead of the branch's leaf
   name — the branch and directory keep their names. The footer is one row:
-  agent counts, then `◑` theme, `?` help, `«` hide.
+  agent counts, then theme, help and hide buttons.
 - **Agents** — status for the agents agentree starts, and (with `H`, which adds
   its hooks to Claude's user settings) for any claude started in its terminals,
   on SSH hosts too. A desktop notification when one needs you or finishes while

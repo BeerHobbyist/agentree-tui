@@ -304,7 +304,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     }
   };
 
-  /** Hide the sidebar (`b`, its «): the keys go to the terminal on screen, if there is one. */
+  /** Hide the sidebar (`b`, its footer button): the keys go to the terminal on screen, if there is one. */
   const hideSidebar = () => {
     prefs.sidebar.setHidden(true);
     if (openRef.current) setFocusMode("terminal");
@@ -550,7 +550,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.tracking });
   };
 
-  /** The next theme (`t`, the footer's ◑, the palette) — named in a toast, the footer has no room for it. */
+  /** The next theme (`t`, the footer's button, the palette) — named in a toast, the footer has no room for it. */
   const switchTheme = () => toasts.show({ kind: "info", message: `◑ ${cycleTheme()}` });
 
   // ── Keys (while the sidebar has them) ──

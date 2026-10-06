@@ -13,6 +13,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { selection, settle, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -123,13 +124,13 @@ describe("a list taller than the sidebar", () => {
     await saveState(state);
     await reconcile(state);
   }
-  const HEADER = "▾ widget";
+  const HEADER = `${ICON.repo} widget`;
 
   test("scrolls to keep the selection in view, and back", async () => {
     await manyWorktrees();
     app = await renderApp({ height: 20 });
     await waitForSelection(app, "widget");
-    expect(app.captureCharFrame()).not.toContain("· w20");
+    expect(app.captureCharFrame()).not.toContain(`${ICON.noAgent} w20`);
 
     app.mockInput.pressKey("G");
     await waitForSelection(app, "feature/w20");
@@ -139,7 +140,21 @@ describe("a list taller than the sidebar", () => {
     app.mockInput.pressKey("g");
     await waitForSelection(app, "widget");
     await waitForText(app, HEADER);
-    expect(app.captureCharFrame()).not.toContain("· w20");
+    expect(app.captureCharFrame()).not.toContain(`${ICON.noAgent} w20`);
+  });
+
+  test("folding it so it fits moves nothing sideways (no scrollbar comes and goes)", async () => {
+    await manyWorktrees();
+    app = await renderApp({ height: 20 });
+    await waitForSelection(app, "widget");
+    const addColumn = () => {
+      const lines = app.captureCharFrame().split("\n");
+      return lines.find((l) => l.includes(HEADER))!.indexOf(ICON.add);
+    };
+    const before = addColumn();
+    app.mockInput.pressKey("h"); // fold widget: the list now fits
+    await waitForTextGone(app, "feature/w01");
+    expect(addColumn()).toBe(before);
   });
 
   test("moving down one row at a time never loses the selection off screen", async () => {
@@ -159,46 +174,46 @@ describe("folding projects", () => {
   test("h folds a project away and l unfolds it", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
 
     app.mockInput.pressKey("h");
-    await waitForTextGone(app, "· x");
+    await waitForTextGone(app, `${ICON.noAgent} x`);
 
     app.mockInput.pressKey("l");
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
   });
 
   test("space toggles, and folding snaps the selection to the header", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
 
     app.mockInput.pressKey("j"); // onto widget's main
     await waitForSelection(app, "main");
     app.mockInput.pressKey(" ");
-    await waitForTextGone(app, "· x");
+    await waitForTextGone(app, `${ICON.noAgent} x`);
     expect(selection(app)).toContain("widget");
 
     app.mockInput.pressKey(" ");
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
   });
 
   test("enter on a project header folds it rather than opening anything", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
 
     app.mockInput.pressEnter();
-    await waitForTextGone(app, "· x");
+    await waitForTextGone(app, `${ICON.noAgent} x`);
   });
 
   test("folding one project leaves the other alone", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
 
     app.mockInput.pressKey("h");
-    await waitForTextGone(app, "· x");
+    await waitForTextGone(app, `${ICON.noAgent} x`);
     expect(app.captureCharFrame()).toContain("gadget");
   });
 });
@@ -209,7 +224,7 @@ describe("worktrees that vanished", () => {
     rmSync(join(widget, ".worktrees", "feature-x"), { recursive: true, force: true });
 
     app = await renderApp();
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
 
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j"); // onto the missing worktree

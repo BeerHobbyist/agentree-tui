@@ -119,7 +119,7 @@ export function TabBar({
       >
         {" ✕"}
       </text>
-      {/* PR button: ⇡#N, coloured by its checks; lit while the panel is open. */}
+      {/* PR button: its badge, coloured by its checks; lit while the panel is open. */}
       {badge && (
         <text
           fg={badge.color}

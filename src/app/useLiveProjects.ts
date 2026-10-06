@@ -42,7 +42,7 @@ export function useLiveProjects(
     queries: liveWorktrees.map(({ worktree }) => gitStatusQuery(worktree.path)),
   });
 
-  // Each branch's PR, open or merged (the ⇡#N badge) — polled every minute, invalidated
+  // Each branch's PR, open or merged (its badge) — polled every minute, invalidated
   // when an agent changes state and on `r`. A failed lookup keeps the last
   // answer rather than dropping the badge.
   const prTargets = liveWorktrees.filter(({ worktree: w }) => w.branch && w.branch !== "(detached)");

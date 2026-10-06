@@ -11,6 +11,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -43,7 +44,7 @@ test("a new terminal never shows black while tmux attaches and repaints", async 
   await saveState(state);
   await reconcile(state);
   app = await renderApp();
-  await waitForText(app, "· x");
+  await waitForText(app, `${ICON.noAgent} x`);
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "feature/x");

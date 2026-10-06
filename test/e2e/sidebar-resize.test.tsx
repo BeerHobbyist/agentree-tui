@@ -10,6 +10,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForText, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 const SCREEN = 100; // renderApp's default width
 const DEFAULT_COL = DEFAULT_SIDEBAR_WIDTH - 1; // the divider is the sidebar's last column
@@ -59,8 +60,8 @@ function shownRow(app: RenderedApp): string {
     app
       .captureCharFrame()
       .split("\n")
-      .find((l) => l.includes("· a-worktree")) ?? "";
-  return row.slice(0, dividerColumn(app)).trim();
+      .find((l) => l.includes(`${ICON.noAgent} a-worktree`)) ?? "";
+  return row.slice(0, dividerColumn(app)).replace(/│/g, "").trim();
 }
 
 function storedWidth(): number | undefined {
@@ -70,7 +71,7 @@ function storedWidth(): number | undefined {
 async function start(sidebarWidth?: number) {
   await oneProject(sidebarWidth);
   app = await renderApp();
-  await waitForText(app, "· a-worktree");
+  await waitForText(app, `${ICON.noAgent} a-worktree`);
 }
 
 describe("dragging the divider", () => {

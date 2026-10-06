@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import { TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "@opentui/core";
 import { useTheme, type Theme } from "../theme";
+import { ICON } from "../icons";
 import { Hints } from "./Hints";
 import type { CheckState, PrDetails, PrInfo, PrReviewer } from "../data/model";
 import { excerpt, mergeStatus, relativeTime, summarizeChecks, type Tone } from "../services/pr";
@@ -60,13 +61,14 @@ export function checkLook(state: CheckState | undefined, theme: Theme): { glyph:
 }
 
 /**
- * A worktree's PR as a badge (the sidebar's, the tab bar's): `⇡#42` while
- * open (`⇡#42◌` a draft), coloured by its checks; `✓#42` once merged.
+ * A worktree's PR as a badge (the sidebar's, the tab bar's): the PR icon and
+ * `#42` while open (the draft icon for a draft), coloured by its checks; the
+ * merge icon once merged.
  */
 export function prBadge(pr: PrInfo, theme: Theme): { text: string; color: string } {
-  if (pr.merged) return { text: `✓#${pr.number}`, color: theme.agentWaiting };
+  if (pr.merged) return { text: `${ICON.merged} #${pr.number}`, color: theme.agentWaiting };
   const color = pr.checks ? checkLook(pr.checks, theme).color : pr.draft ? theme.fgMuted : theme.added;
-  return { text: `⇡#${pr.number}${pr.draft ? "◌" : ""}`, color };
+  return { text: `${pr.draft ? ICON.prDraft : ICON.pr} #${pr.number}`, color };
 }
 
 function toneColor(tone: Tone, theme: Theme): string {

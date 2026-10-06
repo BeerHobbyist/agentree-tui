@@ -27,10 +27,11 @@ export const DEFAULT_PR_PANEL_WIDTH = 46;
 export const MIN_PR_PANEL_WIDTH = 34;
 
 /**
- * Fit the sidebar and the PR panel around the content pane. The sidebar leaves
- * room for the panel when it's wanted; the content pane always keeps
- * MIN_CONTENT_WIDTH; a panel that can't get its minimum is hidden (width 0).
- * A hidden sidebar (`b`) takes no room at all.
+ * Fit the sidebar and the PR panel around the content pane. The sidebar keeps
+ * its width whether the panel is wanted or not — selecting a worktree with a
+ * PR mustn't move it — so the panel gets what's left; the content pane always
+ * keeps MIN_CONTENT_WIDTH; a panel that can't get its minimum is hidden (width
+ * 0). A hidden sidebar (`b`) takes no room at all.
  */
 export function fitPanels(
   screenWidth: number,
@@ -39,9 +40,7 @@ export function fitPanels(
   panelWanted: boolean,
   sidebarHidden = false,
 ): { sidebar: number; panel: number } {
-  const sidebar = sidebarHidden
-    ? 0
-    : clampSidebarWidth(sidebarWidth, screenWidth - (panelWanted ? MIN_PR_PANEL_WIDTH : 0));
+  const sidebar = sidebarHidden ? 0 : clampSidebarWidth(sidebarWidth, screenWidth);
   if (!panelWanted) return { sidebar, panel: 0 };
   const room = screenWidth - sidebar - MIN_CONTENT_WIDTH;
   if (room < MIN_PR_PANEL_WIDTH) return { sidebar, panel: 0 };

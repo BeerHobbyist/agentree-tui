@@ -11,6 +11,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { activeTab, waitForSelection, waitForTab, waitForText } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -38,7 +39,7 @@ describe("the CLI from inside an agentree terminal", () => {
     await saveState(state);
     await reconcile(state);
     app = await renderApp({ width: 120 });
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j");
     await waitForSelection(app, "x");

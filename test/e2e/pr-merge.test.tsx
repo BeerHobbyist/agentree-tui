@@ -9,6 +9,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -58,7 +59,7 @@ async function start(opts: { view?: Record<string, unknown>; settings?: Record<s
   sandbox.setPrView(42, prView(opts.view));
   if (opts.settings) sandbox.setRepoSettings(opts.settings);
   app = await renderApp({ width: 140, height: 40 });
-  await waitForText(app, "· login");
+  await waitForText(app, `${ICON.noAgent} login`);
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
@@ -199,7 +200,7 @@ describe("merging from the PR panel", () => {
 
   test("once merged, the badge goes (gh no longer lists it as open)", async () => {
     await start();
-    await waitForText(app, "⇡#42");
+    await waitForText(app, `${ICON.pr} #42`);
     sandbox.setBranchPr(null, "feature/login"); // what GitHub says after the merge
     sandbox.setPrView(42, prView({ state: "MERGED" }));
     app.mockInput.pressKey("m");
@@ -208,6 +209,6 @@ describe("merging from the PR panel", () => {
     app.mockInput.pressKey("y");
     await waitForText(app, "✓ Merged #42 into main.");
     app.mockInput.pressEnter();
-    await waitForTextGone(app, "⇡#42");
+    await waitForTextGone(app, `${ICON.pr} #42`);
   });
 });
