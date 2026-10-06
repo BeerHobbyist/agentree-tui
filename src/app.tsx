@@ -550,6 +550,19 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.tracking });
   };
 
+  /**
+   * Show / hide the PR panel (`p`, ⌥p, the tab bar's PR button). Wanted but
+   * with no room beside the sidebar, it says how to make some instead of
+   * quietly saving the panel as hidden.
+   */
+  const togglePrPanel = () => {
+    if (!prefs.prPanel.hidden && currentPrRef.current && layoutRef.current.panel === 0) {
+      toasts.show({ kind: "info", message: "No room for the PR panel: narrow the sidebar ([)" });
+      return;
+    }
+    prefs.prPanel.toggle();
+  };
+
   /** The next theme (`t`, the footer's button, the palette) — named in a toast, the footer has no room for it. */
   const switchTheme = () => toasts.show({ kind: "info", message: `◑ ${cycleTheme()}` });
 
@@ -579,7 +592,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     "=": () => prefs.sidebar.resetWidth(),
     b: () => (prefs.sidebar.hiddenRef.current ? prefs.sidebar.setHidden(false) : hideSidebar()),
     // The PR panel: toggle, open on GitHub, merge, refresh, scroll.
-    p: () => prefs.prPanel.toggle(),
+    p: togglePrPanel,
     o: () => currentPrRef.current && openExternal(currentPrRef.current.pr.url),
     m: requestMerge,
     r: () => {
@@ -768,7 +781,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
               onRequestFocus={() => setFocusMode("terminal")}
               onExit={exitToSidebar}
               prPanelShown={layout.panel > 0}
-              onTogglePrPanel={prefs.prPanel.toggle}
+              onTogglePrPanel={togglePrPanel}
               diffViewer={prefs.diffViewer}
               onDiffViewer={prefs.chooseDiffViewer}
               onJumpNext={jumpToNext}

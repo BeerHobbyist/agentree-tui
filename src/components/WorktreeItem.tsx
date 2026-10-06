@@ -11,6 +11,8 @@ interface WorktreeItemProps {
   /** The row's renderable id — the sidebar scrolls the selected one into view. */
   id?: string;
   onClick?: (event: MouseEvent) => void;
+  /** Its size changed — first when it's laid out after mounting. */
+  onResize?: () => void;
 }
 
 /** How each agent status looks: the glyph in the row's first column, and its colour. */
@@ -54,7 +56,7 @@ export function AgentGlyph({ agent, bg }: { agent: Worktree["agent"]; bg: string
  * only recolours the border — every card has both lines — so nothing moves
  * when one is clicked.
  */
-export function WorktreeItem({ worktree, active, id, onClick }: WorktreeItemProps) {
+export function WorktreeItem({ worktree, active, id, onClick, onResize }: WorktreeItemProps) {
   const theme = useTheme();
   // An SSH directory's subtitle is its path on the host.
   const where = worktree.subtitle ?? worktree.branch;
@@ -73,6 +75,7 @@ export function WorktreeItem({ worktree, active, id, onClick }: WorktreeItemProp
       paddingLeft={1}
       paddingRight={1}
       onMouseDown={onClick}
+      onSizeChange={onResize}
     >
       {/* status + name .......... changed files, PR */}
       <box flexDirection="row" alignItems="center">

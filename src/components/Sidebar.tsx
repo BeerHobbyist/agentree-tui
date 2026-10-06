@@ -66,12 +66,15 @@ function ProjectGroup({
   onRenameWorktree,
   onSelectProject,
   onPress,
+  scrollIntoView,
 }: {
   project: Project;
   collapsed: boolean;
   activeKey: string;
   /** A row was clicked to select it (its key) — before its handler runs. */
   onPress: (key: string) => void;
+  /** Scroll the list to show this row. */
+  scrollIntoView: (key: string) => void;
   onAddWorktree: (projectId: string) => void;
   onClickWorktree: (repoId: string, worktreeId: string) => void;
   onRenameWorktree?: (repoId: string, worktreeId: string) => void;
@@ -150,6 +153,10 @@ function ProjectGroup({
                 worktree={wt}
                 id={rowId(key)}
                 active={active}
+                // Selected as it mounts (a new worktree, a jump into a folded
+                // project): the selection's scroll ran before it had a place,
+                // so scroll again once it's laid out.
+                onResize={active ? () => scrollIntoView(key) : undefined}
                 onClick={(e) => {
                   // Handled here: a double-click hands focus to the terminal,
                   // which the sidebar's own click-to-focus mustn't undo.
@@ -196,9 +203,10 @@ export function Sidebar({
   // row is kept in view as the selection moves. Not a row just clicked: it's
   // under the pointer already, and scrolling would pull it out from under a
   // second click.
+  const scrollIntoView = (key: string) => listRef.current?.scrollChildIntoView(rowId(key));
   const pressed = useRef("");
   useEffect(() => {
-    if (pressed.current !== activeKey) listRef.current?.scrollChildIntoView(rowId(activeKey));
+    if (pressed.current !== activeKey) scrollIntoView(activeKey);
     pressed.current = "";
   }, [activeKey]);
   const agentCounts = URGENCY.map((state) => ({
@@ -250,6 +258,7 @@ export function Sidebar({
                 onPress={(key) => {
                   pressed.current = key;
                 }}
+                scrollIntoView={scrollIntoView}
               />
             ))
           )}

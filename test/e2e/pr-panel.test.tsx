@@ -165,6 +165,10 @@ describe("showing the PR", () => {
     await waitForText(app, `${ICON.pr} #42`); // its PR is known: the panel is wanted
     expect(edge()).toBe(before);
     expect(app.captureCharFrame()).not.toContain("Blocked: changes requested");
+    // p says why it isn't there, rather than saving it as hidden.
+    app.mockInput.pressKey("p");
+    await waitForText(app, "No room for the PR panel");
+    expect(sandbox.readState()?.ui?.prPanelHidden).toBeUndefined();
     // Narrowing the sidebar yourself makes room for it.
     app.mockInput.pressKey("[");
     await waitForText(app, "Blocked: changes requested");
