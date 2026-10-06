@@ -23,6 +23,7 @@ import { renderApp, type RenderedApp, type RenderAppOptions } from "../helpers/a
 import { waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -67,7 +68,7 @@ async function start(opts: RenderAppOptions = {}) {
     mergeable: "MERGEABLE",
   });
   app = await renderApp({ width: 140, height: 40, ...opts });
-  await waitForText(app, "· login");
+  await waitForText(app, `${ICON.noAgent} login`);
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
@@ -120,7 +121,7 @@ describe("terminal focus", () => {
     mkdirSync(agentStatusDir(), { recursive: true });
     writeFileSync(join(agentStatusDir(), `${session}.${pane}`), `needs-action ${Math.floor(Date.now() / 1000)}\n`);
 
-    await waitForText(app, "◆ login");
+    await waitForText(app, `${ICON.needsAction} login`);
   });
 
   test("the app going away leaves the cache's focus state as it found it", async () => {

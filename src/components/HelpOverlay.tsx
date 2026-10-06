@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import { Dialog } from "./Dialog";
 import { Hints, hintsFrom } from "./Hints";
@@ -63,17 +64,17 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
   {
     title: "Icons",
     rows: [
-      ["◆", "agent needs you: approve or answer (it pulses)"],
-      ["◐", "agent working on your prompt (it spins)"],
-      ["✓", "agent done; clears once you look"],
-      ["○", "agent idle: running, nothing to do"],
+      [ICON.needsAction, "agent needs you: approve or answer (it pulses)"],
+      [ICON.working, "agent working on your prompt (it spins)"],
+      [ICON.done, "agent done; clears once you look"],
+      [ICON.idle, "agent idle: running, nothing to do"],
       ["", "for agents agentree starts (⏎, ⌥a)"],
-      ["●3", "3 files with uncommitted changes"],
-      ["+12 −3  ↑1 ↓2", "lines changed · commits ahead / behind"],
-      ["⇡#42", "its open PR — green, yellow, red: its checks"],
-      ["⇡#42◌", "…a draft"],
-      ["✓#42", "its PR is merged: d closes the worktree"],
-      ["⌁", "a project on an SSH host"],
+      [`${ICON.changed}3`, "3 files with uncommitted changes"],
+      [`+12 −3  ${ICON.ahead}1 ${ICON.behind}2`, "lines changed · commits ahead / behind"],
+      [`${ICON.pr} #42`, "its open PR — green, yellow, red: its checks"],
+      [`${ICON.prDraft} #42`, "…a draft"],
+      [`${ICON.merged} #42`, "its PR is merged: d closes the worktree"],
+      [ICON.host, "a project on an SSH host"],
     ],
   },
   {
@@ -85,12 +86,12 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["right-click tab", "rename it"],
       ["click the sidebar", "keys go to the sidebar"],
       ["click project header", "select + fold"],
-      ["+ on a project", "add worktree"],
+      [`${ICON.add} on a project`, "add worktree"],
       ["drag sidebar edge", "resize · double-click to reset"],
-      ["click « / ‹", "hide the sidebar / back to it"],
-      ["click ◑ / ?", "next theme / this help"],
-      ["click ◆ 2 / ✓ 1", "next agent in that state"],
-      ["⇡#N in the tab bar", "show / hide the PR panel"],
+      [`click ${ICON.hide} / ‹`, "hide the sidebar / back to it"],
+      [`click ${ICON.theme} / ${ICON.help}`, "next theme / this help"],
+      [`click ${ICON.needsAction} 2 / ${ICON.done} 1`, "next agent in that state"],
+      [`${ICON.pr} #N in the tab bar`, "show / hide the PR panel"],
       ["PR panel", "click a check → its log · a comment → GitHub"],
       ["+ in the tab bar", "new shell · new agent · new diff (hunk)"],
       ["tab bar", "× close tab · ◫ ⊟ split · ✕ close pane"],

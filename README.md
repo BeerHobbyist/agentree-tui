@@ -12,7 +12,7 @@ agentree keeps every branch you're working on in its own [git worktree](https://
 
 - **Worktrees, not branches you switch between.** Add one from any repo `gh` can see (cloned if needed), from an open pull request (forks included), or on a new branch. Each gets its own directory, terminal and agent.
 - **Terminals that stay alive.** Every worktree's terminal runs in tmux, with tabs and splits — close agentree, come back, and everything is still running where you left it.
-- **See what every agent is doing.** ◆ needs you · ◐ working · ✓ done — for the agents agentree starts, and (opt-in) any `claude` you start in its terminals. A desktop notification when one needs you while you're elsewhere, and `Tab` jumps straight to it.
+- **See what every agent is doing.** Needs you, working or done — for the agents agentree starts, and (opt-in) any `claude` you start in its terminals. A desktop notification when one needs you while you're elsewhere, and `Tab` jumps straight to it.
 - **Pull requests in view.** A badge on each worktree coloured by CI, and a panel with checks, reviews, merge status and comments. Merge from it, too — with a confirm step, pinned to the commit you're looking at. Once it's merged, the badge says so, and `d` closes the worktree.
 - **Diffs your way.** Working changes, staged, against the base branch, any ref, or a range of commits picked from a list — in hunk, diffnav, delta, difftastic, nvim diffview or plain git, whichever you have.
 - **Remote machines as projects.** Add an SSH host and a directory on it; its terminals run there, in tmux there, so they survive a dropped connection. Key or password login.
@@ -32,6 +32,7 @@ agentree keeps every branch you're working on in its own [git worktree](https://
 - **[Bun](https://bun.sh) ≥ 1.3.5** (its native PTY runs the terminals)
 - **[tmux](https://github.com/tmux/tmux) 3.x** — locally, and on any SSH host you add
 - **git**, and the **[GitHub CLI](https://cli.github.com)** (`gh`, logged in) for repos and pull requests
+- A **[Nerd Font](https://www.nerdfonts.com)** for the icons — or a terminal with its symbols built in (Ghostty, WezTerm, kitty)
 - Linux or macOS
 - Optional: [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (started in new worktrees by default), a diff viewer ([hunk](https://www.npmjs.com/package/hunkdiff), [delta](https://github.com/dandavison/delta), [difftastic](https://difftastic.wilfred.me.uk), [diffnav](https://github.com/dlvhdr/diffnav), [lumen](https://github.com/jnsahaj/lumen)), `notify-send` on Linux for notifications
 

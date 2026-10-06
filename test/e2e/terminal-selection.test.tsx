@@ -12,6 +12,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -48,7 +49,7 @@ async function start(): Promise<{ copied: string[] }> {
     copied.push(text);
     return true;
   };
-  await waitForText(app, "· x");
+  await waitForText(app, `${ICON.noAgent} x`);
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "x");

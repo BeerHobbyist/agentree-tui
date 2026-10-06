@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadState, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { screen, settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
+import { screen, settle, waitForModalClosed, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -336,6 +336,26 @@ describe("adding to the project under the cursor", () => {
 
     app.mockInput.pressEscape();
     await waitForModalClosed(app);
+  });
+
+  test("a new worktree below the fold is scrolled into view, selected", async () => {
+    await knownProject(
+      "acme/widget",
+      Array.from({ length: 8 }, (_, i) => ({ branch: `feature/w${i + 1}` })),
+    );
+    app = await renderApp(); // nine cards: more than the sidebar shows
+    await waitForText(app, "widget");
+
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree");
+    app.mockInput.pressEnter();
+    await waitForText(app, "New branch name");
+    await app.mockInput.typeText("feature/new");
+    app.mockInput.pressEnter();
+    await waitForModalClosed(app);
+
+    // Its card mounts and is selected in one update: on screen once laid out.
+    await waitForSelection(app, "feature/new");
   });
 
   test("a quick ⏎ on the actions isn't pulled back to them once the worktrees are read", async () => {

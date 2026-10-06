@@ -11,6 +11,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { git, makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -36,7 +37,7 @@ async function oneProject() {
 }
 
 async function selectFeatureX(app: RenderedApp) {
-  await waitForText(app, "· x");
+  await waitForText(app, `${ICON.noAgent} x`);
   app.mockInput.pressKey("j"); // onto main
   app.mockInput.pressKey("j"); // onto x
   await waitForSelection(app, "x");
@@ -115,7 +116,7 @@ describe("closing a worktree", () => {
   test("the main working copy can't be closed this way", async () => {
     await oneProject();
     app = await renderApp();
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
     app.mockInput.pressKey("j"); // onto main
     await waitForSelection(app, "main");
 

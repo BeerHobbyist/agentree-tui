@@ -12,6 +12,7 @@ import { makeRepo } from "../helpers/repo";
 import { renderApp, type RenderedApp } from "../helpers/app";
 import { activeTab, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -67,8 +68,8 @@ describe("adding an SSH host", () => {
   test("s → host → directory: the host shows as a project, the directory under it", async () => {
     await addApi();
     const frame = app.captureCharFrame();
-    expect(frame).toContain("⌁ dev-box");
-    expect(frame).toContain("· api");
+    expect(frame).toContain(`${ICON.host} dev-box`);
+    expect(frame).toContain(`${ICON.noAgent} api`);
     expect(sandbox.readState()!.hosts).toEqual([
       {
         host: "dev-box",
@@ -135,12 +136,12 @@ describe("adding an SSH host", () => {
   test("+ on the host adds another directory, straight to the directory step", async () => {
     await addApi();
     // The host header's + (the first on its line: the sidebar is on the left).
-    const header = locate("⌁ dev-box");
-    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf("+");
+    const header = locate(`${ICON.host} dev-box`);
+    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf(ICON.add);
     await app.mockMouse.click(plusX, header.y);
     await waitForText(app, "Add a directory on dev-box");
     app.mockInput.pressEnter(); // the default: ~
-    await waitForText(app, "· ~");
+    await waitForText(app, `${ICON.noAgent} ~`);
     expect(sandbox.readState()!.hosts![0]!.dirs.map((d) => d.path)).toEqual([
       join(sandbox.sshHome, "code", "api"),
       sandbox.sshHome,
@@ -151,8 +152,8 @@ describe("adding an SSH host", () => {
     await addApi();
     app.dispose();
     app = await renderApp();
-    await waitForText(app, "⌁ dev-box");
-    await waitForText(app, "· api");
+    await waitForText(app, `${ICON.host} dev-box`);
+    await waitForText(app, `${ICON.noAgent} api`);
   });
 });
 
@@ -179,7 +180,7 @@ describe("removing", () => {
     app.mockInput.pressKey("d");
     await waitForText(app, "Remove dev-box and its directories from");
     app.mockInput.pressKey("y");
-    await waitForTextGone(app, "⌁ dev-box");
+    await waitForTextGone(app, `${ICON.host} dev-box`);
     expect(sandbox.readState()!.hosts).toBeUndefined();
   });
 });
@@ -195,7 +196,7 @@ describe("what SSH projects leave out", () => {
       .split("\n")
       .map((l) => l.slice(0, 36))
       .join("\n");
-    expect(sidebar).not.toContain("●");
+    expect(sidebar).not.toContain(ICON.changed);
   });
 });
 
@@ -227,7 +228,7 @@ describe("a host that logs in with a password", () => {
 
     type("hunter2");
     app.mockInput.pressEnter();
-    await waitForText(app, "⌁ dev-box");
+    await waitForText(app, `${ICON.host} dev-box`);
     expect(sandbox.readState()!.hosts![0]!.needsPassword).toBe(true);
     expect(JSON.stringify(sandbox.readState())).not.toContain("hunter2"); // never stored
     // Its terminal opens over the connection that login left open — no prompt.
@@ -239,12 +240,12 @@ describe("a host that logs in with a password", () => {
     await upToPassword();
     type("hunter2");
     app.mockInput.pressEnter();
-    await waitForText(app, "⌁ dev-box");
+    await waitForText(app, `${ICON.host} dev-box`);
     app.dispose();
     sandbox.dropSshConnection(); // it expired while agentree was closed
 
     app = await renderApp();
-    await waitForText(app, "· api");
+    await waitForText(app, `${ICON.noAgent} api`);
     const before = sandbox.sshLoginAttempts().length;
     app.mockInput.pressKey("g");
     app.mockInput.pressKey("j");
@@ -282,7 +283,7 @@ describe("without tmux on this machine (a Mac without it)", () => {
     await reconcile(state);
     sandbox.hideLocalTmux();
     app = await renderApp({ width: 120 });
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j");
     await waitForSelection(app, "x");

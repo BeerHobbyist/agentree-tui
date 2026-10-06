@@ -11,6 +11,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -35,7 +36,7 @@ test("opened terminals don't pile up keypress listeners", async () => {
   await saveState(state);
   await reconcile(state);
   app = await renderApp();
-  await waitForText(app, "· c");
+  await waitForText(app, `${ICON.noAgent} c`);
   app.mockInput.pressKey("j"); // the main worktree
   const idle = keypressListeners();
 

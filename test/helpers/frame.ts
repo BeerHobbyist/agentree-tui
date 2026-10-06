@@ -37,20 +37,32 @@ function spanHex(color: { buffer: ArrayLike<number> }): string {
 }
 
 /**
- * The selected row's text. The sidebar marks the selection with colour only —
- * an accent-coloured gutter cell — so this reads the spans, not the glyphs.
- * A selected worktree can be two lines tall (its branch under its name); both
- * are returned, joined by a space.
+ * The selected row's text. Selection is marked with colour only — an accent
+ * background (a project header's gutter, a dialog's row), or an accent border
+ * round a worktree card — so this reads the spans, not the glyphs. A card's
+ * two lines are both returned, joined by a space, without the border.
  */
 export function selection(t: TestRendererSetup): string {
   const accent = getTheme().accent.toLowerCase();
+  const marked = (line: ReturnType<TestRendererSetup["captureSpans"]>["lines"][number]) => {
+    if (line.spans.some((s) => spanHex(s.bg) === accent)) return true;
+    // A card's left border, at the sidebar's edge (accent text elsewhere marks other things).
+    let col = 0;
+    for (const s of line.spans) {
+      if (col > 1) return false;
+      if (spanHex(s.fg) === accent && s.text.trimStart().startsWith("│")) return true;
+      col += Bun.stringWidth(s.text);
+    }
+    return false;
+  };
   return t
     .captureSpans()
-    .lines.filter((line) => line.spans.some((s) => spanHex(s.bg) === accent))
+    .lines.filter(marked)
     .map((line) =>
       line.spans
         .map((s) => s.text)
         .join("")
+        .replace(/[│╭╮╰╯─]/g, " ")
         .trim(),
     )
     .join(" ")

@@ -2,6 +2,7 @@ import { TextAttributes, type MouseEvent } from "@opentui/core";
 import { animationsOn, PULSE, SPINNER, useTick } from "../anim";
 import { mix, useTheme, type Theme } from "../theme";
 import { displayName, type Worktree } from "../data/model";
+import { ICON } from "../icons";
 import { prBadge } from "./PrPanel";
 
 interface WorktreeItemProps {
@@ -10,7 +11,7 @@ interface WorktreeItemProps {
   /** The row's renderable id — the sidebar scrolls the selected one into view. */
   id?: string;
   onClick?: (event: MouseEvent) => void;
-  /** Its height changed — laid out anew, as the selected row opens its second line. */
+  /** Its size changed — first when it's laid out after mounting. */
   onResize?: () => void;
 }
 
@@ -18,15 +19,15 @@ interface WorktreeItemProps {
 export function agentLook(agent: Worktree["agent"], theme: Theme): { glyph: string; color: string } {
   switch (agent) {
     case "needs-action":
-      return { glyph: "◆", color: theme.agentWaiting };
+      return { glyph: ICON.needsAction, color: theme.agentWaiting };
     case "working":
-      return { glyph: "◐", color: theme.agentWorking };
+      return { glyph: ICON.working, color: theme.agentWorking };
     case "done":
-      return { glyph: "✓", color: theme.added };
+      return { glyph: ICON.done, color: theme.added };
     case "idle":
-      return { glyph: "○", color: theme.fgMuted };
+      return { glyph: ICON.idle, color: theme.fgMuted };
     default:
-      return { glyph: "·", color: theme.fgFaint };
+      return { glyph: ICON.noAgent, color: theme.fgFaint };
   }
 }
 
@@ -50,78 +51,81 @@ export function AgentGlyph({ agent, bg }: { agent: Worktree["agent"]; bg: string
 }
 
 /**
- * A worktree as one line: status, name, uncommitted files and its PR. The
- * selected one opens a second line with what's only worth reading up close —
- * the branch (when it isn't the name already), line counts, ahead / behind.
+ * A worktree as a card in a rounded border: status, name, uncommitted files
+ * and its PR; under them the branch, line counts, ahead / behind. Selecting it
+ * only recolours the border — every card has both lines — so nothing moves
+ * when one is clicked.
  */
 export function WorktreeItem({ worktree, active, id, onClick, onResize }: WorktreeItemProps) {
   const theme = useTheme();
-  const bg = active ? theme.activeBg : theme.panel;
-  const name = displayName(worktree);
   // An SSH directory's subtitle is its path on the host.
   const where = worktree.subtitle ?? worktree.branch;
-  const showWhere = where !== name;
   const hasStats = worktree.added > 0 || worktree.removed > 0;
-  const hasSync = worktree.ahead > 0 || worktree.behind > 0;
-  const details = active && (showWhere || hasStats || hasSync);
   const badge = worktree.pr && prBadge(worktree.pr, theme);
 
   return (
     <box
       id={id}
-      flexDirection="row"
+      flexDirection="column"
       flexShrink={0}
-      backgroundColor={bg}
-      height={details ? 2 : 1}
+      border
+      borderStyle="rounded"
+      borderColor={active ? theme.accent : theme.border}
+      backgroundColor={theme.panel}
+      paddingLeft={1}
+      paddingRight={1}
       onMouseDown={onClick}
       onSizeChange={onResize}
     >
-      {/* Accent bar for the selected row */}
-      <box width={1} backgroundColor={active ? theme.accent : theme.panel} />
-
-      <box flexDirection="column" flexGrow={1} minWidth={0} paddingLeft={3} paddingRight={1}>
-        {/* status + name .......... ●changed ⇡#PR */}
-        <box flexDirection="row" alignItems="center">
-          <AgentGlyph agent={worktree.agent} bg={bg} />
-          <text
-            fg={active ? theme.fg : theme.fgMuted}
-            attributes={active ? TextAttributes.BOLD : undefined}
-            flexGrow={1}
-            flexShrink={1}
-            minWidth={0}
-            wrapMode="none"
-            truncate
-          >
-            {" " + name}
+      {/* status + name .......... changed files, PR */}
+      <box flexDirection="row" alignItems="center">
+        <AgentGlyph agent={worktree.agent} bg={theme.panel} />
+        <text
+          fg={theme.fg}
+          attributes={TextAttributes.BOLD}
+          flexGrow={1}
+          flexShrink={1}
+          minWidth={0}
+          wrapMode="none"
+          truncate
+        >
+          {" " + displayName(worktree)}
+        </text>
+        {/* Uncommitted changes: how many files (untracked included). */}
+        {worktree.changed > 0 && (
+          <text fg={theme.dirty} flexShrink={0}>
+            {` ${ICON.changed}${worktree.changed}`}
           </text>
-          {/* Uncommitted changes: how many files (untracked included). */}
-          {worktree.changed > 0 && (
-            <text fg={theme.dirty} flexShrink={0}>
-              {" ●" + worktree.changed}
-            </text>
-          )}
-          {badge && (
-            <text fg={badge.color} flexShrink={0}>
-              {" " + badge.text}
-            </text>
-          )}
-        </box>
+        )}
+        {badge && (
+          <text fg={badge.color} flexShrink={0}>
+            {" " + badge.text}
+          </text>
+        )}
+      </box>
 
-        {/* Selected: branch (an SSH directory: its path) .......... +added −removed ↑ahead ↓behind */}
-        {details && (
-          <box flexDirection="row" alignItems="center" paddingLeft={2}>
-            <text fg={theme.fgMuted} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
-              {showWhere ? where : ""}
-            </text>
-            {(hasStats || hasSync) && (
-              <text flexShrink={0}>
-                {hasStats && <span fg={theme.added}>{" +" + worktree.added}</span>}
-                {hasStats && <span fg={theme.removed}>{" −" + worktree.removed}</span>}
-                {worktree.ahead > 0 && <span fg={theme.ahead}>{" ↑" + worktree.ahead}</span>}
-                {worktree.behind > 0 && <span fg={theme.behind}>{" ↓" + worktree.behind}</span>}
-              </text>
-            )}
-          </box>
+      {/* branch (an SSH directory: its path) .......... +added −removed, ahead, behind */}
+      <box flexDirection="row" alignItems="center">
+        <text fg={theme.fgFaint} flexShrink={0}>
+          {(worktree.subtitle ? ICON.folder : ICON.branch) + " "}
+        </text>
+        <text
+          fg={active ? theme.fgMuted : theme.fgFaint}
+          flexGrow={1}
+          flexShrink={1}
+          minWidth={0}
+          wrapMode="none"
+          truncate
+        >
+          {where}
+        </text>
+        {(hasStats || worktree.ahead > 0 || worktree.behind > 0) && (
+          <text flexShrink={0}>
+            {hasStats && <span fg={theme.added}>{" +" + worktree.added}</span>}
+            {hasStats && <span fg={theme.removed}>{" −" + worktree.removed}</span>}
+            {worktree.ahead > 0 && <span fg={theme.ahead}>{` ${ICON.ahead}${worktree.ahead}`}</span>}
+            {worktree.behind > 0 && <span fg={theme.behind}>{` ${ICON.behind}${worktree.behind}`}</span>}
+          </text>
         )}
       </box>
     </box>

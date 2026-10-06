@@ -12,6 +12,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -51,7 +52,7 @@ describe("removing a project", () => {
   test("d on its header prompts; y forgets it and ends its terminals, leaving the files", async () => {
     const root = await oneProject();
     app = await renderApp();
-    await waitForText(app, "· x");
+    await waitForText(app, `${ICON.noAgent} x`);
 
     // Open feature/x's terminal, so it has a tmux session to end.
     app.mockInput.pressKey("j");
@@ -104,7 +105,7 @@ describe("removing a project", () => {
     await waitForTextGone(app, "Remove project");
 
     await settle(app);
-    expect(app.captureCharFrame()).toContain("· x");
+    expect(app.captureCharFrame()).toContain(`${ICON.noAgent} x`);
     expect(sandbox.readState()?.repos.map((r) => r.nameWithOwner)).toEqual(["acme/widget"]);
   });
 

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { MouseButton, TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
+import { ICON } from "../icons";
 import { DEFAULT_SIDEBAR_WIDTH } from "../layout";
 import { ResizeHandle } from "./ResizeHandle";
 import { AgentGlyph, WorktreeItem, agentLook } from "./WorktreeItem";
@@ -30,9 +31,9 @@ interface SidebarProps {
   onCycleTheme: () => void;
   /** Open the help overlay. */
   onHelp: () => void;
-  /** Hide the sidebar (its footer's «; also `b`). */
+  /** Hide the sidebar (its footer button; also `b`). */
   onHide?: () => void;
-  /** Click a footer count (◆ 2) → go to the next agent in that state. */
+  /** Click a footer count → go to the next agent in that state. */
   onJump?: (state: AgentStatus) => void;
   width?: number;
   /** Dragging the right-edge divider: the width it's being dragged to. */
@@ -64,11 +65,14 @@ function ProjectGroup({
   onClickWorktree,
   onRenameWorktree,
   onSelectProject,
+  onPress,
   scrollIntoView,
 }: {
   project: Project;
   collapsed: boolean;
   activeKey: string;
+  /** A row was clicked to select it (its key) — before its handler runs. */
+  onPress: (key: string) => void;
   /** Scroll the list to show this row. */
   scrollIntoView: (key: string) => void;
   onAddWorktree: (projectId: string) => void;
@@ -89,13 +93,19 @@ function ProjectGroup({
         id={rowId(projectKey(project.id))}
         flexDirection="row"
         backgroundColor={bg}
-        onMouseDown={() => onSelectProject(project.id)}
+        onMouseDown={() => {
+          onPress(projectKey(project.id));
+          onSelectProject(project.id);
+        }}
       >
         {/* accent gutter for the selected header */}
         <box width={1} backgroundColor={headerActive ? theme.accent : bg} />
         <box flexDirection="row" alignItems="center" flexGrow={1} paddingLeft={1} paddingRight={1}>
           <text fg={theme.fgFaint} flexShrink={0}>
-            {collapsed ? "▸ " : "▾ "}
+            {(collapsed ? ICON.folded : ICON.unfolded) + " "}
+          </text>
+          <text fg={theme.fgMuted} flexShrink={0}>
+            {(project.ssh ? ICON.host : ICON.repo) + " "}
           </text>
           <text
             fg={theme.fg}
@@ -106,7 +116,7 @@ function ProjectGroup({
             wrapMode="none"
             truncate
           >
-            {(project.ssh ? "⌁ " : "") + project.name}
+            {project.name}
           </text>
           {/* Folded: surface what's inside — an agent needing you first. */}
           {collapsed && urgent && (
@@ -116,7 +126,7 @@ function ProjectGroup({
           )}
           {collapsed && dirtyCount > 0 && (
             <text fg={theme.dirty} flexShrink={0}>
-              {" ●"}
+              {" " + ICON.changed}
             </text>
           )}
           {collapsed && (
@@ -126,14 +136,14 @@ function ProjectGroup({
           )}
           {/* Clickable "add worktree" button (also bound to the `a` key). */}
           <text fg={theme.fgMuted} flexShrink={0} onMouseDown={() => onAddWorktree(project.id)}>
-            {"  +"}
+            {"  " + ICON.add}
           </text>
         </box>
       </box>
 
-      {/* Worktrees, one line each, under the project's name */}
+      {/* Worktrees: bordered cards, one under the other */}
       {!collapsed && (
-        <box flexDirection="column" flexShrink={0}>
+        <box flexDirection="column" flexShrink={0} marginLeft={1} marginRight={1}>
           {project.worktrees.map((wt) => {
             const key = worktreeKey(project.id, wt.id);
             const active = key === activeKey;
@@ -143,14 +153,19 @@ function ProjectGroup({
                 worktree={wt}
                 id={rowId(key)}
                 active={active}
-                // Selected, it can grow a line: keep all of it in view once that's laid out.
+                // Selected as it mounts (a new worktree, a jump into a folded
+                // project): the selection's scroll ran before it had a place,
+                // so scroll again once it's laid out.
                 onResize={active ? () => scrollIntoView(key) : undefined}
                 onClick={(e) => {
                   // Handled here: a double-click hands focus to the terminal,
                   // which the sidebar's own click-to-focus mustn't undo.
                   e.stopPropagation();
                   if (e.button === MouseButton.RIGHT) onRenameWorktree?.(project.id, wt.id);
-                  else onClickWorktree(project.id, wt.id);
+                  else {
+                    onPress(key);
+                    onClickWorktree(project.id, wt.id);
+                  }
                 }}
               />
             );
@@ -185,10 +200,14 @@ export function Sidebar({
   const worktrees = projects.flatMap((p) => p.worktrees);
 
   // The list scrolls (wheel) when it's taller than the sidebar; the selected
-  // row is kept in view as the selection moves.
+  // row is kept in view as the selection moves. Not a row just clicked: it's
+  // under the pointer already, and scrolling would pull it out from under a
+  // second click.
   const scrollIntoView = (key: string) => listRef.current?.scrollChildIntoView(rowId(key));
+  const pressed = useRef("");
   useEffect(() => {
-    scrollIntoView(activeKey);
+    if (pressed.current !== activeKey) scrollIntoView(activeKey);
+    pressed.current = "";
   }, [activeKey]);
   const agentCounts = URGENCY.map((state) => ({
     state,
@@ -207,8 +226,17 @@ export function Sidebar({
       onMouseDown={() => onFocus?.()}
     >
       <box flexDirection="column" flexGrow={1} minWidth={0}>
-        {/* Project groups */}
-        <scrollbox ref={listRef} flexGrow={1} flexShrink={1} minHeight={0} scrollY paddingTop={1}>
+        {/* Project groups. No scrollbar: it would take a column only while the
+            list overflows, so folding a project would shift every row. */}
+        <scrollbox
+          ref={listRef}
+          flexGrow={1}
+          flexShrink={1}
+          minHeight={0}
+          scrollY
+          paddingTop={1}
+          verticalScrollbarOptions={{ visible: false }}
+        >
           {projects.length === 0 ? (
             <box flexDirection="column" paddingLeft={2} paddingRight={2}>
               <text fg={theme.fgMuted}>{"No projects yet."}</text>
@@ -227,13 +255,16 @@ export function Sidebar({
                 onClickWorktree={onClickWorktree}
                 onRenameWorktree={onRenameWorktree}
                 onSelectProject={onSelectProject}
+                onPress={(key) => {
+                  pressed.current = key;
+                }}
                 scrollIntoView={scrollIntoView}
               />
             ))
           )}
         </scrollbox>
 
-        {/* Footer: agents across all projects (◆ needs you · ◐ working · ✓ done),
+        {/* Footer: agents across all projects (needing you, working, done),
             then the theme, help and hide buttons (also t / ? / b). */}
         <box
           flexDirection="row"
@@ -260,14 +291,14 @@ export function Sidebar({
             ))}
           </box>
           <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onCycleTheme}>
-            {" ◑ "}
+            {` ${ICON.theme} `}
           </text>
           <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onHelp}>
-            {" ? "}
+            {` ${ICON.help} `}
           </text>
           {onHide && (
             <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onHide}>
-              {" « "}
+              {` ${ICON.hide} `}
             </text>
           )}
         </box>

@@ -12,6 +12,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { activeTab, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { commitAll, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -42,7 +43,7 @@ async function start(opts: { viewers?: string; saved?: string } = {}): Promise<s
   await reconcile(state);
   if (opts.viewers) process.env.AGENTREE_DIFF_VIEWERS = opts.viewers;
   app = await renderApp({ width: 120 });
-  await waitForText(app, "· x");
+  await waitForText(app, `${ICON.noAgent} x`);
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "x");
