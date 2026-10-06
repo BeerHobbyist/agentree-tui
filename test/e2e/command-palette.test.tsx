@@ -9,7 +9,6 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
-import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -31,11 +30,11 @@ async function start() {
   await reconcile(state);
   sandbox.setBranchPr({ number: 42, title: "Add login screen", headRefName: "feature/login" }, "feature/login");
   app = await renderApp({ width: 140, height: 40 });
-  await waitForText(app, "feature/login");
+  await waitForText(app, "· login");
   app.mockInput.pressKey("j");
   app.mockInput.pressKey("j");
   await waitForSelection(app, "login");
-  await waitForText(app, `${ICON.pr} #42`);
+  await waitForText(app, "⇡#42");
 }
 
 /** ctrl+p, and wait until it takes keys (its handler is attached once it's on screen). */
@@ -100,6 +99,6 @@ describe("the command palette", () => {
     const y = lines.findIndex((l) => l.includes("Switch theme"));
     await app.mockMouse.click(lines[y]!.indexOf("Switch theme") + 2, y);
     await waitForTextGone(app, "Commands");
-    await waitForText(app, "midnight"); // the footer's theme
+    await waitForText(app, "◑ midnight"); // the toast naming the theme
   });
 });

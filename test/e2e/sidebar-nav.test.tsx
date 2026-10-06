@@ -13,7 +13,6 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { selection, settle, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
-import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -114,59 +113,45 @@ describe("moving the selection", () => {
 });
 
 describe("a list taller than the sidebar", () => {
-  /** widget with main + eight worktrees — more cards than a 20-row screen shows. */
+  /** widget with main + twenty worktrees — more rows than a 20-row screen shows. */
   async function manyWorktrees() {
     const widget = await makeRepo(join(sandbox.workspace, "widget"), {
-      worktrees: Array.from({ length: 8 }, (_, i) => ({ branch: `feature/w${i + 1}` })),
+      worktrees: Array.from({ length: 20 }, (_, i) => ({ branch: `feature/w${String(i + 1).padStart(2, "0")}` })),
     });
     const state = loadState();
     upsertRepo(state, { nameWithOwner: "acme/widget", name: "widget", root: widget });
     await saveState(state);
     await reconcile(state);
   }
-  const HEADER = `${ICON.repo} widget`;
+  const HEADER = "▾ widget";
 
   test("scrolls to keep the selection in view, and back", async () => {
     await manyWorktrees();
     app = await renderApp({ height: 20 });
     await waitForSelection(app, "widget");
-    expect(app.captureCharFrame()).not.toContain("feature/w8");
+    expect(app.captureCharFrame()).not.toContain("· w20");
 
     app.mockInput.pressKey("G");
-    await waitForSelection(app, "feature/w8");
-    await waitForText(app, "feature/w8");
+    await waitForSelection(app, "feature/w20");
+    await waitForText(app, "feature/w20");
     await waitForTextGone(app, HEADER); // scrolled past it
 
     app.mockInput.pressKey("g");
     await waitForSelection(app, "widget");
     await waitForText(app, HEADER);
-    expect(app.captureCharFrame()).not.toContain("feature/w8");
-  });
-
-  test("folding it so it fits moves nothing sideways (no scrollbar comes and goes)", async () => {
-    await manyWorktrees();
-    app = await renderApp({ height: 20 });
-    await waitForSelection(app, "widget");
-    const addColumn = () => {
-      const lines = app.captureCharFrame().split("\n");
-      return lines.find((l) => l.includes(HEADER))!.indexOf(ICON.add);
-    };
-    const before = addColumn();
-    app.mockInput.pressKey("h"); // fold widget: the list now fits
-    await waitForTextGone(app, "feature/w1");
-    expect(addColumn()).toBe(before);
+    expect(app.captureCharFrame()).not.toContain("· w20");
   });
 
   test("moving down one row at a time never loses the selection off screen", async () => {
     await manyWorktrees();
     app = await renderApp({ height: 20 });
     await waitForSelection(app, "widget");
-    for (let i = 1; i <= 8; i++) {
-      app.mockInput.pressKey("j"); // main, then w1…w7
+    for (let i = 1; i <= 20; i++) {
+      app.mockInput.pressKey("j"); // main, then w01…w19
     }
     app.mockInput.pressKey("j");
-    await waitForSelection(app, "feature/w8");
-    await waitForText(app, "feature/w8");
+    await waitForSelection(app, "feature/w20");
+    await waitForText(app, "feature/w20");
   });
 });
 
@@ -174,46 +159,46 @@ describe("folding projects", () => {
   test("h folds a project away and l unfolds it", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
 
     app.mockInput.pressKey("h");
-    await waitForTextGone(app, "feature/x");
+    await waitForTextGone(app, "· x");
 
     app.mockInput.pressKey("l");
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
   });
 
   test("space toggles, and folding snaps the selection to the header", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
 
     app.mockInput.pressKey("j"); // onto widget's main
     await waitForSelection(app, "main");
     app.mockInput.pressKey(" ");
-    await waitForTextGone(app, "feature/x");
+    await waitForTextGone(app, "· x");
     expect(selection(app)).toContain("widget");
 
     app.mockInput.pressKey(" ");
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
   });
 
   test("enter on a project header folds it rather than opening anything", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
 
     app.mockInput.pressEnter();
-    await waitForTextGone(app, "feature/x");
+    await waitForTextGone(app, "· x");
   });
 
   test("folding one project leaves the other alone", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
 
     app.mockInput.pressKey("h");
-    await waitForTextGone(app, "feature/x");
+    await waitForTextGone(app, "· x");
     expect(app.captureCharFrame()).toContain("gadget");
   });
 });
@@ -224,7 +209,7 @@ describe("worktrees that vanished", () => {
     rmSync(join(widget, ".worktrees", "feature-x"), { recursive: true, force: true });
 
     app = await renderApp();
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
 
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j"); // onto the missing worktree
@@ -287,18 +272,18 @@ describe("quitting and help", () => {
 });
 
 describe("themes", () => {
-  test("t cycles the palette and the footer says which one is live", async () => {
+  test("t cycles the palette, and a toast says which one is live", async () => {
     await twoProjects();
     app = await renderApp();
-    await waitForText(app, "onedark");
+    await waitForSelection(app, "widget");
 
     app.mockInput.pressKey("t");
-    await waitForText(app, "midnight");
+    await waitForText(app, "◑ midnight");
 
     app.mockInput.pressKey("t");
-    await waitForText(app, "opencode");
+    await waitForText(app, "◑ opencode");
 
     app.mockInput.pressKey("t");
-    await waitForText(app, "onedark");
+    await waitForText(app, "◑ onedark");
   });
 });

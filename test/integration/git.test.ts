@@ -5,7 +5,9 @@ import { join } from "node:path";
 import {
   addWorktree,
   baseRef,
+  branchCommits,
   ignoreWorktreesDir,
+  listBranches,
   listWorktrees,
   localBranchExists,
   removeWorktree,
@@ -66,6 +68,14 @@ describe("addWorktree", () => {
     expect((await listWorktrees(repo)).map((w) => w.branch)).toContain("existing");
   });
 
+  test("starts a new branch at its base, without tracking it", async () => {
+    await withUpstream(repo, { ahead: 1 }); // main is now one commit past origin/main
+    const path = join(repo, ".worktrees", "feat-x");
+    await addWorktree(repo, path, "feature/x", { newBranch: true, base: "origin/main" });
+    expect(await git(["rev-parse", "feature/x"], repo)).toBe(await git(["rev-parse", "origin/main"], repo));
+    expect(git(["rev-parse", "--abbrev-ref", "feature/x@{upstream}"], repo)).rejects.toThrow();
+  });
+
   test("fails loudly when the branch is already checked out", async () => {
     const path = join(repo, ".worktrees", "dup");
     await addWorktree(repo, path, "dup", { newBranch: true });
@@ -104,6 +114,24 @@ describe("localBranchExists", () => {
   });
 });
 
+describe("listBranches", () => {
+  test("lists local and remote branches, and which one is checked out", async () => {
+    await withUpstream(repo);
+    await git(["remote", "set-head", "origin", "main"], repo);
+    await git(["branch", "develop"], repo);
+    const branches = await listBranches(repo);
+    expect(branches.current).toBe("main");
+    expect(branches.local.toSorted()).toEqual(["develop", "main"]);
+    // origin/HEAD is only an alias for origin/main.
+    expect(branches.remote).toEqual(["origin/main"]);
+  });
+
+  test("has no current branch when the copy is detached", async () => {
+    await git(["checkout", "-q", "--detach"], repo);
+    expect((await listBranches(repo)).current).toBeNull();
+  });
+});
+
 describe("baseRef", () => {
   test("prefers the remote's default branch", async () => {
     await withUpstream(repo);
@@ -113,6 +141,55 @@ describe("baseRef", () => {
 
   test("falls back to a local branch when there is no remote", async () => {
     expect(await baseRef(repo)).toBe("main");
+  });
+});
+
+describe("branchCommits", () => {
+  const sha = async (ref: string) => (await git(["rev-parse", ref], repo)).trim();
+
+  test("the branch's own commits, newest first, each with its parent", async () => {
+    await git(["checkout", "-q", "-b", "feature"], repo);
+    for (const n of [1, 2]) {
+      writeFile(repo, `f${n}.txt`, `${n}\n`);
+      await commitAll(repo, `feature ${n}`);
+    }
+    const commits = await branchCommits(repo, "main");
+    expect(commits.map((c) => c.subject)).toEqual(["feature 2", "feature 1"]);
+    expect(commits[0]!.sha).toBe(await sha("HEAD"));
+    expect(commits[0]!.parent).toBe(await sha("HEAD~1"));
+    expect(commits[1]!.parent).toBe(await sha("main"));
+    expect(commits[0]!.short).toBe((await git(["rev-parse", "--short", "HEAD"], repo)).trim());
+  });
+
+  test("a merged-in branch is its merge commit, so each commit's parent is the next one listed", async () => {
+    await git(["checkout", "-q", "-b", "side"], repo);
+    writeFile(repo, "side.txt", "side\n");
+    await commitAll(repo, "side work");
+    await git(["checkout", "-q", "-b", "feature", "main"], repo);
+    writeFile(repo, "f.txt", "f\n");
+    await commitAll(repo, "feature work");
+    await git(["merge", "-q", "--no-ff", "-m", "merge side", "side"], repo);
+    const commits = await branchCommits(repo, "main");
+    expect(commits.map((c) => c.subject)).toEqual(["merge side", "feature work"]);
+    expect(commits[0]!.parent).toBe(commits[1]!.sha);
+  });
+
+  test("none of its own (on the base branch itself): HEAD's history, back to the first commit", async () => {
+    writeFile(repo, "more.txt", "more\n");
+    await commitAll(repo, "more");
+    const commits = await branchCommits(repo, "main");
+    expect(commits.map((c) => c.subject)).toEqual(["more", "init"]);
+    // The first commit has no parent; it's diffed against the empty tree.
+    const emptyTree = (await git(["hash-object", "-t", "tree", "/dev/null"], repo)).trim();
+    expect(commits[1]!.parent).toBe(emptyTree);
+  });
+
+  test("a base that doesn't exist: HEAD's history too", async () => {
+    expect((await branchCommits(repo, "no-such-branch")).map((c) => c.subject)).toEqual(["init"]);
+  });
+
+  test("not a repo: nothing", async () => {
+    expect(await branchCommits(sandbox.workspace, "main")).toEqual([]);
   });
 });
 

@@ -97,6 +97,11 @@ export interface Sandbox {
    * host keeps it: a `tmux` first on PATH that fails unless run "on the host".
    */
   hideLocalTmux(): void;
+  /**
+   * Make `git <command>` (say "worktree list") take `seconds` longer, to hold
+   * a race open. Returns whether a slowed call has finished.
+   */
+  slowGit(command: string, seconds: number): () => boolean;
   /** Claude's user settings file here (CLAUDE_CONFIG_DIR in the sandbox). */
   claudeSettings: string;
   /** Notifications shown so far, as "title | body". */
@@ -232,6 +237,9 @@ export function createSandbox(): Sandbox {
     GIT_COMMITTER_NAME: "agentree test",
     GIT_COMMITTER_EMAIL: "test@example.invalid",
   });
+  // Run from inside fence or not, the CLI reaches tmux directly unless a test says otherwise.
+  delete process.env.FENCE_SANDBOX;
+  delete process.env.AGENTREE_SANDBOX_CMD;
 
   // Module-level caches and the theme store are global; a leak between tests
   // shows up as an unrelated test seeing the previous one's repos.
@@ -334,6 +342,20 @@ export function createSandbox(): Sandbox {
         { mode: 0o755 },
       );
       process.env.PATH = `${dir}:${process.env.PATH ?? ""}`;
+    },
+    slowGit(command, seconds) {
+      const real = Bun.which("git");
+      if (!real) throw new Error("slowGit: no git");
+      const dir = join(root, "slow-git-bin");
+      const done = join(root, "slow-git-done");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "git"),
+        `#!/bin/sh\ncase "$*" in "${command}"*) sleep ${seconds}; ${real} "$@"; s=$?; touch ${done}; exit $s ;; esac\nexec ${real} "$@"\n`,
+        { mode: 0o755 },
+      );
+      process.env.PATH = `${dir}:${process.env.PATH ?? ""}`;
+      return () => existsSync(done);
     },
     sshLoginAttempts() {
       try {

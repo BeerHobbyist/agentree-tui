@@ -8,8 +8,8 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { loadState, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
-import { git, makeRemote, makeRepo } from "../helpers/repo";
+import { screen, settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
+import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
 let sandbox: Sandbox;
@@ -49,7 +49,7 @@ describe("adding a worktree from scratch", () => {
     app.mockInput.pressEnter(); // acme/widget is first (most recently pushed)
     await waitForText(app, "Create new worktree");
 
-    app.mockInput.pressEnter(); // "＋ Create new worktree" is row 0
+    app.mockInput.pressEnter(); // "+ Create new worktree" is row 0
     await waitForText(app, "New branch name");
 
     await app.mockInput.typeText("feature/x");
@@ -213,6 +213,58 @@ describe("typing", () => {
   });
 });
 
+describe("choosing the base branch", () => {
+  test("tab picks a base from a filtered list; the new branch starts there", async () => {
+    const root = await knownProject("acme/widget");
+    await git(["branch", "release"], root);
+    writeFile(root, "later.txt", "later\n");
+    await commitAll(root, "later"); // main moves past release
+    await git(["tag", "release"], root); // a tag by the same name, elsewhere, must not make it ambiguous
+
+    app = await renderApp();
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree");
+    app.mockInput.pressEnter();
+    await waitForText(app, "from main");
+
+    await app.mockInput.typeText("feature/y");
+    await waitForText(app, "❯ feature/y");
+    app.mockInput.pressTab();
+    await waitForText(app, "Base for feature/y");
+
+    await app.mockInput.typeText("rel");
+    const frame = await waitForText(app, "filter rel");
+    expect(frame).not.toContain("current");
+    app.mockInput.pressEnter();
+    await waitForText(app, "from release");
+    app.mockInput.pressEnter();
+
+    await waitForModalClosed(app);
+    await waitUntil(app, () => sandbox.readState()?.repos[0]?.worktrees.length === 1, "the worktree to be registered");
+    expect(await git(["rev-parse", "feature/y"], root)).toBe(await git(["rev-parse", "refs/heads/release"], root));
+  });
+
+  test("esc leaves the base as it was, and an existing branch says the base won't apply", async () => {
+    const root = await knownProject("acme/widget");
+    await git(["branch", "release"], root);
+
+    app = await renderApp();
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree");
+    app.mockInput.pressEnter();
+    await waitForText(app, "New branch name");
+
+    app.mockInput.pressTab();
+    await waitForText(app, "main  current");
+    app.mockInput.pressArrow("down");
+    app.mockInput.pressEscape();
+    await waitForText(app, "from main");
+
+    await app.mockInput.typeText("release");
+    await waitForText(app, "existing branch");
+  });
+});
+
 describe("loading a worktree that already exists", () => {
   test("the actions list offers the main copy and adopts it into state", async () => {
     await knownProject("acme/widget", [{ branch: "feature/x" }]);
@@ -284,6 +336,29 @@ describe("adding to the project under the cursor", () => {
 
     app.mockInput.pressEscape();
     await waitForModalClosed(app);
+  });
+
+  test("a quick ⏎ on the actions isn't pulled back to them once the worktrees are read", async () => {
+    await knownProject("acme/widget");
+    app = await renderApp();
+    await waitForText(app, "widget");
+    const listed = sandbox.slowGit("worktree list", 1);
+
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree"); // shown before the worktrees are read
+    app.mockInput.pressEnter();
+    await waitForText(app, "New branch name");
+    await app.mockInput.typeText("feature/y");
+
+    await waitUntil(app, listed, "the worktrees to be read");
+    // Nothing to wait for — the point is that nothing happens — so give a jump back time to land.
+    await Bun.sleep(300);
+    await settle(app);
+    expect(screen(app)).toContain("❯ feature/y");
+
+    app.mockInput.pressEnter();
+    await waitForModalClosed(app);
+    await waitUntil(app, () => sandbox.readState()?.repos[0]?.worktrees.length === 1, "the worktree to be registered");
   });
 });
 

@@ -14,7 +14,6 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
-import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -62,7 +61,8 @@ async function start() {
   await saveState(state);
   await reconcile(state);
   app = await renderApp({ width: 120 });
-  await waitForText(app, "feature/y");
+  // y's row, whatever its status glyph: some tests have y report before this.
+  await waitUntil(app, () => /^\s+\S y\b/m.test(app.captureCharFrame()), "y's row");
 }
 
 /** Select a worktree row by name (g, then j until it's selected). */
@@ -100,10 +100,10 @@ describe("tracking every claude (H)", () => {
     await start();
     await select("x");
     app.mockInput.pressEnter(); // its terminal: a shell, in an agentree session
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     await Bun.sleep(300);
     hookInPane(X, "needs-action"); // what a hand-typed claude's hook would run
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ x");
   });
 });
 
@@ -114,7 +114,7 @@ describe("telling you", () => {
     await start();
     await select("x");
     app.mockInput.pressEnter(); // x on screen
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     await Bun.sleep(1500);
     expect(sandbox.notifications()).toEqual([]);
 
@@ -124,7 +124,7 @@ describe("telling you", () => {
 
     const paneX = Bun.spawnSync([...tmux(), "display", "-p", "-t", X, "#{pane_id}"]);
     report(X, new TextDecoder().decode(paneX.stdout).trim().replace("%", ""), "needs-action");
-    await waitForText(app, `${ICON.needsAction} 2`);
+    await waitForText(app, "◆ 2");
     await Bun.sleep(1200);
     expect(sandbox.notifications()).toEqual(["y needs you | widget"]); // x is the one you're looking at
   });
@@ -134,7 +134,7 @@ describe("telling you", () => {
     const paneY = agentPane(Y);
     await start();
     report(Y, paneY, "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ y");
     await Bun.sleep(500);
     expect(sandbox.notifications()).toEqual([]);
   });
@@ -145,10 +145,10 @@ describe("going to it", () => {
     const paneY = agentPane(Y);
     await start();
     report(Y, paneY, "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ y");
     app.mockInput.pressTab();
     await waitForSelection(app, "y");
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
   });
 
   test("⌥n from inside another terminal does the same", async () => {
@@ -156,28 +156,28 @@ describe("going to it", () => {
     await start();
     await select("x");
     app.mockInput.pressEnter();
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     report(Y, paneY, "needs-action");
-    await waitForText(app, "needs action");
+    await waitForText(app, "◆ y");
     app.mockInput.pressKey("n", { meta: true });
     await waitForSelection(app, "y");
   });
 
-  test("with nobody needing you, Tab goes to one that's done; clicking its count goes to the one that needs you", async () => {
+  test("with nobody needing you, Tab goes to one that's done; clicking ◆ 1 goes to the one that needs you", async () => {
     const paneX = agentPane(X);
     const paneY = agentPane(Y);
     await start();
     report(X, paneX, "done");
-    await waitForText(app, `${ICON.done} 1`);
+    await waitForText(app, "✓ 1");
     app.mockInput.pressTab();
     await waitForSelection(app, "x");
 
     app.mockInput.pressKey("g", { ctrl: true }); // back to the sidebar
     report(Y, paneY, "needs-action");
-    await waitForText(app, `${ICON.needsAction} 1`);
+    await waitForText(app, "◆ 1");
     const lines = app.captureCharFrame().split("\n");
-    const y = lines.findIndex((l) => l.includes(`${ICON.needsAction} 1`));
-    await app.mockMouse.click(lines[y]!.indexOf(`${ICON.needsAction} 1`), y);
+    const y = lines.findIndex((l) => l.includes("◆ 1"));
+    await app.mockMouse.click(lines[y]!.indexOf("◆ 1"), y);
     await waitForSelection(app, "y");
   });
 });
@@ -200,7 +200,7 @@ describe("agents on an SSH host", () => {
     app.mockInput.pressKey("u", { ctrl: true });
     for (const ch of "~/code/api") app.mockInput.pressKey(ch);
     app.mockInput.pressEnter();
-    await waitForText(app, `${ICON.host} dev-box`);
+    await waitForText(app, "⌁ dev-box");
 
     // The host's Claude settings get the hooks (its own file, not this machine's).
     const hostSettings = join(sandbox.sshHome, ".claude", "settings.json");
@@ -215,7 +215,7 @@ describe("agents on an SSH host", () => {
     await waitUntil(app, () => Bun.spawnSync([...tmux(), "has-session", "-t", session]).exitCode === 0, "its session");
     await Bun.sleep(300);
     hookInPane(session, "needs-action");
-    await waitForText(app, "needs action", { timeoutMs: 8_000 });
+    await waitForText(app, "◆ api", { timeoutMs: 8_000 });
     expect(existsSync(join(agentStatusDir(), `${session}.0`))).toBe(false); // reported on the host
   });
 });

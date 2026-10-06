@@ -9,7 +9,6 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
-import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -95,7 +94,7 @@ async function setup(opts: { prView?: boolean; branchPr?: boolean } = {}) {
 /** Render at a comfortable size and select feature/login's row. */
 async function openOnLogin(width = 140) {
   app = await renderApp({ width, height: 40 });
-  await waitForText(app, "feature/login");
+  await waitForText(app, "· login");
   app.mockInput.pressKey("j"); // main
   app.mockInput.pressKey("j"); // login
   await waitForSelection(app, "login");
@@ -125,9 +124,9 @@ describe("showing the PR", () => {
     for (const text of [
       "ignacy · main ← feature/login",
       "+412 −37 · 9 files",
-      "alice · approved",
-      "bob · changes requested",
-      "carol · review requested",
+      "✓ alice",
+      "✗ bob",
+      "◌ carol",
       "✗ 1  ◌ 1  ✓ 1", // checks summary
       "✗ lint · CI",
       "auth",
@@ -149,24 +148,9 @@ describe("showing the PR", () => {
     await waitForText(app, "Couldn't load PR #42");
   });
 
-  test("on a 100-column screen it waits for room: selecting its worktree doesn't narrow the sidebar", async () => {
+  test("fits on a 100-column screen by narrowing the sidebar", async () => {
     await setup();
-    app = await renderApp({ width: 100, height: 40 });
-    await waitForText(app, "feature/login");
-    // The right edge of the first card: where the sidebar ends.
-    const edge = () => {
-      const lines = app.captureCharFrame().split("\n");
-      return lines.find((l) => l.includes("╮"))!.indexOf("╮");
-    };
-    const before = edge();
-    app.mockInput.pressKey("j"); // main
-    app.mockInput.pressKey("j"); // login
-    await waitForSelection(app, "login");
-    await waitForText(app, `${ICON.pr} #42`); // its PR is known: the panel is wanted
-    expect(edge()).toBe(before);
-    expect(app.captureCharFrame()).not.toContain("Blocked: changes requested");
-    // Narrowing the sidebar yourself makes room for it.
-    app.mockInput.pressKey("[");
+    await openOnLogin(100);
     await waitForText(app, "Blocked: changes requested");
   });
 });
@@ -260,7 +244,7 @@ describe("folding sections", () => {
     const frame = await waitForText(app, "▸ Checks");
     expect(frame).toContain("✗ 1  ◌ 1  ✓ 1"); // the counts, still there
     expect(frame).not.toContain("✗ lint · CI");
-    expect(frame).toContain("alice · approved"); // other sections untouched
+    expect(frame).toContain("✓ alice"); // other sections untouched
 
     await clickHeader("Checks"); // and back
     await waitForText(app, "✗ lint · CI");

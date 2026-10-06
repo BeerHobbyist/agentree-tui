@@ -1,6 +1,6 @@
 /**
  * A pop-up in OpenCode's style: a panel with no border over a dimmed screen,
- * its title bold on the left and `esc` on the right, a quarter of the way
+ * its title bold on the left and a ✕ on the right, a quarter of the way
  * down. Every dialog — prompts, pickers, confirms, help — is one of these.
  */
 import { TextAttributes } from "@opentui/core";
@@ -14,7 +14,7 @@ const BACKDROP = "#00000099";
 interface DialogProps {
   title: string;
   width?: number;
-  /** esc in the corner, or a click outside. Omit while it can't be closed (busy). */
+  /** ✕ in the corner (or esc), or a click outside. Omit while it can't be closed (busy). */
   onClose?: () => void;
   /** The title's colour — a destructive confirm's in red. */
   titleColor?: string;
@@ -76,7 +76,7 @@ export function Dialog({ title, width = 60, onClose, titleColor, top: topRows, z
                 onClose();
               }}
             >
-              {"esc"}
+              {"✕"}
             </text>
           )}
         </box>

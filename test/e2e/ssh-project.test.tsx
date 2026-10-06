@@ -10,9 +10,8 @@ import { sessionName, tmuxInstallHint } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { makeRepo } from "../helpers/repo";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
+import { activeTab, waitForSelection, waitForText, waitForTextGone, waitUntil } from "../helpers/frame";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
-import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -68,9 +67,8 @@ describe("adding an SSH host", () => {
   test("s → host → directory: the host shows as a project, the directory under it", async () => {
     await addApi();
     const frame = app.captureCharFrame();
-    expect(frame).toContain(`${ICON.host} dev-box`);
-    expect(frame).toContain("ssh dev-box");
-    expect(frame).toContain(`${ICON.noAgent} api`);
+    expect(frame).toContain("⌁ dev-box");
+    expect(frame).toContain("· api");
     expect(sandbox.readState()!.hosts).toEqual([
       {
         host: "dev-box",
@@ -134,15 +132,15 @@ describe("adding an SSH host", () => {
     expect(sandbox.readState()?.hosts).toBeUndefined();
   });
 
-  test("the host's add button adds another directory, straight to the directory step", async () => {
+  test("+ on the host adds another directory, straight to the directory step", async () => {
     await addApi();
-    // The host header's add button (the tab bar has a ＋ too, for a new tab).
-    const header = locate(`${ICON.host} dev-box`);
-    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf(ICON.add);
+    // The host header's + (the first on its line: the sidebar is on the left).
+    const header = locate("⌁ dev-box");
+    const plusX = app.captureCharFrame().split("\n")[header.y]!.indexOf("+");
     await app.mockMouse.click(plusX, header.y);
     await waitForText(app, "Add a directory on dev-box");
     app.mockInput.pressEnter(); // the default: ~
-    await waitForText(app, `${ICON.noAgent} ~`);
+    await waitForText(app, "· ~");
     expect(sandbox.readState()!.hosts![0]!.dirs.map((d) => d.path)).toEqual([
       join(sandbox.sshHome, "code", "api"),
       sandbox.sshHome,
@@ -153,8 +151,8 @@ describe("adding an SSH host", () => {
     await addApi();
     app.dispose();
     app = await renderApp();
-    await waitForText(app, `${ICON.host} dev-box`);
-    await waitForText(app, "~/code/api");
+    await waitForText(app, "⌁ dev-box");
+    await waitForText(app, "· api");
   });
 });
 
@@ -181,7 +179,7 @@ describe("removing", () => {
     app.mockInput.pressKey("d");
     await waitForText(app, "Remove dev-box and its directories from");
     app.mockInput.pressKey("y");
-    await waitForTextGone(app, `${ICON.host} dev-box`);
+    await waitForTextGone(app, "⌁ dev-box");
     expect(sandbox.readState()!.hosts).toBeUndefined();
   });
 });
@@ -191,13 +189,13 @@ describe("what SSH projects leave out", () => {
     await addApi();
     await Bun.sleep(300);
     expect(sandbox.ghCalls().filter((c) => c.includes("--head"))).toEqual([]);
-    // No changed-files marker in the sidebar.
+    // No changed-files marker in the sidebar (the tab bar is to its right).
     const sidebar = app
       .captureCharFrame()
       .split("\n")
       .map((l) => l.slice(0, 36))
       .join("\n");
-    expect(sidebar).not.toContain(ICON.changed);
+    expect(sidebar).not.toContain("●");
   });
 });
 
@@ -229,7 +227,7 @@ describe("a host that logs in with a password", () => {
 
     type("hunter2");
     app.mockInput.pressEnter();
-    await waitForText(app, `${ICON.host} dev-box`);
+    await waitForText(app, "⌁ dev-box");
     expect(sandbox.readState()!.hosts![0]!.needsPassword).toBe(true);
     expect(JSON.stringify(sandbox.readState())).not.toContain("hunter2"); // never stored
     // Its terminal opens over the connection that login left open — no prompt.
@@ -241,12 +239,12 @@ describe("a host that logs in with a password", () => {
     await upToPassword();
     type("hunter2");
     app.mockInput.pressEnter();
-    await waitForText(app, `${ICON.host} dev-box`);
+    await waitForText(app, "⌁ dev-box");
     app.dispose();
     sandbox.dropSshConnection(); // it expired while agentree was closed
 
     app = await renderApp();
-    await waitForText(app, "~/code/api");
+    await waitForText(app, "· api");
     const before = sandbox.sshLoginAttempts().length;
     app.mockInput.pressKey("g");
     app.mockInput.pressKey("j");
@@ -261,7 +259,7 @@ describe("a host that logs in with a password", () => {
     await waitUntil(app, () => sandbox.sshConnected(), "the terminal's login to connect");
     await waitUntil(
       app,
-      () => sandbox.sshCalls().some((c) => c.includes("list-windows")) && /● \S/.test(app.captureCharFrame()),
+      () => sandbox.sshCalls().some((c) => c.includes("list-windows")) && activeTab(app) !== "",
       "the tab bar to come back over the connection",
     );
   });
@@ -272,7 +270,7 @@ describe("without tmux on this machine (a Mac without it)", () => {
     sandbox.hideLocalTmux();
     await addApi();
     await waitUntil(app, () => tmuxPath(SESSION) !== null, "the remote tmux session");
-    await waitUntil(app, () => /● \S/.test(app.captureCharFrame()), "its tab bar");
+    await waitUntil(app, () => activeTab(app) !== "", "its tab bar");
     expect(app.captureCharFrame()).not.toContain("tmux not found");
   });
 
@@ -284,7 +282,7 @@ describe("without tmux on this machine (a Mac without it)", () => {
     await reconcile(state);
     sandbox.hideLocalTmux();
     app = await renderApp({ width: 120 });
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j");
     await waitForSelection(app, "x");

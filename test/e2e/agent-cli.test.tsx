@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { sessionName } from "../../src/services/tmux";
 import { loadState, reconcile, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
-import { waitForSelection, waitForText } from "../helpers/frame";
+import { activeTab, waitForSelection, waitForTab, waitForText } from "../helpers/frame";
 import { makeRepo } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -38,19 +38,20 @@ describe("the CLI from inside an agentree terminal", () => {
     await saveState(state);
     await reconcile(state);
     app = await renderApp({ width: 120 });
-    await waitForText(app, "feature/x");
+    await waitForText(app, "· x");
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j");
     await waitForSelection(app, "x");
     app.mockInput.pressEnter();
-    await waitForText(app, "^g sidebar");
+    await waitForText(app, "^g");
     await Bun.sleep(300);
 
     run("agentree tab new --name devserver -- echo started");
-    await waitForText(app, "○ devserver", { timeoutMs: 10_000 }); // there, but not switched to
-    expect(app.captureCharFrame()).toMatch(/● \S+/); // the agent's own tab stays active
+    await waitForTab(app, "devserver", { timeoutMs: 10_000 }); // there, but not switched to
+    expect(activeTab(app)).not.toBe(""); // the agent's own tab stays active
+    expect(activeTab(app)).not.toBe("devserver");
 
     run('"$AGENTREE_CLI" tab rename devserver web');
-    await waitForText(app, "○ web", { timeoutMs: 10_000 });
+    await waitForTab(app, "web", { timeoutMs: 10_000 });
   });
 });

@@ -304,7 +304,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     }
   };
 
-  /** Hide the sidebar (`b`, its corner button): the keys go to the terminal on screen, if there is one. */
+  /** Hide the sidebar (`b`, its «): the keys go to the terminal on screen, if there is one. */
   const hideSidebar = () => {
     prefs.sidebar.setHidden(true);
     if (openRef.current) setFocusMode("terminal");
@@ -344,7 +344,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     setOpen({ repoId: sel.repoId, worktreeId: sel.worktreeId });
   };
 
-  /** `a` / a header's add button: add a worktree to that project (or a directory, on an SSH host). */
+  /** `a` / a header's +: add a worktree to that project (or a directory, on an SSH host). */
   const openAddForProject = (projectId: string) => {
     const proj = projectsRef.current.find((p) => p.id === projectId);
     if (!proj) return;
@@ -550,6 +550,9 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     void queryClient.invalidateQueries({ queryKey: queryKeys.tracking });
   };
 
+  /** The next theme (`t`, the footer's ◑, the palette) — named in a toast, the footer has no room for it. */
+  const switchTheme = () => toasts.show({ kind: "info", message: `◑ ${cycleTheme()}` });
+
   // ── Keys (while the sidebar has them) ──
 
   /** What each key does in the sidebar; `row` is the selected one. See keyIds for the names. */
@@ -585,7 +588,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
     },
     pagedown: () => prPanelRef.current?.scroll(10),
     pageup: () => prPanelRef.current?.scroll(-10),
-    t: () => cycleTheme(),
+    t: switchTheme,
     "?": () => overlays.open({ kind: "help" }),
     // Moving and folding.
     down: (_, rows, i) => setActiveIndex(Math.min(i + 1, rows.length - 1)),
@@ -742,7 +745,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
           onRenameWorktree={requestRename}
           onFocus={() => setFocusMode("sidebar")}
           onSelectProject={selectProject}
-          onCycleTheme={() => cycleTheme()}
+          onCycleTheme={switchTheme}
           onHelp={() => overlays.open({ kind: "help" })}
           width={layout.sidebar}
           onResize={prefs.sidebar.resize}

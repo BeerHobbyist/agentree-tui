@@ -1,7 +1,8 @@
 /** Diff viewer commands, run for real by sh against a real repo. */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { diffCommand, viewer } from "../../src/services/diff";
+import { diffCommand, pickCommits, viewer } from "../../src/services/diff";
+import { branchCommits } from "../../src/services/git";
 import { commitAll, git, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
@@ -40,5 +41,27 @@ describe("opening a diff", () => {
     writeFile(root, "new.txt", "feature work\n");
     await commitAll(root, "feature");
     expect(runIn(diffCommand(viewer("git"), "base", "main"))).toContain("+feature work");
+  });
+
+  test("picked commits: only their changes", async () => {
+    await git(["checkout", "-q", "-b", "feature"], root);
+    for (const n of [1, 2, 3]) {
+      writeFile(root, `f${n}.txt`, `change ${n}\n`);
+      await commitAll(root, `feature ${n}`);
+    }
+    const commits = await branchCommits(root, "main"); // feature 3, 2, 1
+    const out = runIn(diffCommand(viewer("git"), "ref", pickCommits(commits, 1, commits[2]!.sha)!.range));
+    expect(out).toContain("+change 1");
+    expect(out).toContain("+change 2");
+    expect(out).not.toContain("+change 3");
+  });
+
+  test("picked from the first commit: everything since the repo began", async () => {
+    writeFile(root, "later.txt", "later\n");
+    await commitAll(root, "later");
+    const commits = await branchCommits(root, "main"); // later, init
+    const out = runIn(diffCommand(viewer("git"), "ref", pickCommits(commits, 1)!.range));
+    expect(out).toContain("+# fixture");
+    expect(out).toContain("+later");
   });
 });

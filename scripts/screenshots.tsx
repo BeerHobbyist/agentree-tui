@@ -10,7 +10,7 @@
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { renderApp } from "../test/helpers/app";
-import { waitForText } from "../test/helpers/frame";
+import { waitForSelection, waitForText } from "../test/helpers/frame";
 import { createSandbox, type Sandbox } from "../test/helpers/sandbox";
 import { COLS, loginTerminal, ROWS, sampleWorkspace } from "./lib/sample";
 import { type Frame, openCamera } from "./lib/terminal";
@@ -39,7 +39,7 @@ const scenes: Record<string, { title: string; shoot(sb: Sandbox): Promise<Frame>
       await loginTerminal(sb, app);
       await waitForText(app, "Merge…");
       app.mockInput.pressKey("m");
-      await waitForText(app, "▶ Squash and merge");
+      await waitForSelection(app, "Squash and merge");
       await Bun.sleep(300);
       const frame = app.captureSpans();
       app.dispose();
