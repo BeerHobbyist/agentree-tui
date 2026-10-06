@@ -62,8 +62,8 @@ async function start() {
   await saveState(state);
   await reconcile(state);
   app = await renderApp({ width: 120 });
-  // y's row, whatever its status glyph: some tests have y report before this.
-  await waitUntil(app, () => /^\s+\S y\b/m.test(app.captureCharFrame()), "y's row");
+  // y's card, whatever its status glyph: some tests have y report before this.
+  await waitUntil(app, () => /│ \S y\b/.test(app.captureCharFrame()), "y's row");
 }
 
 /** Select a worktree row by name (g, then j until it's selected). */

@@ -37,19 +37,19 @@ function spanHex(color: { buffer: ArrayLike<number> }): string {
 }
 
 /**
- * The selected row's text. The sidebar marks the selection with colour only —
- * an accent gutter cell on a project header, an accent border round a worktree
- * card — so this reads the spans, not the glyphs. A card's two lines are both
- * returned, joined by a space, without the border.
+ * The selected row's text. Selection is marked with colour only — an accent
+ * background (a project header's gutter, a dialog's row), or an accent border
+ * round a worktree card — so this reads the spans, not the glyphs. A card's
+ * two lines are both returned, joined by a space, without the border.
  */
 export function selection(t: TestRendererSetup): string {
   const accent = getTheme().accent.toLowerCase();
-  // Only at the sidebar's left edge: elsewhere accent marks other things.
   const marked = (line: ReturnType<TestRendererSetup["captureSpans"]>["lines"][number]) => {
+    if (line.spans.some((s) => spanHex(s.bg) === accent)) return true;
+    // A card's left border, at the sidebar's edge (accent text elsewhere marks other things).
     let col = 0;
     for (const s of line.spans) {
       if (col > 1) return false;
-      if (spanHex(s.bg) === accent) return true;
       if (spanHex(s.fg) === accent && s.text.trimStart().startsWith("│")) return true;
       col += Bun.stringWidth(s.text);
     }
