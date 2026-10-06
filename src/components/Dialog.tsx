@@ -1,11 +1,13 @@
 /**
- * A pop-up in OpenCode's style: a panel with no border over a dimmed screen,
- * its title bold on the left and a ✕ on the right, a quarter of the way
- * down. Every dialog — prompts, pickers, confirms, help — is one of these.
+ * A pop-up over a dimmed screen, in a rounded border like the sidebar's
+ * cards: its icon and title on the left and a close button on the right, a
+ * quarter of the way down. Every dialog — prompts, pickers, confirms, help — is one of
+ * these.
  */
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
 import type { ReactNode } from "react";
+import { ICON } from "../icons";
 import { type Theme, useTheme } from "../theme";
 
 /** What's behind a dialog shows through, darkened. */
@@ -13,8 +15,10 @@ const BACKDROP = "#00000099";
 
 interface DialogProps {
   title: string;
+  /** Drawn before the title, in the accent colour (or the title's). */
+  icon?: string;
   width?: number;
-  /** ✕ in the corner (or esc), or a click outside. Omit while it can't be closed (busy). */
+  /** Its close button (or esc), or a click outside. Omit while it can't be closed (busy). */
   onClose?: () => void;
   /** The title's colour — a destructive confirm's in red. */
   titleColor?: string;
@@ -24,7 +28,16 @@ interface DialogProps {
   children: ReactNode;
 }
 
-export function Dialog({ title, width = 60, onClose, titleColor, top: topRows, zIndex = 100, children }: DialogProps) {
+export function Dialog({
+  title,
+  icon,
+  width = 60,
+  onClose,
+  titleColor,
+  top: topRows,
+  zIndex = 100,
+  children,
+}: DialogProps) {
   const theme = useTheme();
   const { width: cols, height } = useTerminalDimensions();
   const top = topRows ?? Math.max(1, Math.floor(height / 4));
@@ -50,12 +63,18 @@ export function Dialog({ title, width = 60, onClose, titleColor, top: topRows, z
         maxHeight={height - top - 1}
         flexDirection="column"
         backgroundColor={theme.panelAlt}
-        paddingTop={1}
-        paddingBottom={1}
+        border
+        borderStyle="rounded"
+        borderColor={theme.border}
         // A click inside isn't a click outside.
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <box flexDirection="row" flexShrink={0} paddingLeft={3} paddingRight={3}>
+        <box flexDirection="row" flexShrink={0} paddingLeft={2} paddingRight={2}>
+          {icon && (
+            <text fg={titleColor ?? theme.accent} flexShrink={0}>
+              {icon + " "}
+            </text>
+          )}
           <text
             fg={titleColor ?? theme.fg}
             attributes={TextAttributes.BOLD}
@@ -76,11 +95,11 @@ export function Dialog({ title, width = 60, onClose, titleColor, top: topRows, z
                 onClose();
               }}
             >
-              {"✕"}
+              {ICON.close}
             </text>
           )}
         </box>
-        <box flexDirection="column" flexShrink={1} minHeight={0} paddingLeft={3} paddingRight={3} paddingTop={1}>
+        <box flexDirection="column" flexShrink={1} minHeight={0} paddingLeft={2} paddingRight={2} paddingTop={1}>
           {children}
         </box>
       </box>
@@ -88,9 +107,29 @@ export function Dialog({ title, width = 60, onClose, titleColor, top: topRows, z
   );
 }
 
-/** Colours for a list row: the selected one filled with the accent, its text dark and bold. */
+/**
+ * How a list row looks: the selected one filled with the accent, its text and
+ * icon dark and bold, a pointer in its first three columns (blank on the
+ * others).
+ */
 export function rowLook(theme: Theme, selected: boolean) {
   return selected
-    ? { bg: theme.accent, fg: theme.bg, muted: theme.bg, marker: theme.bg, bold: TextAttributes.BOLD }
-    : { bg: undefined, fg: theme.fg, muted: theme.fgFaint, marker: theme.fgMuted, bold: undefined };
+    ? {
+        bg: theme.accent,
+        fg: theme.bg,
+        muted: theme.bg,
+        marker: theme.bg,
+        icon: theme.bg,
+        bold: TextAttributes.BOLD,
+        pointer: ` ${ICON.pointer} `,
+      }
+    : {
+        bg: undefined,
+        fg: theme.fg,
+        muted: theme.fgFaint,
+        marker: theme.fgMuted,
+        icon: theme.fgMuted,
+        bold: undefined,
+        pointer: "   ",
+      };
 }

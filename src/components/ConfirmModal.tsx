@@ -5,6 +5,8 @@ import { Hints, hintsFrom } from "./Hints";
 
 interface ConfirmModalProps {
   title: string;
+  /** The dialog's icon, before its title. */
+  icon?: string;
   message: string;
   detail?: string;
   /** Omit to render a dismiss-only notice instead of a yes/no prompt. */
@@ -13,7 +15,7 @@ interface ConfirmModalProps {
 }
 
 /** y/⏎ confirms, n/esc/click-outside cancels (or, without onConfirm, dismisses). */
-export function ConfirmModal({ title, message, detail, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({ title, icon, message, detail, onConfirm, onCancel }: ConfirmModalProps) {
   const theme = useTheme();
 
   useKeyboard((key) => {
@@ -26,7 +28,14 @@ export function ConfirmModal({ title, message, detail, onConfirm, onCancel }: Co
   });
 
   return (
-    <Dialog title={title} width={58} onClose={onCancel} titleColor={onConfirm ? theme.removed : undefined} zIndex={150}>
+    <Dialog
+      title={title}
+      icon={icon}
+      width={58}
+      onClose={onCancel}
+      titleColor={onConfirm ? theme.removed : undefined}
+      zIndex={150}
+    >
       <text fg={theme.fg} wrapMode="word">
         {message}
       </text>

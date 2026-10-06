@@ -48,13 +48,13 @@ interface PrPanelProps {
 export function checkLook(state: CheckState | undefined, theme: Theme): { glyph: string; color: string } {
   switch (state) {
     case "pass":
-      return { glyph: "✓", color: theme.added };
+      return { glyph: ICON.done, color: theme.added };
     case "fail":
-      return { glyph: "✗", color: theme.removed };
+      return { glyph: ICON.failed, color: theme.removed };
     case "pending":
-      return { glyph: "◌", color: theme.dirty };
+      return { glyph: ICON.pending, color: theme.dirty };
     case "skipped":
-      return { glyph: "–", color: theme.fgFaint };
+      return { glyph: ICON.skipped, color: theme.fgFaint };
     default:
       return { glyph: "", color: theme.fgMuted };
   }
@@ -71,33 +71,34 @@ export function prBadge(pr: PrInfo, theme: Theme): { text: string; color: string
   return { text: `${pr.draft ? ICON.prDraft : ICON.pr} #${pr.number}`, color };
 }
 
-function toneColor(tone: Tone, theme: Theme): string {
+/** How a merge status looks (the PR panel's, the merge prompt's): its icon and colour. */
+export function toneLook(tone: Tone, theme: Theme): { glyph: string; color: string } {
   switch (tone) {
     case "good":
-      return theme.added;
+      return { glyph: ICON.done, color: theme.added };
     case "bad":
-      return theme.removed;
+      return { glyph: ICON.failed, color: theme.removed };
     case "warn":
-      return theme.dirty;
+      return { glyph: ICON.warning, color: theme.dirty };
     case "merged":
-      return theme.agentWaiting;
+      return { glyph: ICON.merged, color: theme.agentWaiting };
     default:
-      return theme.fgMuted;
+      return { glyph: ICON.pending, color: theme.fgMuted };
   }
 }
 
 function reviewerLook(state: PrReviewer["state"], theme: Theme): { glyph: string; color: string; label: string } {
   switch (state) {
     case "approved":
-      return { glyph: "✓", color: theme.added, label: "approved" };
+      return { glyph: ICON.check, color: theme.added, label: "approved" };
     case "changes-requested":
-      return { glyph: "✗", color: theme.removed, label: "changes requested" };
+      return { glyph: ICON.changesRequested, color: theme.removed, label: "changes requested" };
     case "requested":
-      return { glyph: "◌", color: theme.dirty, label: "review requested" };
+      return { glyph: ICON.pending, color: theme.dirty, label: "review requested" };
     case "dismissed":
-      return { glyph: "–", color: theme.fgFaint, label: "dismissed" };
+      return { glyph: ICON.dismissed, color: theme.fgFaint, label: "dismissed" };
     default:
-      return { glyph: "●", color: theme.fgMuted, label: "commented" };
+      return { glyph: ICON.comment, color: theme.fgMuted, label: "commented" };
   }
 }
 
@@ -109,11 +110,13 @@ const STATE_LABEL: Record<PrDetails["state"], string> = {
 };
 
 /**
- * A titled block; clicking its title folds it down to that line. `extra`
- * (counts, a verdict) shows either way, `folded` only while folded.
+ * A titled block, headed like a sidebar project — chevron, icon, bold title;
+ * clicking its title folds it down to that line. `extra` (counts, a verdict)
+ * shows either way, `folded` only while folded.
  */
 function Section({
   title,
+  icon,
   extra,
   folded,
   collapsed = false,
@@ -121,6 +124,7 @@ function Section({
   children,
 }: {
   title: string;
+  icon: string;
   extra?: React.ReactNode;
   folded?: React.ReactNode;
   collapsed?: boolean;
@@ -132,7 +136,10 @@ function Section({
     <box flexDirection="column" flexShrink={0} marginBottom={1}>
       <box flexDirection="row" flexShrink={0} onMouseDown={onToggle}>
         <text fg={theme.fgFaint} flexShrink={0}>
-          {collapsed ? "▸ " : "▾ "}
+          {(collapsed ? ICON.folded : ICON.unfolded) + " "}
+        </text>
+        <text fg={theme.fgMuted} flexShrink={0}>
+          {icon + " "}
         </text>
         <text fg={theme.fg} attributes={TextAttributes.BOLD} flexShrink={0}>
           {title}
@@ -141,7 +148,7 @@ function Section({
         {collapsed && folded}
       </box>
       {!collapsed && (
-        // Glyphs line up under the title.
+        // Glyphs line up under the section's icon.
         <box flexDirection="column" flexShrink={0} paddingLeft={2}>
           {children}
         </box>
@@ -283,20 +290,22 @@ export function PrPanel({
           {/* number + state ................ checks overall, close */}
           <box flexDirection="row" flexShrink={0} paddingTop={1}>
             <text fg={theme.accent} attributes={TextAttributes.BOLD} flexShrink={0}>
-              {`⇡#${pr.number} `}
+              {`${prBadge(pr, theme).text} `}
             </text>
             {d && (
               <text
-                fg={toneColor(
-                  d.state === "merged"
-                    ? "merged"
-                    : d.state === "closed"
-                      ? "bad"
-                      : d.state === "draft"
-                        ? "muted"
-                        : "good",
-                  theme,
-                )}
+                fg={
+                  toneLook(
+                    d.state === "merged"
+                      ? "merged"
+                      : d.state === "closed"
+                        ? "bad"
+                        : d.state === "draft"
+                          ? "muted"
+                          : "good",
+                    theme,
+                  ).color
+                }
                 flexShrink={0}
               >
                 {STATE_LABEL[d.state]}
@@ -309,7 +318,7 @@ export function PrPanel({
               </text>
             )}
             <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onClose}>
-              {" ✕"}
+              {` ${ICON.close}`}
             </text>
           </box>
           <text fg={theme.fg} attributes={TextAttributes.BOLD} flexShrink={0} onMouseDown={() => openExternal(url)}>
@@ -317,14 +326,16 @@ export function PrPanel({
           </text>
           {d && (
             <text fg={theme.fgMuted} flexShrink={0} wrapMode="none" truncate>
-              {`${d.author || "?"} · ${d.base} ← ${d.head}`}
+              {`${ICON.person} ${d.author || "?"}  ${ICON.branch} ${d.base} ← ${d.head}`}
             </text>
           )}
           {d && (
             <text flexShrink={0} wrapMode="none" truncate>
               <span fg={theme.added}>{`+${d.additions}`}</span>
               <span fg={theme.removed}>{` −${d.deletions}`}</span>
-              <span fg={theme.fgMuted}>{` · ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"}`}</span>
+              <span
+                fg={theme.fgMuted}
+              >{`  ${ICON.file} ${d.changedFiles} file${d.changedFiles === 1 ? "" : "s"}`}</span>
             </text>
           )}
         </box>
@@ -333,7 +344,7 @@ export function PrPanel({
           <box flexDirection="column" flexGrow={1} marginTop={1}>
             {error ? (
               <>
-                <text fg={theme.removed}>{`Couldn't load PR #${pr.number}`}</text>
+                <text fg={theme.removed}>{`${ICON.failed} Couldn't load PR #${pr.number}`}</text>
                 <text fg={theme.fgFaint}>{error}</text>
                 <text fg={theme.fgFaint} attributes={TextAttributes.DIM}>
                   {"r to retry"}
@@ -356,19 +367,20 @@ export function PrPanel({
           >
             <Section
               title="Merge"
+              icon={ICON.merged}
               {...fold("merge")}
               folded={
-                <text fg={toneColor(merge.tone, theme)} wrapMode="none" truncate>
+                <text fg={toneLook(merge.tone, theme).color} wrapMode="none" truncate>
                   {"  " + merge.label}
                 </text>
               }
             >
-              <Row glyph="●" color={toneColor(merge.tone, theme)} text={merge.label} />
+              <Row {...toneLook(merge.tone, theme)} text={merge.label} />
               {d.state === "open" && onMerge && (
                 // A filled button, so it reads as something to press.
                 <box flexDirection="row" flexShrink={0}>
                   <text fg={theme.panel} bg={theme.accent} flexShrink={0} onMouseDown={onMerge}>
-                    {" Merge… "}
+                    {` ${ICON.merged} Merge… `}
                   </text>
                   <text fg={theme.fgFaint} flexShrink={0}>
                     {" m"}
@@ -379,7 +391,7 @@ export function PrPanel({
                 // Done with it: the worktree can go (it asks first).
                 <box flexDirection="row" flexShrink={0}>
                   <text fg={theme.panel} bg={theme.accent} flexShrink={0} onMouseDown={onCloseWorktree}>
-                    {" Close worktree… "}
+                    {` ${ICON.remove} Close worktree… `}
                   </text>
                   {closeKey && (
                     <text fg={theme.fgFaint} flexShrink={0}>
@@ -392,6 +404,7 @@ export function PrPanel({
 
             <Section
               title="Reviews"
+              icon={ICON.reviews}
               {...fold("reviews")}
               extra={decision && <text fg={decision.color}>{"  " + decision.glyph}</text>}
             >
@@ -407,6 +420,7 @@ export function PrPanel({
 
             <Section
               title="Checks"
+              icon={ICON.checks}
               {...fold("checks")}
               extra={
                 checkCounts.length > 0 && (
@@ -443,6 +457,7 @@ export function PrPanel({
             {d.labels.length > 0 && (
               <Section
                 title="Labels"
+                icon={ICON.label}
                 {...fold("labels")}
                 folded={
                   <text fg={theme.fgFaint} wrapMode="none" truncate>
@@ -455,13 +470,14 @@ export function PrPanel({
             )}
 
             {d.body.trim() && (
-              <Section title="Description" {...fold("description")}>
+              <Section title="Description" icon={ICON.description} {...fold("description")}>
                 <Quote>{excerpt(d.body, 6, 400)}</Quote>
               </Section>
             )}
 
             <Section
               title="Comments"
+              icon={ICON.comment}
               {...fold("comments")}
               extra={d.comments.length > 0 && <text fg={theme.fgFaint}>{`  ${d.comments.length}`}</text>}
             >
@@ -478,9 +494,10 @@ export function PrPanel({
                     onMouseDown={() => openExternal(c.url ?? url)}
                   >
                     <text flexShrink={0} wrapMode="none" truncate>
+                      <span fg={theme.fgMuted}>{`${ICON.person} `}</span>
                       <span fg={theme.fg}>{c.author}</span>
                       {c.kind === "inline" && c.path && (
-                        <span fg={theme.accent}>{` ${c.path}${c.line ? ":" + c.line : ""}`}</span>
+                        <span fg={theme.accent}>{`  ${ICON.file} ${c.path}${c.line ? ":" + c.line : ""}`}</span>
                       )}
                       {c.kind === "review" && c.reviewState && (
                         <span fg={reviewerLook(c.reviewState, theme).color}>
@@ -507,11 +524,11 @@ export function PrPanel({
               {
                 // How fresh this is (r refreshes).
                 text: query.isFetching
-                  ? "↻ refreshing…"
+                  ? `${ICON.refresh} refreshing…`
                   : error && details
-                    ? "↻ failed"
+                    ? `${ICON.refresh} failed`
                     : query.dataUpdatedAt
-                      ? `↻ ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
+                      ? `${ICON.refresh} ${relativeTime(new Date(query.dataUpdatedAt).toISOString())}`
                       : "",
               },
               ...(d?.state === "open" ? [{ key: "m", text: "merge" }] : []),

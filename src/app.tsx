@@ -8,6 +8,7 @@ import { queryKeys } from "./queries";
 import { setRemoteTracking, setTrackingEveryClaude } from "./services/agents";
 import { useTheme, cycleTheme, themeNames } from "./theme";
 import { displayName, type AgentStatus, type PrInfo, type Project, type Worktree } from "./data/model";
+import { ICON } from "./icons";
 import { removeWorktree } from "./services/git";
 import { killSession, sessionName, tmuxOn } from "./services/tmux";
 import { Sidebar, projectKey, worktreeKey } from "./components/Sidebar";
@@ -564,7 +565,7 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   };
 
   /** The next theme (`t`, the footer's button, the palette) — named in a toast, the footer has no room for it. */
-  const switchTheme = () => toasts.show({ kind: "info", message: `◑ ${cycleTheme()}` });
+  const switchTheme = () => toasts.show({ kind: "info", icon: ICON.theme, message: cycleTheme() });
 
   // ── Keys (while the sidebar has them) ──
 

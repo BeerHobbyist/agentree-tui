@@ -11,6 +11,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { screen, settle, waitForModalClosed, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
 import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -49,7 +50,7 @@ describe("adding a worktree from scratch", () => {
     app.mockInput.pressEnter(); // acme/widget is first (most recently pushed)
     await waitForText(app, "Create new worktree");
 
-    app.mockInput.pressEnter(); // "+ Create new worktree" is row 0
+    app.mockInput.pressEnter(); // "Create new worktree" is row 0
     await waitForText(app, "New branch name");
 
     await app.mockInput.typeText("feature/x");
@@ -161,7 +162,7 @@ describe("typing", () => {
 
     // No delay between keys: they arrive in one tick, before React re-renders.
     for (const ch of "feature/deep/name") app.mockInput.pressKey(ch);
-    await waitForText(app, "❯ feature/deep/name");
+    await waitForText(app, `${ICON.prompt} feature/deep/name`);
   });
 
   test("uppercase survives — branch names are case-sensitive", async () => {
@@ -174,7 +175,7 @@ describe("typing", () => {
     await waitForText(app, "New branch name");
 
     for (const ch of "JIRA-12") app.mockInput.pressKey(ch, { shift: /[A-Z]/.test(ch) });
-    await waitForText(app, "❯ JIRA-12");
+    await waitForText(app, `${ICON.prompt} JIRA-12`);
     app.mockInput.pressEnter();
 
     await waitForModalClosed(app);
@@ -193,10 +194,10 @@ describe("typing", () => {
     await waitForText(app, "New branch name");
 
     for (const ch of "feat") app.mockInput.pressKey(ch);
-    await waitForText(app, "❯ feat");
+    await waitForText(app, `${ICON.prompt} feat`);
     app.mockInput.pressBackspace();
     app.mockInput.pressBackspace();
-    await waitForText(app, "❯ fe");
+    await waitForText(app, `${ICON.prompt} fe`);
   });
 
   test("the repo filter takes uppercase too", async () => {
@@ -207,7 +208,7 @@ describe("typing", () => {
     await waitForText(app, "2 repos");
 
     app.mockInput.pressKey("W", { shift: true });
-    const frame = await waitForText(app, "filter W");
+    const frame = await waitForText(app, `${ICON.search} W`);
     expect(frame).toContain("acme/Widget");
     expect(frame).not.toContain("acme/gadget");
   });
@@ -228,12 +229,12 @@ describe("choosing the base branch", () => {
     await waitForText(app, "from main");
 
     await app.mockInput.typeText("feature/y");
-    await waitForText(app, "❯ feature/y");
+    await waitForText(app, `${ICON.prompt} feature/y`);
     app.mockInput.pressTab();
     await waitForText(app, "Base for feature/y");
 
     await app.mockInput.typeText("rel");
-    const frame = await waitForText(app, "filter rel");
+    const frame = await waitForText(app, `${ICON.search} rel`);
     expect(frame).not.toContain("current");
     app.mockInput.pressEnter();
     await waitForText(app, "from release");
@@ -280,7 +281,7 @@ describe("loading a worktree that already exists", () => {
     app.mockInput.pressArrow("down");
     app.mockInput.pressArrow("down");
     const frame = await waitForText(app, "feature/x");
-    expect(frame).toContain("◆ main");
+    expect(frame).toContain(`${ICON.repo} main`);
     app.mockInput.pressEnter();
 
     await waitForModalClosed(app);
@@ -374,7 +375,7 @@ describe("adding to the project under the cursor", () => {
     // Nothing to wait for — the point is that nothing happens — so give a jump back time to land.
     await Bun.sleep(300);
     await settle(app);
-    expect(screen(app)).toContain("❯ feature/y");
+    expect(screen(app)).toContain(`${ICON.prompt} feature/y`);
 
     app.mockInput.pressEnter();
     await waitForModalClosed(app);

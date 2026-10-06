@@ -73,7 +73,8 @@ Things worth knowing:
   accent gutter cell (a project header) or an accent border (a worktree card),
   which `captureCharFrame()` cannot show. Use `selection(app)` /
   `waitForSelection(app, "…")`, which read `captureSpans()`.
-- **Sidebar icons are Nerd Font glyphs.** Match them through `ICON`
+- **Icons are Nerd Font glyphs** — the sidebar's, the tab bar's, the PR
+  panel's, a dialog's list pointer and prompt. Match them through `ICON`
   (`src/icons.ts`), not pasted characters.
 - **Keys are parsed, not typed.** `pressKey("G")` arrives as `name: "g"` with
   `shift: true`, and `pressKey(" ")` as `name: "space"`. Uppercase text has to come

@@ -74,7 +74,7 @@ const merges = () => sandbox.ghCalls().filter((c) => c.startsWith("pr merge "));
  * test's sandbox (the state path comes from the environment at write time).
  */
 async function settled() {
-  await waitForText(app, "✓ ");
+  await waitForText(app, `${ICON.done} `);
   await waitUntil(app, () => !!sandbox.readState()?.ui?.mergeMethod, "the merge method to be saved");
 }
 
@@ -90,13 +90,13 @@ describe("merging from the PR panel", () => {
   test("m → pick → confirm merges, pinned to the head commit on screen", async () => {
     await start();
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
     app.mockInput.pressEnter();
     await waitForText(app, "Squash and merge #42 into main?");
     expect(merges()).toEqual([]); // not before the confirm
 
     app.mockInput.pressKey("y");
-    await waitForText(app, "✓ Merged #42 into main.");
+    await waitForText(app, `${ICON.done} Merged #42 into main.`);
     expect(merges()).toEqual([`pr merge 42 -R acme/widget --squash --match-head-commit ${SHA}`]);
     app.mockInput.pressEnter();
     await waitForTextGone(app, MODAL);
@@ -105,11 +105,11 @@ describe("merging from the PR panel", () => {
   test("backing out at any step merges nothing", async () => {
     await start();
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
     app.mockInput.pressEnter();
     await waitForText(app, "into main?");
     app.mockInput.pressKey("n"); // back to the methods
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
     app.mockInput.pressEscape(); // and out
     await waitForTextGone(app, MODAL);
     // …and the sidebar has its keys back.
@@ -134,7 +134,7 @@ describe("merging from the PR panel", () => {
   test("only the methods the repo allows are offered", async () => {
     await start({ settings: { allow_merge_commit: true, allow_squash_merge: false, allow_rebase_merge: false } });
     app.mockInput.pressKey("m");
-    const frame = await waitForText(app, "▶ Create a merge commit");
+    const frame = await waitForText(app, `${ICON.pointer} Create a merge commit`);
     expect(frame).not.toContain("Squash and merge");
     expect(frame).not.toContain("Rebase and merge");
     app.mockInput.pressEnter();
@@ -147,19 +147,19 @@ describe("merging from the PR panel", () => {
   test("the method used last is offered first next time", async () => {
     await start();
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
     app.mockInput.pressKey("j");
     app.mockInput.pressKey("j");
-    await waitForText(app, "▶ Rebase and merge");
+    await waitForText(app, `${ICON.pointer} Rebase and merge`);
     app.mockInput.pressEnter();
     app.mockInput.pressKey("y");
-    await waitForText(app, "✓ Merged");
+    await waitForText(app, `${ICON.done} Merged`);
     await waitUntil(app, () => sandbox.readState()?.ui?.mergeMethod === "rebase", "the method to be remembered");
     app.mockInput.pressEscape();
     await waitForTextGone(app, MODAL);
 
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Rebase and merge");
+    await waitForText(app, `${ICON.pointer} Rebase and merge`);
   });
 
   test("a blocked PR can be set to merge when ready, if the repo has auto-merge", async () => {
@@ -168,11 +168,11 @@ describe("merging from the PR panel", () => {
       settings: { allow_auto_merge: true },
     });
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Squash and merge when ready");
+    await waitForText(app, `${ICON.pointer} Squash and merge when ready`);
     app.mockInput.pressEnter();
     await waitForText(app, "Set #42 to squash-merge into main once it's ready?");
     app.mockInput.pressKey("y");
-    await waitForText(app, "✓ Auto-merge on");
+    await waitForText(app, `${ICON.done} Auto-merge on`);
     expect(merges()).toEqual([`pr merge 42 -R acme/widget --squash --auto --match-head-commit ${SHA}`]);
   });
 
@@ -190,12 +190,12 @@ describe("merging from the PR panel", () => {
     await start();
     sandbox.failGh("merge");
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
     app.mockInput.pressEnter();
     app.mockInput.pressKey("y");
     await waitForText(app, "Couldn't merge: GraphQL: Pull request is not mergeable");
     app.mockInput.pressEnter();
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
   });
 
   test("once merged, the badge goes (gh no longer lists it as open)", async () => {
@@ -204,10 +204,10 @@ describe("merging from the PR panel", () => {
     sandbox.setBranchPr(null, "feature/login"); // what GitHub says after the merge
     sandbox.setPrView(42, prView({ state: "MERGED" }));
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
     app.mockInput.pressEnter();
     app.mockInput.pressKey("y");
-    await waitForText(app, "✓ Merged #42 into main.");
+    await waitForText(app, `${ICON.done} Merged #42 into main.`);
     app.mockInput.pressEnter();
     await waitForTextGone(app, `${ICON.pr} #42`);
   });

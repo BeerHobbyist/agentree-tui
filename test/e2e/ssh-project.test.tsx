@@ -54,7 +54,7 @@ async function addApi() {
   app.mockInput.pressKey("s");
   await waitForText(app, ADD_HOST);
   type("dev-box");
-  await waitForText(app, "▶ ⌁ dev-box");
+  await waitForText(app, `${ICON.pointer} ${ICON.host} dev-box`);
   app.mockInput.pressEnter();
   await waitForText(app, "Directory on dev-box");
   app.mockInput.pressKey("u", { ctrl: true });
@@ -98,15 +98,15 @@ describe("adding an SSH host", () => {
     app = await renderApp();
     await waitForText(app, "Press n to add a project");
     app.mockInput.pressKey("s");
-    const frame = await waitForText(app, "⌁ staging");
-    expect(frame).toContain("⌁ dev-box");
-    expect(frame).toContain("⌁ prod");
-    expect(frame).not.toContain("⌁ *");
+    const frame = await waitForText(app, `${ICON.host} staging`);
+    expect(frame).toContain(`${ICON.host} dev-box`);
+    expect(frame).toContain(`${ICON.host} prod`);
+    expect(frame).not.toContain(`${ICON.host} *`);
     // Typing filters them; ↓ ⏎ picks one.
     type("pro");
-    await waitForTextGone(app, "⌁ staging");
+    await waitForTextGone(app, `${ICON.host} staging`);
     app.mockInput.pressArrow("down");
-    await waitForText(app, "▶ ⌁ prod");
+    await waitForText(app, `${ICON.pointer} ${ICON.host} prod`);
     app.mockInput.pressEnter();
     await waitForText(app, "Directory on prod");
   });
@@ -221,7 +221,7 @@ describe("a host that logs in with a password", () => {
   test("adding it asks for the password (masked); a wrong one can be retried", async () => {
     await upToPassword();
     type("nope");
-    await waitForText(app, "❯ ••••");
+    await waitForText(app, `${ICON.prompt} ••••`);
     expect(app.captureCharFrame()).not.toContain("nope");
     app.mockInput.pressEnter();
     await waitForText(app, "That didn't work — try again.");

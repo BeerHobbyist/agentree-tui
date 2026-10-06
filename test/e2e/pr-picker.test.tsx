@@ -10,6 +10,7 @@ import { renderApp, type RenderedApp } from "../helpers/app";
 import { settle, waitForModalClosed, waitForText, waitUntil } from "../helpers/frame";
 import { addPrHead, git, makeRemote } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
+import { ICON } from "../../src/icons";
 
 let sandbox: Sandbox;
 let app: RenderedApp;
@@ -39,7 +40,7 @@ describe("the PR rows", () => {
 
     app = await renderApp();
     await openActionsFor(app);
-    await waitForText(app, "⇄ #7 Fix the thing");
+    await waitForText(app, `${ICON.pr} #7 Fix the thing`);
 
     // Rows: create new, the main copy, then the PRs.
     app.mockInput.pressArrow("down");
@@ -74,7 +75,7 @@ describe("the PR rows", () => {
 
     app = await renderApp();
     await openActionsFor(app);
-    await waitForText(app, "⇄ #7");
+    await waitForText(app, `${ICON.pr} #7`);
     app.mockInput.pressArrow("down");
     app.mockInput.pressArrow("down");
     app.mockInput.pressEnter();
@@ -94,9 +95,9 @@ describe("the PR rows", () => {
       first = app.captureCharFrame();
     }
     expect(first).toContain("Create new worktree");
-    expect(first).not.toContain("⇄ #7");
-    const frame = await waitForText(app, "○ contributor-fix");
-    expect(frame).not.toContain("⇄ #7");
+    expect(first).not.toContain(`${ICON.pr} #7`);
+    const frame = await waitForText(app, `${ICON.folder} contributor-fix`);
+    expect(frame).not.toContain(`${ICON.pr} #7`);
   });
 
   test("the modal still works when the PR lookup fails", async () => {
@@ -118,7 +119,7 @@ describe("the PR rows", () => {
 
     app = await renderApp();
     await openActionsFor(app);
-    await waitForText(app, "⇄ #9 Ghost");
+    await waitForText(app, `${ICON.pr} #9 Ghost`);
     app.mockInput.pressArrow("down");
     app.mockInput.pressArrow("down");
     app.mockInput.pressEnter();

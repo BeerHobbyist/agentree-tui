@@ -293,12 +293,12 @@ describe("themes", () => {
     await waitForSelection(app, "widget");
 
     app.mockInput.pressKey("t");
-    await waitForText(app, "◑ midnight");
+    await waitForText(app, `${ICON.theme} midnight`);
 
     app.mockInput.pressKey("t");
-    await waitForText(app, "◑ opencode");
+    await waitForText(app, `${ICON.theme} opencode`);
 
     app.mockInput.pressKey("t");
-    await waitForText(app, "◑ onedark");
+    await waitForText(app, `${ICON.theme} onedark`);
   });
 });
