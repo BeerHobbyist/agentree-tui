@@ -58,7 +58,7 @@ async function rename(label: string) {
   await waitForText(app, MODAL);
   app.mockInput.pressKey("u", { ctrl: true });
   type(label);
-  await waitForText(app, `❯ ${label}`);
+  await waitForText(app, `${ICON.prompt} ${label}`);
   app.mockInput.pressEnter();
   await waitForTextGone(app, MODAL);
 }
@@ -90,9 +90,9 @@ describe("renaming a worktree", () => {
   test("the modal starts from the current name, and esc changes nothing", async () => {
     await start();
     app.mockInput.pressKey("R", { shift: true });
-    await waitForText(app, "❯ x");
+    await waitForText(app, `${ICON.prompt} x`);
     type("yz");
-    await waitForText(app, "❯ xyz");
+    await waitForText(app, `${ICON.prompt} xyz`);
     app.mockInput.pressEscape();
     await waitForTextGone(app, MODAL);
     expect(app.captureCharFrame()).toContain(`${ICON.noAgent} x`);
@@ -115,9 +115,9 @@ describe("renaming a worktree", () => {
     await waitForText(app, `${ICON.noAgent} Spike`);
 
     app.mockInput.pressKey("R", { shift: true });
-    await waitForText(app, "❯ Spike");
+    await waitForText(app, `${ICON.prompt} Spike`);
     app.mockInput.pressKey("u", { ctrl: true });
-    await waitForText(app, "❯ x"); // the name it falls back to, as a placeholder
+    await waitForText(app, `${ICON.prompt} x`); // the name it falls back to, as a placeholder
     app.mockInput.pressEnter();
     await waitForTextGone(app, "Spike");
     expect(app.captureCharFrame()).toContain(`${ICON.noAgent} x`);
@@ -130,7 +130,7 @@ describe("renaming a worktree", () => {
     await waitForText(app, MODAL);
     app.mockInput.pressKey("u", { ctrl: true });
     await app.mockInput.pasteBracketedText("Login\nscreen");
-    await waitForText(app, "❯ Login screen");
+    await waitForText(app, `${ICON.prompt} Login screen`);
     app.mockInput.pressEnter();
     await waitForText(app, `${ICON.noAgent} Login screen`);
   });

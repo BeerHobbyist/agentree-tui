@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { ParsedKey } from "@opentui/core";
 import { useKeyboard, usePaste } from "@opentui/react";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import { Dialog } from "./Dialog";
 import { Hints, hintsFrom } from "./Hints";
@@ -76,13 +77,13 @@ export function RenameModal({ initial, heading, placeholder, note, maxLength, on
   });
 
   return (
-    <Dialog title="Rename" width={58} onClose={onCancel} zIndex={150}>
+    <Dialog title="Rename" icon={ICON.rename} width={58} onClose={onCancel} zIndex={150}>
       <text fg={theme.fgMuted} wrapMode="none" truncate>
         {heading}
       </text>
       <box flexDirection="row" alignItems="center" marginTop={1}>
         <text fg={theme.accent} flexShrink={0}>
-          {"❯ "}
+          {ICON.prompt + " "}
         </text>
         {value ? (
           <text fg={theme.fg} flexShrink={1} wrapMode="none" truncate>

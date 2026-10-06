@@ -4,11 +4,15 @@ import { Hints, hintsFrom } from "./Hints";
 
 export interface MenuItem {
   label: string;
+  /** Drawn before the label. */
+  icon?: string;
   hint?: string;
 }
 
 interface MenuOverlayProps {
   title: string;
+  /** The dialog's icon, before its title. */
+  icon?: string;
   items: MenuItem[];
   /** Currently highlighted row (keyboard). */
   index: number;
@@ -22,10 +26,10 @@ interface MenuOverlayProps {
 }
 
 /** A small list in a dialog, driven by the parent's keyboard + mouse. */
-export function MenuOverlay({ title, items, index, onPick, onClose, note, width = 48 }: MenuOverlayProps) {
+export function MenuOverlay({ title, icon, items, index, onPick, onClose, note, width = 48 }: MenuOverlayProps) {
   const theme = useTheme();
   return (
-    <Dialog title={title} width={width} onClose={onClose} zIndex={150}>
+    <Dialog title={title} icon={icon} width={width} onClose={onClose} zIndex={150}>
       {items.map((item, i) => {
         const look = rowLook(theme, i === index);
         return (
@@ -37,8 +41,13 @@ export function MenuOverlay({ title, items, index, onPick, onClose, note, width 
             onMouseDown={() => onPick(i)}
           >
             <text fg={look.marker} flexShrink={0}>
-              {i === index ? " ▶ " : "   "}
+              {look.pointer}
             </text>
+            {item.icon && (
+              <text fg={look.icon} flexShrink={0}>
+                {item.icon + " "}
+              </text>
+            )}
             <text fg={look.fg} attributes={look.bold} flexShrink={0}>
               {item.label}
             </text>

@@ -1,6 +1,6 @@
 /**
  * Hiding the sidebar (b, or its footer button) gives the terminal the whole
- * width; going back to the sidebar (Ctrl+g, the tab bar's ‹, or b) shows it.
+ * width; going back to the sidebar (Ctrl+g, the tab bar's back button, or b) shows it.
  */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
@@ -93,7 +93,7 @@ describe("hiding the sidebar", () => {
     app.mockInput.pressKey("b");
     await waitForTextGone(app, SIDEBAR);
     // The tab bar now starts at the left edge.
-    await waitUntil(app, () => locate("‹").x <= 2, "the terminal to fill the width");
+    await waitUntil(app, () => locate(ICON.back).x <= 2, "the terminal to fill the width");
     expect(await appHasKeys()).toBe(false); // the terminal has them
   });
 
@@ -107,13 +107,13 @@ describe("hiding the sidebar", () => {
     expect(await appHasKeys()).toBe(true);
   });
 
-  test("the button in its footer hides it; the tab bar's ‹ brings it back", async () => {
+  test("the button in its footer hides it; the tab bar's back button brings it back", async () => {
     await start();
     await openTerminal();
     const hide = locate(ICON.hide);
     await app.mockMouse.click(hide.x, hide.y);
     await waitForTextGone(app, SIDEBAR);
-    const back = locate("‹");
+    const back = locate(ICON.back);
     await app.mockMouse.click(back.x, back.y);
     await waitForText(app, SIDEBAR);
   });

@@ -1,6 +1,7 @@
 import { useTerminalDimensions } from "@opentui/react";
 import { pickCommits } from "../services/diff";
 import type { Commit } from "../services/git";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import { Dialog, rowLook } from "./Dialog";
 import { Hints, hintsFrom } from "./Hints";
@@ -37,7 +38,7 @@ export function CommitPicker({ title, commits, cursor, mark, onPick, onClose }: 
   const [from, to] = m < 0 ? [0, cursor] : [Math.min(m, cursor), Math.max(m, cursor)];
 
   return (
-    <Dialog title={title} width={72} top={top} onClose={onClose} zIndex={150}>
+    <Dialog title={title} icon={ICON.commit} width={72} top={top} onClose={onClose} zIndex={150}>
       {commits === undefined ? (
         <text fg={theme.fgMuted}>{"Reading commits…"}</text>
       ) : list.length === 0 ? (
@@ -50,7 +51,7 @@ export function CommitPicker({ title, commits, cursor, mark, onPick, onClose }: 
           return (
             <box key={c.sha} flexDirection="row" backgroundColor={look.bg} onMouseDown={() => onPick(i)}>
               <text fg={look.marker} flexShrink={0}>
-                {i === cursor ? " ▶" : "  "}
+                {look.pointer.slice(0, 2)}
               </text>
               <text fg={i === cursor ? look.fg : theme.accent} flexShrink={0}>
                 {` ${gutter} `}

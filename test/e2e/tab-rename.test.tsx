@@ -93,9 +93,9 @@ async function start() {
   );
 }
 
-/** Right-click the first tab (right after the bar's ‹) and wait for the rename prompt. */
+/** Right-click the first tab (right after the bar's back button) and wait for the rename prompt. */
 async function rightClickTab() {
-  await app.mockMouse.click(tabBar(app).indexOf("‹") + 3, 0, MouseButtons.RIGHT);
+  await app.mockMouse.click(tabBar(app).indexOf(ICON.back) + 3, 0, MouseButtons.RIGHT);
   await waitForText(app, PROMPT);
 }
 
@@ -109,7 +109,7 @@ describe("renaming a terminal tab", () => {
     await rightClickTab();
     app.mockInput.pressKey("u", { ctrl: true });
     type("Dev Server");
-    await waitForText(app, "❯ Dev Server");
+    await waitForText(app, `${ICON.prompt} Dev Server`);
     app.mockInput.pressEnter();
     await waitForTextGone(app, PROMPT);
 
@@ -140,7 +140,7 @@ describe("renaming a terminal tab", () => {
     await waitForTab(app, "Scratch");
 
     await rightClickTab();
-    await waitForText(app, "❯ Scratch");
+    await waitForText(app, `${ICON.prompt} Scratch`);
     app.mockInput.pressKey("u", { ctrl: true });
     await waitForText(app, "automatic — the program running in it");
     app.mockInput.pressEnter();
@@ -174,7 +174,7 @@ describe("renaming a terminal tab", () => {
     expect(tmuxTabs()[0]!.name).toBe("Dev server on port 3000 (vite)");
     // …and the prompt starts from the whole name.
     await rightClickTab();
-    await waitForText(app, "❯ Dev server on port 3000 (vite)");
+    await waitForText(app, `${ICON.prompt} Dev server on port 3000 (vite)`);
   });
 
   test("a name starting with a dash is taken literally", async () => {

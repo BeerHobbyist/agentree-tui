@@ -9,6 +9,7 @@
  */
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { ICON } from "../src/icons";
 import { renderApp } from "../test/helpers/app";
 import { waitForSelection, waitForText } from "../test/helpers/frame";
 import { createSandbox, type Sandbox } from "../test/helpers/sandbox";
@@ -57,7 +58,7 @@ const scenes: Record<string, { title: string; shoot(sb: Sandbox): Promise<Frame>
       const app = await renderApp({ width: COLS, height: ROWS });
       await loginTerminal(sb, app);
       app.mockInput.pressKey("a"); // a worktree for the selected project
-      await waitForText(app, "⇄ #51");
+      await waitForText(app, `${ICON.pr} #51`);
       await Bun.sleep(300);
       const frame = app.captureSpans();
       app.dispose();

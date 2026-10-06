@@ -1,6 +1,7 @@
 import { MouseButton, TextAttributes } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { PrInfo } from "../data/model";
+import { ICON } from "../icons";
 import type { WindowInfo } from "../services/tmux";
 import { prBadge } from "./PrPanel";
 
@@ -36,6 +37,13 @@ function tabLabel(name: string): string {
   );
 }
 
+/** What's in a tab, as an icon: an agent, a diff viewer, or a shell (anything else). */
+export function tabIcon(name: string): string {
+  if (/^(agent|claude|codex|opencode|gemini)\b/.test(name)) return ICON.idle;
+  if (/^(diff|hunk|lumen|delta|difft)\b/.test(name)) return ICON.changed;
+  return ICON.terminal;
+}
+
 /**
  * App-styled bar above the embedded terminal. Tabs = tmux windows; the split /
  * close buttons drive tmux panes. All controls are mouse (onMouseDown) so they
@@ -69,7 +77,7 @@ export function TabBar({
     >
       {/* Back to sidebar */}
       <text fg={theme.accent} flexShrink={0} onMouseDown={onExit}>
-        {"‹ "}
+        {ICON.back + " "}
       </text>
 
       {/* Tabs (each its own click target); the one on screen is lit. */}
@@ -82,42 +90,43 @@ export function TabBar({
             backgroundColor={w.active ? theme.activeBg : theme.panel}
           >
             <text
-              fg={w.active ? theme.fg : theme.fgMuted}
-              attributes={w.active ? TextAttributes.BOLD : undefined}
               // One line, whatever the name: a renamed tab can have spaces.
               wrapMode="none"
               onMouseDown={(e) => (e.button === MouseButton.RIGHT ? onRenameTab?.(w.index) : onSelect(w.index))}
             >
-              {` ${tabLabel(w.name)} `}
+              <span fg={w.active ? theme.accent : theme.fgFaint}>{` ${tabIcon(w.name)} `}</span>
+              <span fg={w.active ? theme.fg : theme.fgMuted} attributes={w.active ? TextAttributes.BOLD : undefined}>
+                {`${tabLabel(w.name)} `}
+              </span>
             </text>
             {/* The lit tab's close button (delete this window). Hidden for the
                 last remaining tab: tmux can't have a session with zero windows,
                 so closing it would kill the session and strand the pane. */}
             {w.active && windows.length > 1 && (
               <text fg={theme.fgFaint} onMouseDown={() => onCloseTab(w.index)}>
-                {"× "}
+                {ICON.close + " "}
               </text>
             )}
           </box>
         ))}
         <text fg={theme.fgMuted} flexShrink={0} onMouseDown={onNewTab}>
-          {" + "}
+          {` ${ICON.add} `}
         </text>
       </box>
 
       {/* Pane toolbar: split side by side, split top / bottom, close the pane. */}
       <text fg={theme.fgMuted} flexShrink={0} onMouseDown={() => onSplit("h")}>
-        {" ◫"}
+        {` ${ICON.splitRight}`}
       </text>
       <text fg={theme.fgMuted} flexShrink={0} onMouseDown={() => onSplit("v")}>
-        {" ⊟"}
+        {` ${ICON.splitDown}`}
       </text>
       <text
         fg={canClosePane ? theme.fgMuted : theme.fgFaint}
         flexShrink={0}
         onMouseDown={canClosePane ? onClosePane : undefined}
       >
-        {" ✕"}
+        {` ${ICON.closePane}`}
       </text>
       {/* PR button: its badge, coloured by its checks; lit while the panel is open. */}
       {badge && (

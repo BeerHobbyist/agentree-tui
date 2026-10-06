@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useTheme } from "../theme";
 import type { Worktree } from "../data/model";
+import { ICON } from "../icons";
 import {
   attachCommand,
   sessionName,
@@ -33,24 +34,26 @@ import { useKeyboardWhile } from "../hooks/useKeyboardWhile";
 import { agentLaunchCommand, agentSessionEnv, remoteSessionEnv } from "../services/agents";
 import { remoteAgentCommand } from "../config";
 import { TabBar } from "./TabBar";
+import { Dialog } from "./Dialog";
+import { Hints, hintsFrom } from "./Hints";
 import { MenuOverlay, type MenuItem } from "./MenuOverlay";
 import { RenameModal } from "./RenameModal";
 import { CommitPicker } from "./CommitPicker";
 import { exitCopyModeOnNextInput } from "./EmbeddedTerminal"; // also registers <embedded-terminal>
 
 const MENU_ITEMS: MenuItem[] = [
-  { label: "+ New shell", hint: "" },
-  { label: "✻ New agent", hint: "⌥a" },
-  { label: "◨ New diff", hint: "⌥d" },
+  { icon: ICON.terminal, label: "New shell", hint: "⌥t" },
+  { icon: ICON.idle, label: "New agent", hint: "⌥a" },
+  { icon: ICON.changed, label: "New diff", hint: "⌥d" },
 ];
 /** An SSH directory has no git features, so no diff viewer. */
 const REMOTE_MENU_ITEMS = MENU_ITEMS.slice(0, 2);
 const DIFF_ITEMS: MenuItem[] = [
-  { label: "Working changes", hint: "uncommitted" },
-  { label: "Staged", hint: "index" },
-  { label: "vs base branch", hint: "<base>...HEAD" },
-  { label: "Specific ref / commit…", hint: "type a ref or range" },
-  { label: "Pick commits…", hint: "a range, like rebase -i" },
+  { icon: ICON.edited, label: "Working changes", hint: "uncommitted" },
+  { icon: ICON.check, label: "Staged", hint: "index" },
+  { icon: ICON.compare, label: "vs base branch", hint: "<base>...HEAD" },
+  { icon: ICON.commit, label: "Specific ref / commit…", hint: "type a ref or range" },
+  { icon: ICON.history, label: "Pick commits…", hint: "a range, like rebase -i" },
 ];
 const DIFF_TARGETS: (DiffTarget | "commits")[] = ["working", "staged", "base", "ref", "commits"];
 
@@ -555,11 +558,19 @@ function TerminalView({
         minWidth={0}
       />
       {overlay === "menu" && (
-        <MenuOverlay title="New tab" items={menuItems} index={menuIndex} onPick={pickOverlay} onClose={closeOverlay} />
+        <MenuOverlay
+          title="New tab"
+          icon={ICON.add}
+          items={menuItems}
+          index={menuIndex}
+          onPick={pickOverlay}
+          onClose={closeOverlay}
+        />
       )}
       {overlay === "diff" && (
         <MenuOverlay
           title={`Open diff · ${diffIn.label}`}
+          icon={ICON.changed}
           items={DIFF_ITEMS}
           index={menuIndex}
           onPick={pickOverlay}
@@ -591,45 +602,17 @@ function TerminalView({
         />
       )}
       {overlay === "diffInput" && (
-        <box
-          position="absolute"
-          top={0}
-          left={0}
-          width="100%"
-          height="100%"
-          zIndex={150}
-          alignItems="center"
-          justifyContent="center"
-          shouldFill={false}
-          onMouseDown={() => openDiffPicker()}
-        >
-          <box
-            width={48}
-            borderStyle="rounded"
-            border
-            borderColor={theme.accent}
-            backgroundColor={theme.panel}
-            title=" Diff vs ref / commit "
-            titleAlignment="center"
-            flexDirection="column"
-            paddingTop={1}
-            paddingBottom={1}
-            paddingLeft={2}
-            paddingRight={2}
-          >
-            <text fg={theme.fgMuted} marginBottom={1}>
-              {"ref, branch, commit, or range (A..B)"}
-            </text>
-            <box flexDirection="row" alignItems="center">
-              <text fg={theme.accent}>{"❯ "}</text>
-              <text fg={theme.fg}>{refInput}</text>
-              <text fg={theme.accent}>{"▏"}</text>
-            </box>
-            <text fg={theme.fgFaint} attributes={TextAttributes.DIM} marginTop={1}>
-              {"⏎ open · esc back"}
-            </text>
+        <Dialog title="Diff vs ref / commit" icon={ICON.commit} width={52} onClose={openDiffPicker} zIndex={150}>
+          <text fg={theme.fgMuted} marginBottom={1}>
+            {"ref, branch, commit, or range (A..B)"}
+          </text>
+          <box flexDirection="row" alignItems="center">
+            <text fg={theme.accent}>{ICON.prompt + " "}</text>
+            <text fg={theme.fg}>{refInput}</text>
+            <text fg={theme.accent}>{"▏"}</text>
           </box>
-        </box>
+          <Hints marginTop={1} hints={hintsFrom("⏎ open · esc back")} />
+        </Dialog>
       )}
     </box>
   );

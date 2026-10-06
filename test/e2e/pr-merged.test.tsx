@@ -156,12 +156,12 @@ describe("right after merging it with m", () => {
     await start("OPEN");
     await waitForText(app, " Merge… ");
     app.mockInput.pressKey("m");
-    await waitForText(app, "▶ Squash and merge");
+    await waitForText(app, `${ICON.pointer} Squash and merge`);
     app.mockInput.pressEnter();
     await waitForText(app, "into main?");
     await branchPr("MERGED"); // what GitHub says once it's merged
     app.mockInput.pressKey("y");
-    await waitForText(app, "✓ Merged #42 into main.");
+    await waitForText(app, `${ICON.done} Merged #42 into main.`);
     await waitForText(app, "d close the worktree");
     await waitForText(app, `${ICON.merged} #42`);
     await waitUntil(app, () => !!sandbox.readState()?.ui?.mergeMethod, "the merge method to be saved");

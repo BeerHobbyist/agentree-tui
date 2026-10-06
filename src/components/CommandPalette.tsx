@@ -6,9 +6,20 @@
 import { type ScrollBoxRenderable, TextAttributes } from "@opentui/core";
 import { useKeyboard, usePaste, useTerminalDimensions } from "@opentui/react";
 import { useEffect, useRef, useState } from "react";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import { Dialog, rowLook } from "./Dialog";
 import { Hints, hintsFrom } from "./Hints";
+
+/** Each group's heading icon, like a sidebar project's. */
+const CATEGORY_ICON: Record<string, string> = {
+  Worktree: ICON.branch,
+  "Pull request": ICON.pr,
+  Agents: ICON.idle,
+  Projects: ICON.repo,
+  View: ICON.view,
+  App: ICON.app,
+};
 
 export interface Command {
   id: string;
@@ -111,10 +122,10 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Comma
   }, [selectedId]);
 
   return (
-    <Dialog title="Commands" width={64} onClose={onClose} zIndex={160}>
+    <Dialog title="Commands" icon={ICON.commands} width={64} onClose={onClose} zIndex={160}>
       <box flexDirection="row" flexShrink={0} marginBottom={1}>
         <text fg={theme.accent} flexShrink={0}>
-          {"❯ "}
+          {ICON.search + " "}
         </text>
         {query ? (
           <text fg={theme.fg} flexShrink={1} wrapMode="none" truncate>
@@ -135,8 +146,11 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Comma
           return (
             <box key={c.id} flexDirection="column" flexShrink={0}>
               {heading && (
-                <text fg={theme.accent} attributes={TextAttributes.BOLD} marginTop={i === 0 ? 0 : 1}>
-                  {c.category}
+                <text marginTop={i === 0 ? 0 : 1}>
+                  {CATEGORY_ICON[c.category] && <span fg={theme.fgMuted}>{`${CATEGORY_ICON[c.category]} `}</span>}
+                  <span fg={theme.accent} attributes={TextAttributes.BOLD}>
+                    {c.category}
+                  </span>
                 </text>
               )}
               <box
@@ -149,7 +163,7 @@ export function CommandPalette({ commands, onClose }: { commands: readonly Comma
                 }}
               >
                 <text fg={look.marker} flexShrink={0}>
-                  {i === index ? " ▶ " : "   "}
+                  {look.pointer}
                 </text>
                 <text fg={look.fg} attributes={look.bold} flexShrink={0}>
                   {c.title}

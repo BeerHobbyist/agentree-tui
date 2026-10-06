@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { ParsedKey } from "@opentui/core";
 import { useKeyboard, usePaste } from "@opentui/react";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import type { Project } from "../data/model";
 import { addRemoteDir, reconcile, sshProjectId, type State } from "../store";
@@ -181,7 +182,7 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
   const input = (value: string, placeholder: string) => (
     <box flexDirection="row" alignItems="center">
       <text fg={theme.accent} flexShrink={0}>
-        {"❯ "}
+        {ICON.prompt + " "}
       </text>
       {value ? (
         <text fg={theme.fg} flexShrink={1} wrapMode="none" truncate>
@@ -214,9 +215,12 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
                   const look = rowLook(theme, i === index);
                   return (
                     <box key={h} flexDirection="row" backgroundColor={look.bg} onMouseDown={() => chooseHost(h)}>
-                      <text fg={look.marker}>{i === index ? " ▶ " : "   "}</text>
+                      <text fg={look.marker}>{look.pointer}</text>
+                      <text fg={look.icon} flexShrink={0}>
+                        {ICON.host + " "}
+                      </text>
                       <text fg={look.fg} attributes={look.bold} wrapMode="none" truncate>
-                        {"⌁ " + h}
+                        {h}
                       </text>
                     </box>
                   );
@@ -277,6 +281,7 @@ export function SshModal({ state, host: preset, onClose, onAdded }: SshModalProp
   return (
     <Dialog
       title={preset ? `Add a directory on ${preset}` : "Add an SSH host"}
+      icon={ICON.host}
       width={66}
       // Not while it's connecting.
       onClose={phase === "checking" ? undefined : onClose}

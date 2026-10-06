@@ -13,6 +13,7 @@ import { MergeModal } from "../components/MergeModal";
 import { RenameModal } from "../components/RenameModal";
 import { SshModal } from "../components/SshModal";
 import type { Project } from "../data/model";
+import { ICON } from "../icons";
 import { claudeSettingsPath } from "../services/agents";
 import type { MergeMethod } from "../services/pr";
 import { MAX_LABEL_LENGTH, type State } from "../store";
@@ -106,6 +107,7 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
       return (
         <ConfirmModal
           title="Close worktree"
+          icon={ICON.remove}
           message={`Delete ${o.what} from disk? This cannot be undone.`}
           detail={
             o.missing
@@ -122,6 +124,7 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
       return (
         <ConfirmModal
           title="Remove project"
+          icon={ICON.remove}
           message={`Remove ${o.name} and its worktrees from agentree?`}
           detail="Their terminals end (and anything running in them); the clone and its worktrees stay on disk."
           onConfirm={() => actions.removeProject(o)}
@@ -132,6 +135,7 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
       return (
         <ConfirmModal
           title={o.dirId ? "Remove directory" : "Remove host"}
+          icon={ICON.remove}
           message={
             o.dirId
               ? `Remove ${o.what} on ${o.host} from agentree?`
@@ -150,6 +154,7 @@ export function OverlayLayer({ overlays, actions }: { overlays: Overlays; action
       return (
         <ConfirmModal
           title={o.on ? "Track every claude" : "Stop tracking every claude"}
+          icon={ICON.idle}
           message={
             o.on
               ? `Show the status of any claude you start in an agentree terminal — not just the ones agentree starts? This adds agentree's hooks to ${claudeSettingsPath()} (and on SSH hosts, once you open one).`

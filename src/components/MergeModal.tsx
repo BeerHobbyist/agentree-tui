@@ -2,9 +2,11 @@ import { useRef, useState } from "react";
 import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import { Dialog, rowLook } from "./Dialog";
 import { Hints, hintsFrom } from "./Hints";
+import { toneLook } from "./PrPanel";
 import type { PrInfo } from "../data/model";
 import { mergeSettingsQuery, prDetailsQuery, queryKeys } from "../queries";
 import { MERGE_METHODS, mergeOptions, mergePr, mergeStatus, type MergeMethod } from "../services/pr";
@@ -143,13 +145,12 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
       );
     }
     const status = mergeStatus(d);
+    const look = toneLook(status.tone, theme);
     switch (phase.kind) {
       case "choose":
         return (
           <>
-            <text fg={status.tone === "good" ? theme.added : status.tone === "bad" ? theme.removed : theme.dirty}>
-              {"● " + status.label}
-            </text>
+            <text fg={look.color}>{`${look.glyph} ${status.label}`}</text>
             {!canMerge ? (
               <>
                 <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
@@ -166,19 +167,19 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
                 )}
                 <box flexDirection="column" marginTop={1}>
                   {methods.map((m, i) => {
-                    const look = rowLook(theme, i === index);
+                    const row = rowLook(theme, i === index);
                     return (
                       <box
                         key={m}
                         flexDirection="row"
-                        backgroundColor={look.bg}
+                        backgroundColor={row.bg}
                         onMouseDown={() => {
                           moveTo(i);
                           pick(i);
                         }}
                       >
-                        <text fg={look.marker}>{i === index ? " ▶ " : "   "}</text>
-                        <text fg={look.fg} attributes={look.bold}>
+                        <text fg={row.marker}>{row.pointer}</text>
+                        <text fg={row.fg} attributes={row.bold}>
                           {labelOf(m).label + (auto ? " when ready" : "")}
                         </text>
                       </box>
@@ -213,8 +214,8 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
           <>
             <text fg={theme.added} wrapMode="word">
               {phase.auto
-                ? `✓ Auto-merge on: #${pr.number} will ${labelOf(phase.method).verb} into ${into} once it's ready.`
-                : `✓ Merged #${pr.number} into ${into}.`}
+                ? `${ICON.done} Auto-merge on: #${pr.number} will ${labelOf(phase.method).verb} into ${into} once it's ready.`
+                : `${ICON.done} Merged #${pr.number} into ${into}.`}
             </text>
             {/* Done with the branch: its worktree can go too (that asks first). */}
             {hint(!phase.auto && onCloseWorktree ? "d close the worktree · ⏎ / esc keep it" : "⏎ / esc close")}
@@ -224,7 +225,7 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
         return (
           <>
             <text fg={theme.removed} wrapMode="word">
-              {"Couldn't merge: " + phase.message}
+              {`${ICON.failed} Couldn't merge: ${phase.message}`}
             </text>
             {hint("⏎ / esc back")}
           </>
@@ -235,6 +236,7 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
   return (
     <Dialog
       title={`Merge #${pr.number}`}
+      icon={ICON.merged}
       width={62}
       // Not while gh is merging: it's going through either way.
       onClose={phase.kind === "merging" ? undefined : onClose}
@@ -245,7 +247,7 @@ export function MergeModal({ repo, pr, preferred, onMerged, onCloseWorktree, onC
       </text>
       {d && (
         <text fg={theme.fgMuted} wrapMode="none" truncate marginBottom={1}>
-          {`${d.base} ← ${d.head}`}
+          {`${ICON.branch} ${d.base} ← ${d.head}`}
         </text>
       )}
       {body()}

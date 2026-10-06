@@ -1,11 +1,12 @@
 /**
- * Toasts (OpenCode's style): a short message in the top-right corner, edged
- * in its kind's colour, gone after a few seconds — or on a click, or `esc`.
- * One at a time; a new one replaces the last. They tell you something
- * happened (or failed) without stopping you.
+ * Toasts: a short message in the top-right corner, in a rounded border and
+ * with an icon in its kind's colour, gone after a few seconds — or on a
+ * click, or `esc`. One at a time; a new one replaces the last. They tell you
+ * something happened (or failed) without stopping you.
  */
 import { TextAttributes } from "@opentui/core";
 import { useEffect, useRef } from "react";
+import { ICON } from "../icons";
 import { type Theme, useTheme } from "../theme";
 import { useLive } from "./live";
 
@@ -13,6 +14,8 @@ export type ToastKind = "info" | "success" | "warning" | "error";
 
 export interface Toast {
   kind: ToastKind;
+  /** In place of its kind's icon. */
+  icon?: string;
   title?: string;
   message: string;
 }
@@ -48,16 +51,16 @@ export function useToasts() {
 
 export type Toasts = ReturnType<typeof useToasts>;
 
-function edgeColor(kind: ToastKind, theme: Theme): string {
+function kindLook(kind: ToastKind, theme: Theme): { glyph: string; color: string } {
   switch (kind) {
     case "success":
-      return theme.added;
+      return { glyph: ICON.done, color: theme.added };
     case "warning":
-      return theme.dirty;
+      return { glyph: ICON.warning, color: theme.dirty };
     case "error":
-      return theme.removed;
+      return { glyph: ICON.failed, color: theme.removed };
     default:
-      return theme.accent;
+      return { glyph: ICON.info, color: theme.accent };
   }
 }
 
@@ -65,6 +68,7 @@ export function ToastLayer({ toasts, screenWidth }: { toasts: Toasts; screenWidt
   const theme = useTheme();
   const t = toasts.toast;
   if (!t) return null;
+  const look = kindLook(t.kind, theme);
   return (
     <box
       position="absolute"
@@ -72,28 +76,31 @@ export function ToastLayer({ toasts, screenWidth }: { toasts: Toasts; screenWidt
       right={2}
       zIndex={200}
       maxWidth={Math.max(20, Math.min(60, screenWidth - 6))}
-      flexDirection="column"
+      flexDirection="row"
       backgroundColor={theme.panelAlt}
-      border={["left", "right"]}
-      borderStyle="heavy"
-      borderColor={edgeColor(t.kind, theme)}
-      paddingLeft={2}
-      paddingRight={2}
-      paddingTop={1}
-      paddingBottom={1}
+      border
+      borderStyle="rounded"
+      borderColor={look.color}
+      paddingLeft={1}
+      paddingRight={1}
       onMouseDown={(e) => {
         e.stopPropagation();
         toasts.dismiss();
       }}
     >
-      {t.title && (
-        <text fg={theme.fg} attributes={TextAttributes.BOLD} marginBottom={1} wrapMode="word">
-          {t.title}
-        </text>
-      )}
-      <text fg={theme.fgMuted} wrapMode="word">
-        {t.message}
+      <text fg={look.color} flexShrink={0}>
+        {(t.icon ?? look.glyph) + " "}
       </text>
+      <box flexDirection="column" flexShrink={1} minWidth={0}>
+        {t.title && (
+          <text fg={theme.fg} attributes={TextAttributes.BOLD} marginBottom={1} wrapMode="word">
+            {t.title}
+          </text>
+        )}
+        <text fg={theme.fgMuted} wrapMode="word">
+          {t.message}
+        </text>
+      </box>
     </box>
   );
 }

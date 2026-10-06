@@ -47,7 +47,7 @@ async function openPalette() {
 
 async function type(text: string) {
   for (const ch of text) app.mockInput.pressKey(ch);
-  await waitForText(app, `❯ ${text}`);
+  await waitForText(app, `${ICON.search} ${text}`);
 }
 
 describe("the command palette", () => {
@@ -65,7 +65,7 @@ describe("the command palette", () => {
     await openPalette();
     await type("merge");
     const frame = app.captureCharFrame();
-    expect(frame).toContain("▶ Merge pull request");
+    expect(frame).toContain(`${ICON.pointer} Merge pull request`);
     expect(frame).not.toContain("Close worktree");
     app.mockInput.pressEnter();
     await waitForTextGone(app, "Commands");
@@ -100,6 +100,6 @@ describe("the command palette", () => {
     const y = lines.findIndex((l) => l.includes("Switch theme"));
     await app.mockMouse.click(lines[y]!.indexOf("Switch theme") + 2, y);
     await waitForTextGone(app, "Commands");
-    await waitForText(app, "◑ midnight"); // the toast naming the theme
+    await waitForText(app, `${ICON.theme} midnight`); // the toast naming the theme
   });
 });

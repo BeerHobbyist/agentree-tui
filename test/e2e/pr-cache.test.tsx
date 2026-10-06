@@ -131,7 +131,7 @@ describe("PR details cache", () => {
     await waitForText(app, "Add login screen");
     sandbox.failGh("pr");
     app.mockInput.pressKey("r");
-    await waitForText(app, "↻ failed", { timeoutMs: 10_000 }); // after its one retry
+    await waitForText(app, `${ICON.refresh} failed`, { timeoutMs: 10_000 }); // after its one retry
     expect(app.captureCharFrame()).toContain("Add login screen");
     // …and the sidebar badge, whose lookup failed too, keeps its last answer.
     expect(app.captureCharFrame()).toContain(`${ICON.pr} #42`);

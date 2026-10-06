@@ -118,7 +118,7 @@ describe("removing a project", () => {
     await waitForText(app, "Commands");
     await Bun.sleep(100); // until it takes keys
     for (const ch of "remove") app.mockInput.pressKey(ch);
-    const frame = await waitForText(app, "❯ remove");
+    const frame = await waitForText(app, `${ICON.search} remove`);
     expect(frame).toMatch(/Remove project\s+widget\s+d/);
     expect(frame).not.toContain("Close worktree");
 

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openPrsQuery, reposQuery } from "../queries";
 import { useKeyboard } from "@opentui/react";
+import { ICON } from "../icons";
 import { useTheme } from "../theme";
 import { Dialog, rowLook } from "./Dialog";
 import { Hints, hintsFrom } from "./Hints";
@@ -549,7 +550,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
   const busy = phase === "repoLoading" || phase === "cloning" || phase === "creating";
   const filteredBases = filterBases(baseOptions(branches), baseQuery);
   return (
-    <Dialog title="Add worktree" width={70} onClose={busy ? undefined : onClose}>
+    <Dialog title="Add worktree" icon={ICON.branch} width={70} onClose={busy ? undefined : onClose}>
       {renderBody({
         phase,
         repo,
@@ -658,7 +659,7 @@ function ErrorBlock({ message, note, hint }: { message: string; note?: string; h
   return (
     <box flexDirection="column">
       <text fg={theme.removed} wrapMode="word">
-        {message}
+        {`${ICON.failed} ${message}`}
       </text>
       {note && (
         <text fg={theme.fgMuted} marginTop={1} wrapMode="word">
@@ -684,7 +685,7 @@ function RepoList(p: BodyProps) {
   return (
     <box flexDirection="column">
       <box flexDirection="row" marginBottom={1}>
-        <text fg={theme.fgFaint}>{"filter "}</text>
+        <text fg={theme.accent}>{ICON.search + " "}</text>
         <text fg={theme.fg}>{p.query.length ? p.query : ""}</text>
         <text fg={theme.accent}>{"▏"}</text>
       </box>
@@ -703,10 +704,10 @@ function RepoList(p: BodyProps) {
             onMouseDown={() => p.onPick?.(start + i)}
           >
             <text fg={look.marker} flexShrink={0}>
-              {active ? " ▶ " : "   "}
+              {look.pointer}
             </text>
-            <text fg={look.fg} attributes={look.bold} flexShrink={0}>
-              {r.isPrivate ? "🔒 " : ""}
+            <text fg={look.icon} flexShrink={0}>
+              {(r.isPrivate ? ICON.lock : ICON.repo) + " "}
             </text>
             <text fg={look.fg} attributes={look.bold} flexGrow={1} flexShrink={1} minWidth={0} wrapMode="none" truncate>
               {r.nameWithOwner}
@@ -728,13 +729,15 @@ function RepoList(p: BodyProps) {
 function Actions(p: BodyProps) {
   const theme = useTheme();
   const rows = [
-    { label: "+ Create new worktree", hint: "" },
+    { icon: ICON.add, label: "Create new worktree", hint: "" },
     ...p.existing.map((w) => ({
-      label: (w.isMain ? "◆ " : "○ ") + w.name,
+      icon: w.isMain ? ICON.repo : ICON.folder,
+      label: w.name,
       hint: w.branch,
     })),
     ...p.prs.map((pr) => ({
-      label: `⇄ #${pr.number} ${pr.title}`,
+      icon: ICON.pr,
+      label: `#${pr.number} ${pr.title}`,
       hint: pr.headRefName,
     })),
   ];
@@ -755,7 +758,10 @@ function Actions(p: BodyProps) {
             onMouseDown={() => p.onPick?.(i)}
           >
             <text fg={look.marker} flexShrink={0}>
-              {active ? " ▶ " : "   "}
+              {look.pointer}
+            </text>
+            <text fg={look.icon} flexShrink={0}>
+              {row.icon + " "}
             </text>
             <text fg={look.fg} attributes={look.bold} flexShrink={0}>
               {row.label}
@@ -781,14 +787,14 @@ function BranchInput(p: BodyProps) {
         {"New branch name"}
       </text>
       <box flexDirection="row" alignItems="center">
-        <text fg={theme.accent}>{"❯ "}</text>
+        <text fg={theme.accent}>{ICON.prompt + " "}</text>
         <text fg={theme.fg}>{p.branch.length ? p.branch : ""}</text>
         <text fg={theme.accent}>{"▏"}</text>
       </box>
       <text fg={theme.fgFaint} wrapMode="none" truncate>
         {p.branches.local.includes(p.branch.trim())
-          ? "existing branch"
-          : `from ${p.base?.name ?? p.branches.current ?? "HEAD"}`}
+          ? `${ICON.branch} existing branch`
+          : `${ICON.branch} from ${p.base?.name ?? p.branches.current ?? "HEAD"}`}
       </text>
       <Hints marginTop={1} hints={hintsFrom("⏎ create · tab base · esc back")} />
     </box>
@@ -804,7 +810,7 @@ function BaseList(p: BodyProps) {
         {`Base for ${p.branch.trim() || "the new branch"}`}
       </text>
       <box flexDirection="row" marginBottom={1}>
-        <text fg={theme.fgFaint}>{"filter "}</text>
+        <text fg={theme.accent}>{ICON.search + " "}</text>
         <text fg={theme.fg}>{p.baseQuery}</text>
         <text fg={theme.accent}>{"▏"}</text>
       </box>
@@ -823,7 +829,10 @@ function BaseList(p: BodyProps) {
             onMouseDown={() => p.onPick?.(start + i)}
           >
             <text fg={look.marker} flexShrink={0}>
-              {active ? " ▶ " : "   "}
+              {look.pointer}
+            </text>
+            <text fg={look.icon} flexShrink={0}>
+              {ICON.branch + " "}
             </text>
             <text fg={look.fg} attributes={look.bold} flexShrink={1} minWidth={0} wrapMode="none" truncate>
               {b.name}

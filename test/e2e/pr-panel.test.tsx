@@ -101,6 +101,23 @@ async function openOnLogin(width = 140) {
   await waitForSelection(app, "login");
 }
 
+/** The checks' counts in their section's header: one failed, one running, one passed. */
+const CHECK_COUNTS = `${ICON.failed} 1  ${ICON.pending} 1  ${ICON.done} 1`;
+/** The failing check's row. */
+const FAILED_LINT = `${ICON.failed} lint · CI`;
+
+const SECTION_ICON: Record<string, string> = {
+  Merge: ICON.merged,
+  Checks: ICON.checks,
+  Description: ICON.description,
+  Comments: ICON.comment,
+};
+
+/** A section's header as it reads on screen: its chevron, icon and title. */
+function header(title: string, folded: boolean): string {
+  return `${folded ? ICON.folded : ICON.unfolded} ${SECTION_ICON[title]} ${title}`;
+}
+
 /** Column of `text` on the first frame line containing it (single-width text before it). */
 function locate(app: RenderedApp, text: string): { x: number; y: number } {
   const lines = app.captureCharFrame().split("\n");
@@ -123,13 +140,13 @@ describe("showing the PR", () => {
     await openOnLogin();
     const frame = await waitForText(app, "Blocked: changes requested");
     for (const text of [
-      "ignacy · main ← feature/login",
-      "+412 −37 · 9 files",
-      "✓ alice",
-      "✗ bob",
-      "◌ carol",
-      "✗ 1  ◌ 1  ✓ 1", // checks summary
-      "✗ lint · CI",
+      `${ICON.person} ignacy  ${ICON.branch} main ← feature/login`,
+      `+412 −37  ${ICON.file} 9 files`,
+      `${ICON.check} alice`,
+      `${ICON.changesRequested} bob`,
+      `${ICON.pending} carol`,
+      CHECK_COUNTS,
+      FAILED_LINT,
       "auth",
       "Adds a login screen.",
       "src/session.ts:57",
@@ -188,11 +205,11 @@ describe("controls", () => {
     await waitUntil(app, () => sandbox.readState()?.ui?.prPanelHidden === undefined, "shown to be saved");
   });
 
-  test("its ✕ hides it too", async () => {
+  test("its close button hides it too", async () => {
     await setup();
     await openOnLogin();
     await waitForText(app, "Reviews");
-    const { x, y } = locate(app, "✕");
+    const { x, y } = locate(app, ICON.close);
     await app.mockMouse.click(x, y);
     await waitForTextGone(app, "Reviews");
   });
@@ -249,25 +266,25 @@ describe("controls", () => {
 });
 
 describe("folding sections", () => {
-  /** Click a section's header band, folded or not. */
+  /** Click a section's header, folded or not. */
   async function clickHeader(title: string) {
-    const folded = app.captureCharFrame().includes(`▸ ${title}`);
-    const { x, y } = locate(app, `${folded ? "▸" : "▾"} ${title}`);
+    const folded = app.captureCharFrame().includes(header(title, true));
+    const { x, y } = locate(app, header(title, folded));
     await app.mockMouse.click(x + 2, y);
   }
 
   test("clicking a section's header folds it; its summary stays in the header", async () => {
     await setup();
     await openOnLogin();
-    await waitForText(app, "✗ lint · CI");
+    await waitForText(app, FAILED_LINT);
     await clickHeader("Checks");
-    const frame = await waitForText(app, "▸ Checks");
-    expect(frame).toContain("✗ 1  ◌ 1  ✓ 1"); // the counts, still there
-    expect(frame).not.toContain("✗ lint · CI");
-    expect(frame).toContain("✓ alice"); // other sections untouched
+    const frame = await waitForText(app, header("Checks", true));
+    expect(frame).toContain(CHECK_COUNTS); // the counts, still there
+    expect(frame).not.toContain(FAILED_LINT);
+    expect(frame).toContain(`${ICON.check} alice`); // other sections untouched
 
     await clickHeader("Checks"); // and back
-    await waitForText(app, "✗ lint · CI");
+    await waitForText(app, FAILED_LINT);
   });
 
   test("a folded Merge section shows its status in the header", async () => {
@@ -275,7 +292,7 @@ describe("folding sections", () => {
     await openOnLogin();
     await waitForText(app, " Merge… ");
     await clickHeader("Merge");
-    const frame = await waitForText(app, "▸ Merge  Blocked: changes requested");
+    const frame = await waitForText(app, `${header("Merge", true)}  Blocked: changes requested`);
     expect(frame).not.toContain(" Merge… "); // the button is folded away with it
   });
 
@@ -294,9 +311,9 @@ describe("folding sections", () => {
     app.dispose();
 
     await openOnLogin();
-    const frame = await waitForText(app, "▸ Description");
-    expect(frame).toContain("▸ Comments");
+    const frame = await waitForText(app, header("Description", true));
+    expect(frame).toContain(header("Comments", true));
     expect(frame).not.toContain("Guard this with the lock.");
-    expect(frame).toContain("✗ lint · CI");
+    expect(frame).toContain(FAILED_LINT);
   });
 });

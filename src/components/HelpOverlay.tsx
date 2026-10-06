@@ -75,6 +75,8 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       [`${ICON.prDraft} #42`, "…a draft"],
       [`${ICON.merged} #42`, "its PR is merged: d closes the worktree"],
       [ICON.host, "a project on an SSH host"],
+      [`${ICON.done} ${ICON.failed} ${ICON.pending} ${ICON.skipped}`, "PR checks: pass, fail, running, skipped"],
+      [`${ICON.terminal} ${ICON.idle} ${ICON.changed}`, "tabs: a shell, an agent, a diff"],
     ],
   },
   {
@@ -88,13 +90,16 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
       ["click project header", "select + fold"],
       [`${ICON.add} on a project`, "add worktree"],
       ["drag sidebar edge", "resize · double-click to reset"],
-      [`click ${ICON.hide} / ‹`, "hide the sidebar / back to it"],
+      [`click ${ICON.hide} / ${ICON.back}`, "hide the sidebar / back to it"],
       [`click ${ICON.theme} / ${ICON.help}`, "next theme / this help"],
       [`click ${ICON.needsAction} 2 / ${ICON.done} 1`, "next agent in that state"],
       [`${ICON.pr} #N in the tab bar`, "show / hide the PR panel"],
       ["PR panel", "click a check → its log · a comment → GitHub"],
-      ["+ in the tab bar", "new shell · new agent · new diff (hunk)"],
-      ["tab bar", "× close tab · ◫ ⊟ split · ✕ close pane"],
+      [`${ICON.add} in the tab bar`, "new shell · new agent · new diff (hunk)"],
+      [
+        `tab bar ${ICON.close} ${ICON.splitRight} ${ICON.splitDown} ${ICON.closePane}`,
+        "close tab · split → / ↓ · close pane",
+      ],
       ["click a pane", "focus that split pane"],
       ["drag in a shell", "select + copy · click or type to clear"],
     ],
@@ -119,7 +124,7 @@ export function HelpOverlay({ themeName, onClose }: HelpOverlayProps) {
     else if (n === "g" && key.shift) box.scrollTo(box.scrollHeight);
   });
   return (
-    <Dialog title="Keyboard & mouse" width={70} onClose={onClose} top={2} zIndex={200}>
+    <Dialog title="Keyboard & mouse" icon={ICON.help} width={70} onClose={onClose} top={2} zIndex={200}>
       <scrollbox ref={scrollRef} flexGrow={1} flexShrink={1} minHeight={0} scrollY contentOptions={{ paddingRight: 1 }}>
         {SECTIONS.map((section) => (
           <box key={section.title} flexDirection="column" flexShrink={0} marginBottom={1}>

@@ -136,7 +136,7 @@ describe("selecting text in a shell", () => {
     // Back to the first tab, the leftmost in the bar. (⌥, can't be sent: the
     // key parser takes only a letter or digit after ESC as an Alt chord.)
     const bar = app.captureCharFrame().split("\n")[0]!;
-    await app.mockMouse.click(bar.indexOf("‹ ") + 3, 0);
+    await app.mockMouse.click(bar.indexOf(ICON.back) + 3, 0);
     await waitUntil(app, () => frontTab() === first, "the first tab");
     expect(inCopyMode(`${X}:${first}`)).toBe(true); // still showing its selection
     await app.mockInput.typeText('echo typed""-ok');
