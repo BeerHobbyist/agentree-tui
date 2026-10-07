@@ -1,6 +1,6 @@
 /** `services/git` against real repositories created in a temp sandbox. */
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   addWorktree,
@@ -102,6 +102,24 @@ describe("removeWorktree", () => {
 
     await removeWorktree(repo, path, { force: true });
     expect(existsSync(path)).toBe(false);
+  });
+
+  test("forced, cleans up git's entry for a directory that was deleted by hand", async () => {
+    const path = join(repo, ".worktrees", "feat-x");
+    await addWorktree(repo, path, "feature/x", { newBranch: true });
+    rmSync(path, { recursive: true, force: true });
+
+    await removeWorktree(repo, path, { force: true });
+    expect((await listWorktrees(repo)).map((w) => w.branch)).toEqual(["main"]);
+  });
+
+  test("does nothing for a worktree git no longer tracks", async () => {
+    const path = join(repo, ".worktrees", "feat-x");
+    await addWorktree(repo, path, "feature/x", { newBranch: true });
+    await git(["worktree", "remove", path], repo);
+
+    await removeWorktree(repo, path, { force: true });
+    expect((await listWorktrees(repo)).map((w) => w.branch)).toEqual(["main"]);
   });
 });
 
