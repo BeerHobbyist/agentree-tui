@@ -98,9 +98,13 @@ export async function addWorktree(
 /**
  * Remove a worktree: deletes its directory and git's bookkeeping for it.
  * `force` also discards uncommitted changes, which callers must confirm with
- * the user first since this is destructive and cannot be undone.
+ * the user first since this is destructive and cannot be undone. A path git
+ * no longer tracks (removed or pruned outside agentree) is left alone, since
+ * `git worktree remove` fails on it.
  */
 export async function removeWorktree(root: string, path: string, opts: { force?: boolean } = {}): Promise<void> {
+  const key = canonicalPath(path);
+  if (!(await listWorktrees(root)).some((w) => canonicalPath(w.path) === key)) return;
   const args = ["git", "worktree", "remove", path];
   if (opts.force) args.push("--force");
   await runOrThrow(args, { cwd: root });
