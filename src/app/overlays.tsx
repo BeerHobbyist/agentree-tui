@@ -74,7 +74,8 @@ export type Overlays = ReturnType<typeof useOverlays>;
 export interface OverlayActions {
   state: State;
   themeName: string;
-  onApplied(projects: Project[], selection: Selection): void;
+  /** `warning`: it was made, but not quite as asked. */
+  onApplied(projects: Project[], selection: Selection, warning?: string): void;
   closeWorktree(target: Extract<Overlay, { kind: "close-worktree" }>): void;
   removeProject(target: Extract<Overlay, { kind: "remove-project" }>): void;
   forget(target: Extract<Overlay, { kind: "forget" }>): void;

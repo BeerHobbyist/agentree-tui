@@ -2,7 +2,7 @@
  * Real git repositories for the integration and E2E tests. Nothing here is
  * mocked: the app shells out to git, so the tests give it actual repos.
  */
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { run } from "../../src/services/proc";
 import type { Sandbox } from "./sandbox";
@@ -105,4 +105,20 @@ export async function withUpstream(
     writeFile(root, `local-${i}.txt`, `${i}\n`);
     await commitAll(root, `local ${i}`);
   }
+}
+
+/**
+ * Push a commit to `root`'s origin from another clone, the way a teammate
+ * would: origin's `branch` moves on and `root` hasn't fetched it. Its sha.
+ */
+export async function pushFromElsewhere(root: string, branch = "main"): Promise<string> {
+  const remote = (await git(["remote", "get-url", "origin"], root)).trim();
+  const elsewhere = `${root}.elsewhere`;
+  if (!existsSync(elsewhere)) await git(["clone", "-q", remote, elsewhere], dirname(root));
+  await git(["fetch", "-q", "origin"], elsewhere);
+  await git(["checkout", "-q", "-B", branch, `origin/${branch}`], elsewhere);
+  writeFile(elsewhere, "elsewhere.txt", `${Date.now()} ${Math.random()}\n`);
+  await commitAll(elsewhere, "from elsewhere");
+  await git(["push", "-q", "origin", `HEAD:${branch}`], elsewhere);
+  return (await git(["rev-parse", "HEAD"], elsewhere)).trim();
 }

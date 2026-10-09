@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { loadState, saveState, upsertRepo } from "../../src/store";
 import { renderApp, type RenderedApp } from "../helpers/app";
 import { screen, settle, waitForModalClosed, waitForSelection, waitForText, waitUntil } from "../helpers/frame";
-import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
+import { commitAll, git, makeRemote, makeRepo, pushFromElsewhere, withUpstream, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 import { ICON } from "../../src/icons";
 
@@ -263,6 +263,44 @@ describe("choosing the base branch", () => {
 
     await app.mockInput.typeText("release");
     await waitForText(app, "existing branch");
+  });
+
+  test("the new branch starts from the base's latest commit on the remote, fetched first", async () => {
+    const root = await knownProject("acme/widget");
+    await withUpstream(root);
+    const tip = await pushFromElsewhere(root); // origin/main moves on; main and origin/main here don't know
+
+    app = await renderApp();
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree");
+    app.mockInput.pressEnter();
+    await waitForText(app, "from main");
+    await app.mockInput.typeText("feature/z");
+    await waitForText(app, `${ICON.prompt} feature/z`);
+    app.mockInput.pressEnter();
+
+    await waitForModalClosed(app);
+    await waitUntil(app, () => sandbox.readState()?.repos[0]?.worktrees.length === 1, "the worktree to be registered");
+    expect((await git(["rev-parse", "feature/z"], root)).trim()).toBe(tip);
+  });
+
+  test("when the fetch fails, the worktree is still made from the last fetch, with a warning", async () => {
+    const root = await knownProject("acme/widget");
+    await withUpstream(root);
+    await git(["remote", "set-url", "origin", join(sandbox.workspace, "gone.git")], root);
+
+    app = await renderApp();
+    app.mockInput.pressKey("a");
+    await waitForText(app, "Create new worktree");
+    app.mockInput.pressEnter();
+    await waitForText(app, "from main");
+    await app.mockInput.typeText("feature/z");
+    await waitForText(app, `${ICON.prompt} feature/z`);
+    app.mockInput.pressEnter();
+
+    await waitForModalClosed(app);
+    await waitForText(app, "Base may not be the latest");
+    expect(await git(["rev-parse", "feature/z"], root)).toBe(await git(["rev-parse", "main"], root));
   });
 });
 

@@ -16,6 +16,7 @@ import {
   addWorktree,
   canonicalPath,
   fetchPrBranch,
+  freshBase,
   ignoreWorktreesDir,
   listBranches,
   listWorktrees,
@@ -63,7 +64,8 @@ interface AddWorktreeModalProps {
   /** When set, jump straight to the worktree actions for this repo. */
   preselect?: PreselectRepo | null;
   onClose: () => void;
-  onApplied: (projects: Project[], selection: Selection) => void;
+  /** `warning`: it was made, but not quite as asked. */
+  onApplied: (projects: Project[], selection: Selection, warning?: string) => void;
 }
 
 const MAX_LIST_ROWS = 10;
@@ -295,10 +297,10 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
   };
 
   /** Persist + reconcile + hand the fresh projects and selection back to App. */
-  const apply = async (selection: Selection) => {
+  const apply = async (selection: Selection, warning?: string) => {
     const projects = await reconcile(state);
     if (!mounted.current) return;
-    onApplied(projects, selection);
+    onApplied(projects, selection, warning);
   };
 
   const loadExisting = async (wt: ExistingWorktree) => {
@@ -369,7 +371,8 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
       const path = worktreePath(root, name);
       mkdirSync(dirname(path), { recursive: true });
       const exists = await localBranchExists(root, name);
-      await addWorktree(root, path, name, { newBranch: !exists, base: from ?? undefined });
+      const fresh = exists ? {} : await freshBase(root, from ?? undefined);
+      await addWorktree(root, path, name, { newBranch: !exists, base: fresh.ref });
 
       const id = sanitizeBranchForPath(name);
       await addManagedWorktree(
@@ -383,7 +386,7 @@ export function AddWorktreeModal({ state, preselect, onClose, onApplied }: AddWo
           createdAt: new Date().toISOString(),
         },
       );
-      await apply({ repoId: repo.nameWithOwner, worktreeId: id });
+      await apply({ repoId: repo.nameWithOwner, worktreeId: id }, fresh.warning);
     })().catch((err) => {
       if (!mounted.current) return;
       setErrorMsg(errText(err));

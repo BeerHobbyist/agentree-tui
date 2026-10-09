@@ -6,6 +6,8 @@ import {
   addWorktree,
   baseRef,
   branchCommits,
+  fetchPrBranch,
+  freshBase,
   ignoreWorktreesDir,
   listBranches,
   listWorktrees,
@@ -14,7 +16,7 @@ import {
   status,
 } from "../../src/services/git";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
-import { commitAll, git, makeRepo, withUpstream, writeFile } from "../helpers/repo";
+import { commitAll, git, makeRepo, pushFromElsewhere, withUpstream, writeFile } from "../helpers/repo";
 
 let sandbox: Sandbox;
 let repo: string;
@@ -80,6 +82,107 @@ describe("addWorktree", () => {
     const path = join(repo, ".worktrees", "dup");
     await addWorktree(repo, path, "dup", { newBranch: true });
     expect(addWorktree(repo, join(repo, ".worktrees", "dup2"), "dup", { newBranch: false })).rejects.toThrow();
+  });
+});
+
+describe("freshBase", () => {
+  const sha = async (ref: string) => (await git(["rev-parse", ref], repo)).trim();
+
+  test("fetches the checked-out branch and starts from its upstream when that is ahead", async () => {
+    await withUpstream(repo);
+    const local = await sha("main");
+    const tip = await pushFromElsewhere(repo);
+
+    const fresh = await freshBase(repo);
+    expect(fresh).toEqual({ ref: "refs/remotes/origin/main" });
+    expect(await sha("origin/main")).toBe(tip);
+    expect(await sha("main")).toBe(local); // the local branch isn't moved
+  });
+
+  test("starts a new worktree from what was just fetched", async () => {
+    await withUpstream(repo);
+    const tip = await pushFromElsewhere(repo);
+    const path = join(repo, ".worktrees", "feat-x");
+    await addWorktree(repo, path, "feature/x", { newBranch: true, base: (await freshBase(repo, "main")).ref });
+    expect(await sha("feature/x")).toBe(tip);
+    expect(git(["rev-parse", "--abbrev-ref", "feature/x@{upstream}"], repo)).rejects.toThrow();
+  });
+
+  test("keeps a local branch that is ahead of its upstream", async () => {
+    await withUpstream(repo, { ahead: 1 });
+    expect(await freshBase(repo, "main")).toEqual({ ref: "main" });
+  });
+
+  test("keeps a local branch that has diverged from its upstream, and says so", async () => {
+    await withUpstream(repo, { ahead: 1 });
+    const tip = await pushFromElsewhere(repo); // each side now has a commit the other lacks
+
+    const fresh = await freshBase(repo, "main");
+    expect(fresh.ref).toBe("main");
+    expect(fresh.warning).toContain("main and origin/main have diverged");
+    expect(await sha("origin/main")).toBe(tip);
+  });
+
+  test("fetches a remote branch it is given", async () => {
+    await withUpstream(repo);
+    const tip = await pushFromElsewhere(repo);
+
+    expect(await freshBase(repo, "refs/remotes/origin/main")).toEqual({ ref: "refs/remotes/origin/main" });
+    expect(await sha("origin/main")).toBe(tip);
+  });
+
+  test("leaves a branch with no remote, a tag, and a commit alone", async () => {
+    await git(["tag", "v1"], repo);
+    const head = await sha("HEAD");
+    expect(await freshBase(repo)).toEqual({ ref: undefined });
+    expect(await freshBase(repo, "main")).toEqual({ ref: "main" });
+    expect(await freshBase(repo, "v1")).toEqual({ ref: "v1" });
+    expect(await freshBase(repo, head)).toEqual({ ref: head });
+  });
+
+  test("a failed fetch is reported, and the base is as of the last fetch", async () => {
+    await withUpstream(repo);
+    await git(["remote", "set-url", "origin", join(sandbox.workspace, "gone.git")], repo);
+
+    const fresh = await freshBase(repo);
+    expect(fresh.warning).toStartWith("Couldn't fetch, so origin/main is as of the last fetch: ");
+    expect(await sha(fresh.ref ?? "HEAD")).toBe(await sha("main"));
+  });
+});
+
+describe("fetching never prompts on the terminal", () => {
+  /**
+   * An `origin` over ssh, whose ssh says where it was told to send prompts and
+   * which process group it runs in, then refuses the login.
+   */
+  async function sshOrigin() {
+    await git(["remote", "add", "origin", "ssh://git@example.invalid/acme/widget.git"], repo);
+    process.env.GIT_SSH_COMMAND = `sh -c 'echo "prompts via $SSH_ASKPASS_REQUIRE:$SSH_ASKPASS" >&2; echo "pgid $(perl -e "print getpgrp")" >&2; echo "Permission denied (publickey)." >&2; exit 255'`;
+    delete process.env.SSH_ASKPASS;
+  }
+
+  test("a PR's fetch sends ssh's prompts to a failing askpass, and fails saying how to answer them", async () => {
+    await sshOrigin();
+    const error = await fetchPrBranch(repo, 7, "pr-7").then(
+      () => "",
+      (e: Error) => e.message,
+    );
+    expect(error).toContain("prompts via force:false");
+    expect(error).toContain("Permission denied (publickey).");
+    expect(error).toContain("load your key with ssh-add");
+    // A session of its own (setsid), so no controlling terminal: ssh can't prompt there on any version.
+    const ours = Bun.spawnSync(["perl", "-e", "print getpgrp"]).stdout.toString(); // a child that isn't detached
+    const theirs = error.match(/pgid (\d+)/)?.[1];
+    expect(theirs).toBeTruthy();
+    expect(theirs).not.toBe(ours);
+  });
+
+  test("a base's fetch does too, and keeps the user's own askpass", async () => {
+    await sshOrigin();
+    process.env.SSH_ASKPASS = "/usr/libexec/ssh-askpass";
+    await git(["update-ref", "refs/remotes/origin/main", "main"], repo);
+    await git(["branch", "--set-upstream-to=origin/main", "main"], repo);
+    expect((await freshBase(repo)).warning).toContain("prompts via force:/usr/libexec/ssh-askpass");
   });
 });
 

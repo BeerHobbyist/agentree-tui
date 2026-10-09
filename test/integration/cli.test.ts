@@ -6,7 +6,7 @@ import { runCli } from "../../src/cli";
 import { skillPath } from "../../src/services/skill";
 import { sessionName } from "../../src/services/tmux";
 import { addManagedWorktree, loadState, saveState, upsertRepo } from "../../src/store";
-import { commitAll, git, makeRemote, makeRepo, writeFile } from "../helpers/repo";
+import { commitAll, git, makeRemote, makeRepo, pushFromElsewhere, withUpstream, writeFile } from "../helpers/repo";
 import { createSandbox, type Sandbox } from "../helpers/sandbox";
 
 let sandbox: Sandbox;
@@ -155,6 +155,16 @@ describe("agentree worktree new", () => {
     );
     expect(code).toBe(0);
     expect(existsSync(join(otherRoot, ".worktrees", out, "marker.txt"))).toBe(true);
+  });
+
+  test("a new branch starts from its base's latest commit on the remote, fetched first", async () => {
+    const otherRoot = await makeRepo(join(sandbox.workspace, "other4"));
+    await withUpstream(otherRoot);
+    const tip = await pushFromElsewhere(otherRoot);
+
+    const { code } = await cli("worktree", "new", "--repo", otherRoot, "--branch", "agent/fresh", "--base", "main");
+    expect(code).toBe(0);
+    expect((await git(["rev-parse", "agent/fresh"], otherRoot)).trim()).toBe(tip);
   });
 
   test("a missing --repo or --branch is an error", async () => {
