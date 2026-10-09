@@ -15,6 +15,10 @@ export interface RunOptions {
   env?: Record<string, string | undefined>;
   /** Text to feed the command on stdin. */
   stdin?: string;
+  /** Kill the command after this long; it then fails like any other non-zero exit. */
+  timeoutMs?: number;
+  /** Start it in a session of its own, with no controlling terminal: nothing it runs can open /dev/tty. */
+  detached?: boolean;
 }
 
 /** Run a command, capturing stdout/stderr. Never throws on non-zero exit. */
@@ -27,6 +31,8 @@ export async function run(cmd: string[], opts: RunOptions = {}): Promise<ProcRes
     stdin: opts.stdin === undefined ? "ignore" : new Blob([opts.stdin]),
     stdout: "pipe",
     stderr: "pipe",
+    timeout: opts.timeoutMs,
+    detached: opts.detached,
   });
 
   const [stdout, stderr, code] = await Promise.all([

@@ -13,7 +13,7 @@ import { readAgentStatuses } from "./services/agents";
 import { branchLeaf, repoDir, sanitizeBranchForPath, worktreePath } from "./config";
 import { brokerTmux, type TabControl } from "./services/broker";
 import { availableViewers, diffCommand, resolveViewer, type DiffTarget } from "./services/diff";
-import { addWorktree, baseRef, canonicalPath, listWorktrees, localBranchExists } from "./services/git";
+import { addWorktree, baseRef, canonicalPath, freshBase, listWorktrees, localBranchExists } from "./services/git";
 import { clone } from "./services/gh";
 import { notify } from "./services/notify";
 import { run } from "./services/proc";
@@ -424,7 +424,9 @@ async function worktreeNew(args: Args, io: Io): Promise<number> {
   const path = worktreePath(meta.root, branch);
   mkdirSync(dirname(path), { recursive: true });
   const exists = await localBranchExists(meta.root, branch);
-  await addWorktree(meta.root, path, branch, { newBranch: !exists, base });
+  const fresh = exists ? {} : await freshBase(meta.root, base);
+  if (fresh.warning) io.err(`warning: ${fresh.warning}`);
+  await addWorktree(meta.root, path, branch, { newBranch: !exists, base: fresh.ref });
 
   const id = sanitizeBranchForPath(branch);
   await addManagedWorktree(state, meta, {

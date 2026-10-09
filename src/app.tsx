@@ -330,9 +330,10 @@ function AppShell({ initialProjects, state, onQuit }: AppProps) {
   // ── Adding, removing, renaming ──
 
   /** A worktree (or SSH directory) was added: show it, selected, its terminal mounted. */
-  const onApplied = (newProjects: Project[], sel: Selection) => {
+  const onApplied = (newProjects: Project[], sel: Selection, warning?: string) => {
     overlays.close("add");
     overlays.close("ssh");
+    if (warning) toasts.show({ kind: "warning", title: "Base may not be the latest", message: warning });
     setProjects(newProjects);
     const nextCollapsed = new Set(collapsedRef.current);
     nextCollapsed.delete(sel.repoId);

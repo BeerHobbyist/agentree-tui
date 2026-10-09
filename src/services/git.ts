@@ -106,6 +106,114 @@ export async function addWorktree(
   await runOrThrow(args, { cwd: root });
 }
 
+/** Long enough for a slow network, short enough that being offline doesn't stall creating a worktree. */
+const FETCH_TIMEOUT_MS = 20_000;
+
+export interface FreshBase {
+  /** The ref to start from: `base`, or its upstream when that has `base` and more. */
+  ref?: string;
+  /** Why `ref` may not be the latest: the fetch failed, or the local branch and its upstream have diverged. */
+  warning?: string;
+}
+
+/**
+ * The latest version of `base` (a branch or other ref; omitted = what the main
+ * copy has checked out), to start a new branch from. Its branch is fetched
+ * from the remote first. A local branch behind its upstream gives way to the
+ * upstream, so the local branch itself is never moved; one with commits the
+ * upstream lacks is kept. A tag, a commit, or a branch with no remote comes
+ * back unchanged.
+ */
+export async function freshBase(root: string, base?: string): Promise<FreshBase> {
+  const resolved = await run(["git", "rev-parse", "--symbolic-full-name", base ?? "HEAD"], { cwd: root });
+  const full = resolved.code === 0 ? resolved.stdout.trim() : "";
+
+  if (full.startsWith("refs/heads/")) {
+    const out = await run(
+      ["git", "for-each-ref", "--format=%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)", full],
+      { cwd: root },
+    );
+    const [upstream = "", remote = "", remoteRef = ""] = out.stdout.trim().split("\0");
+    // `.` is a local branch tracking another local branch: nothing to fetch.
+    if (!upstream || !remote || remote === ".") return { ref: base };
+    const fetchError = await fetchInto(root, remote, remoteRef, upstream);
+    const behind = await isAncestor(root, full, upstream);
+    const ref = behind ? upstream : base;
+    if (fetchError) return { ref, warning: stale(ref ?? full, fetchError) };
+    // Neither has all of the other's commits: the upstream's are left out.
+    if (!behind && !(await isAncestor(root, upstream, full))) {
+      const [local, theirs] = [shortRef(full), shortRef(upstream)];
+      return {
+        ref,
+        warning: `${local} and ${theirs} have diverged, so this starts from ${local} without ${theirs}'s new commits`,
+      };
+    }
+    return { ref };
+  }
+
+  if (full.startsWith("refs/remotes/")) {
+    const remotes = (await run(["git", "remote"], { cwd: root })).stdout.split("\n").filter(Boolean);
+    // The longest match, as a remote's name can be a prefix of another's (`origin`, `origin/fork`).
+    const remote = remotes.filter((r) => full.startsWith(`refs/remotes/${r}/`)).sort((a, b) => b.length - a.length)[0];
+    if (!remote) return { ref: base };
+    const branch = full.slice(`refs/remotes/${remote}/`.length);
+    const fetchError = await fetchInto(root, remote, `refs/heads/${branch}`, full);
+    return fetchError ? { ref: base, warning: stale(full, fetchError) } : { ref: base };
+  }
+
+  return { ref: base };
+}
+
+function stale(ref: string, fetchError: string): string {
+  return `Couldn't fetch, so ${shortRef(ref)} is as of the last fetch: ${fetchError}`;
+}
+
+/** `main` for `refs/heads/main`, `origin/main` for `refs/remotes/origin/main`. */
+function shortRef(ref: string): string {
+  return ref.replace(/^refs\/(heads|remotes)\//, "");
+}
+
+/** Fetch `remote`'s `src` into `dst`, giving up after FETCH_TIMEOUT_MS. Git's error when it fails. */
+async function fetchInto(root: string, remote: string, src: string, dst: string): Promise<string | undefined> {
+  const error = await gitFetch(root, [remote, `+${src}:${dst}`], FETCH_TIMEOUT_MS);
+  return error === "" ? `git fetch ${remote} gave up after ${FETCH_TIMEOUT_MS / 1000}s` : error;
+}
+
+/**
+ * `git fetch` with nothing allowed to prompt: over HTTPS git would ask for
+ * credentials, over SSH ssh would ask for a passphrase or to trust a host key,
+ * on the terminal the TUI is drawing on. It runs with no terminal to prompt
+ * on, so every prompt goes to an askpass instead: the user's own (a GUI one)
+ * if they have one, else one that fails, which makes the prompt an error.
+ * Undefined on success, else git's error (empty when git said nothing, as
+ * when killed by the timeout).
+ */
+async function gitFetch(root: string, args: string[], timeoutMs?: number): Promise<string | undefined> {
+  const { code, stderr } = await run(["git", "fetch", "--quiet", ...args], {
+    cwd: root,
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      SSH_ASKPASS: process.env.SSH_ASKPASS || "false",
+      SSH_ASKPASS_REQUIRE: "force",
+    },
+    timeoutMs,
+    detached: true,
+  });
+  if (code === 0) return undefined;
+  // Our failing askpass's own complaint says nothing about why the fetch failed.
+  const why = stderr
+    .split("\n")
+    .filter((l) => !l.includes("askpass response from 'false'"))
+    .join("\n")
+    .trim();
+  // A refused prompt reads like a missing key or account; say what would have answered it.
+  // ssh's own "Permission denied" lists the methods it tried, `(publickey)`; a file's doesn't.
+  return /Permission denied \(|Host key verification failed|terminal prompts disabled/.test(why)
+    ? `${why}\nagentree can't answer a login or passphrase prompt: load your key with ssh-add, or fetch once in a terminal.`
+    : why;
+}
+
 export interface Branches {
   /** The branch the working copy has checked out, or null when detached. */
   current: string | null;
@@ -154,7 +262,8 @@ export async function removeWorktree(root: string, path: string, opts: { force?:
  * too, unlike fetching `headRefName` directly off `origin`.
  */
 export async function fetchPrBranch(root: string, prNumber: number, branch: string): Promise<void> {
-  await runOrThrow(["git", "fetch", "origin", `+refs/pull/${prNumber}/head:refs/heads/${branch}`], { cwd: root });
+  const error = await gitFetch(root, ["origin", `+refs/pull/${prNumber}/head:refs/heads/${branch}`]);
+  if (error !== undefined) throw new Error(error || `git fetch origin failed for PR #${prNumber}`);
 }
 
 /**
