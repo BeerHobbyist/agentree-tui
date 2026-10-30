@@ -57,6 +57,8 @@ export interface PrComment {
   /** Inline comments: where in the diff. */
   path?: string;
   line?: number;
+  /** Inline comments: its thread is resolved on GitHub. */
+  resolved?: boolean;
   /** Review summaries: the verdict it came with. */
   reviewState?: PrReviewer["state"];
 }

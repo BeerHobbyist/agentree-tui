@@ -11,9 +11,11 @@ import {
   toComments,
   toPrDetails,
   toMergeSettings,
+  toResolvedUrls,
   toReviewers,
   type MergeSettings,
   type RawPr,
+  type RawThreads,
 } from "../../src/services/pr";
 
 describe("checkState", () => {
@@ -126,6 +128,45 @@ describe("toComments", () => {
       { user: { login: "x" }, body: "old", created_at: "", path: "a", line: null, original_line: 7 },
     ]);
     expect(c!.line).toBe(7);
+  });
+
+  test("an inline comment in a resolved thread is marked resolved", () => {
+    const comments = toComments(
+      {},
+      [
+        { user: { login: "a" }, body: "fixed", created_at: "2026-09-21T09:00:00Z", html_url: "https://gh/r1" },
+        { user: { login: "b" }, body: "open", created_at: "2026-09-20T09:00:00Z", html_url: "https://gh/r2" },
+        { user: { login: "c" }, body: "no link", created_at: "2026-09-19T09:00:00Z" },
+      ],
+      new Set(["https://gh/r1"]),
+    );
+    expect(comments.map((c) => c.resolved ?? false)).toEqual([true, false, false]);
+  });
+});
+
+describe("toResolvedUrls", () => {
+  test("the comments of resolved threads only", () => {
+    const urls = toResolvedUrls({
+      data: {
+        repository: {
+          pullRequest: {
+            reviewThreads: {
+              nodes: [
+                { isResolved: true, comments: { nodes: [{ url: "https://gh/r1" }, { url: "https://gh/r2" }] } },
+                { isResolved: false, comments: { nodes: [{ url: "https://gh/r3" }] } },
+              ],
+            },
+          },
+        },
+      },
+    });
+    expect([...urls]).toEqual(["https://gh/r1", "https://gh/r2"]);
+  });
+
+  test("nothing when GitHub sends no threads", () => {
+    expect(toResolvedUrls({}).size).toBe(0);
+    expect(toResolvedUrls({ data: { repository: { pullRequest: null } } }).size).toBe(0);
+    expect(toResolvedUrls([] as unknown as RawThreads).size).toBe(0);
   });
 });
 

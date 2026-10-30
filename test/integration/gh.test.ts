@@ -251,6 +251,23 @@ describe("fetchPrDetails", () => {
     expect(calls.some((c) => c.startsWith("api repos/acme/widget/pulls/42/comments"))).toBe(true);
   });
 
+  test("marks the inline comments in resolved review threads", async () => {
+    const url = (id: number) => `https://github.com/acme/widget/pull/42#discussion_r${id}`;
+    sandbox.setPrView(42, view);
+    sandbox.setPrComments(42, [
+      { user: { login: "bob" }, body: "nit", created_at: "2026-09-23T09:30:00Z", html_url: url(1) },
+      { user: { login: "bob" }, body: "race", created_at: "2026-09-23T09:20:00Z", html_url: url(2) },
+    ]);
+    sandbox.setPrThreads(42, [
+      { isResolved: true, urls: [url(1)] },
+      { isResolved: false, urls: [url(2)] },
+    ]);
+    const d = await fetchPrDetails("acme/widget", 42);
+    expect(d.comments.map((c) => `${c.body}:${c.resolved ?? false}`)).toEqual(["nit:true", "race:false", "LGTM:false"]);
+    const graphql = sandbox.ghCalls().find((c) => c.startsWith("api graphql"));
+    expect(graphql).toContain("-f owner=acme -f name=widget -F number=42");
+  });
+
   test("still loads the PR when the inline comments can't be fetched", async () => {
     sandbox.setPrView(42, view);
     sandbox.failGh("api");

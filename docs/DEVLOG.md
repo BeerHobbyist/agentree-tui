@@ -163,7 +163,8 @@ the app polls those and cross-checks tmux (see **Agent status**).
   — the cache and its defaults.
 - `src/services/limit.ts` — `createLimiter(n)`: at most 4 `gh`/`git` processes at once.
 - `src/services/pr.ts` — PR details for the panel (`fetchPrDetails`: `gh pr view
-  --json` + the REST inline-comments endpoint) and pure normalizers
+  --json` + the REST inline-comments endpoint + a GraphQL query for which review
+  threads are resolved) and pure normalizers
   (`checkState`, `summarizeChecks`, `mergeStatus`, `relativeTime`, …).
 - `src/services/open.ts` — `openExternal(url)`; `AGENTREE_OPEN_CMD` overrides the
   opener (tests use a fake that records).
@@ -481,7 +482,10 @@ ready, conflicts, behind, blocked and why, draft, merged/closed), **Reviews**
 pending requests), **Checks**
 (counts; each check failing-first, click to open its log), **Labels**,
 **Description**, **Comments** (conversation, review summaries and inline code
-comments with `file:line`, newest first; click to open). The footer says how
+comments with `file:line`, newest first; click to open; comments in resolved
+threads fold under a `▸ N resolved` line — click it to show them — and aren't
+in the header's count. They're matched to the REST comments by URL: their
+numeric ids overflow GraphQL's `Int`). The footer says how
 fresh it is (`↻ just now`, `↻ refreshing…`, `↻ failed`), then `m merge · o
 open` — `r refresh` left it, since it no longer fit the default width.
 Details are cached per PR (TanStack Query): switching back to a PR seen in the last 30s fetches nothing;

@@ -93,8 +93,8 @@ async function setup(opts: { prView?: boolean; branchPr?: boolean } = {}) {
 }
 
 /** Render at a comfortable size and select feature/login's row. */
-async function openOnLogin(width = 140) {
-  app = await renderApp({ width, height: 40 });
+async function openOnLogin(width = 140, height = 40) {
+  app = await renderApp({ width, height });
   await waitForText(app, `${ICON.noAgent} login`);
   app.mockInput.pressKey("j"); // main
   app.mockInput.pressKey("j"); // login
@@ -315,5 +315,42 @@ describe("folding sections", () => {
     expect(frame).toContain(header("Comments", true));
     expect(frame).not.toContain("Guard this with the lock.");
     expect(frame).toContain(FAILED_LINT);
+  });
+});
+
+describe("resolved comments", () => {
+  const url = (id: number) => `${PR_URL}#discussion_r${id}`;
+
+  test("are folded under a count; clicking it shows them", async () => {
+    await setup();
+    sandbox.setPrComments(42, [
+      {
+        user: { login: "bob" },
+        body: "Guard this with the lock.",
+        created_at: ago(20),
+        path: "src/session.ts",
+        line: 57,
+        html_url: url(1),
+      },
+      {
+        user: { login: "carol" },
+        body: "Rename this.",
+        created_at: ago(25),
+        path: "src/login.ts",
+        line: 3,
+        html_url: url(2),
+      },
+    ]);
+    sandbox.setPrThreads(42, [{ isResolved: true, urls: [url(2)] }]);
+    await openOnLogin(140, 60);
+    const frame = await waitForText(app, `${ICON.folded} 1 resolved`);
+    expect(frame).toContain(`${header("Comments", false)}  2`); // bob's and alice's, not carol's
+    expect(frame).toContain("Guard this with the lock.");
+    expect(frame).not.toContain("Rename this.");
+
+    const { x, y } = locate(app, `${ICON.folded} 1 resolved`);
+    await app.mockMouse.click(x + 2, y);
+    await waitForText(app, "Rename this.");
+    expect(app.captureCharFrame()).toContain(`${ICON.unfolded} 1 resolved`);
   });
 });
