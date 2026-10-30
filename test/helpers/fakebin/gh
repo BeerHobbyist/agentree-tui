@@ -40,6 +40,13 @@ case "$sub" in
       if [ -f "$file" ]; then cat "$file"; else echo '{}'; fi
       exit 0
     fi
+    # Review threads (which inline comments are resolved): graphql … -F number=<n>
+    if [ "$1" = "graphql" ]; then
+      n=$(printf '%s' "$*" | sed -n 's/.*number=\([0-9][0-9]*\).*/\1/p')
+      file="$FAKE_GH_DIR/pr-threads-$n.json"
+      if [ -f "$file" ]; then cat "$file"; else echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; fi
+      exit 0
+    fi
     # Inline review comments: repos/<owner>/<repo>/pulls/<n>/comments
     n=$(printf '%s' "$1" | sed -n 's|^repos/[^/]*/[^/]*/pulls/\([0-9][0-9]*\)/comments.*|\1|p')
     if [ -n "$n" ]; then

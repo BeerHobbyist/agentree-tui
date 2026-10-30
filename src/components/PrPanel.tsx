@@ -1,9 +1,9 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "@opentui/core";
 import { useTheme, type Theme } from "../theme";
 import { ICON } from "../icons";
 import { Hints } from "./Hints";
-import type { CheckState, PrDetails, PrInfo, PrReviewer } from "../data/model";
+import type { CheckState, PrComment, PrDetails, PrInfo, PrReviewer } from "../data/model";
 import { excerpt, mergeStatus, relativeTime, summarizeChecks, type Tone } from "../services/pr";
 import { useQuery } from "@tanstack/react-query";
 import { prDetailsQuery } from "../queries";
@@ -201,6 +201,43 @@ function Row({
   );
 }
 
+/** Comments up to MAX_COMMENTS; clicking one opens it on GitHub (the PR, when it has no link of its own). */
+function CommentList({ comments, prUrl }: { comments: PrComment[]; prUrl: string }) {
+  const theme = useTheme();
+  return (
+    <>
+      {comments.slice(0, MAX_COMMENTS).map((c, i) => (
+        <box
+          // biome-ignore lint/suspicious/noArrayIndexKey: comments have no id here; the list is rebuilt from each fetch
+          key={i}
+          flexDirection="column"
+          flexShrink={0}
+          marginBottom={1}
+          onMouseDown={() => openExternal(c.url ?? prUrl)}
+        >
+          <text flexShrink={0} wrapMode="none" truncate>
+            <span fg={theme.fgMuted}>{`${ICON.person} `}</span>
+            <span fg={theme.fg}>{c.author}</span>
+            {c.kind === "inline" && c.path && (
+              <span fg={theme.accent}>{`  ${ICON.file} ${c.path}${c.line ? ":" + c.line : ""}`}</span>
+            )}
+            {c.kind === "review" && c.reviewState && (
+              <span
+                fg={reviewerLook(c.reviewState, theme).color}
+              >{` ${reviewerLook(c.reviewState, theme).label}`}</span>
+            )}
+            <span fg={theme.fgFaint}>{` · ${relativeTime(c.createdAt)}`}</span>
+          </text>
+          <Quote>{excerpt(c.body)}</Quote>
+        </box>
+      ))}
+      {comments.length > MAX_COMMENTS && (
+        <text fg={theme.fgFaint}>{`…${comments.length - MAX_COMMENTS} more — o to open on GitHub`}</text>
+      )}
+    </>
+  );
+}
+
 /**
  * The PR of the worktree on screen: status, merge readiness, reviews, checks,
  * labels, description and comments. Fetches on open, then every PR_REFRESH_MS.
@@ -229,9 +266,12 @@ export function PrPanel({
   const details = query.data ?? null;
   const error = query.error ? (query.error instanceof Error ? query.error.message : String(query.error)) : null;
 
-  // A different PR starts at the top.
+  const [showResolved, setShowResolved] = useState(false);
+
+  // A different PR starts at the top, its resolved threads folded.
   useEffect(() => {
     scrollRef.current?.scrollTo(0);
+    setShowResolved(false);
   }, [repo, pr.number]);
 
   if (handleRef) {
@@ -257,6 +297,8 @@ export function PrPanel({
         .filter((c) => c.n > 0)
     : [];
   const overall = d ? summarizeChecks(d.checks.map((c) => c.state)) : pr.checks;
+  const openComments = d?.comments.filter((c) => !c.resolved) ?? [];
+  const resolvedComments = d?.comments.filter((c) => c.resolved) ?? [];
   /** Props that make a section foldable. */
   const fold = (section: PrSection) => ({
     collapsed: collapsed.includes(section),
@@ -479,39 +521,23 @@ export function PrPanel({
               title="Comments"
               icon={ICON.comment}
               {...fold("comments")}
-              extra={d.comments.length > 0 && <text fg={theme.fgFaint}>{`  ${d.comments.length}`}</text>}
+              extra={openComments.length > 0 && <text fg={theme.fgFaint}>{`  ${openComments.length}`}</text>}
             >
               {d.comments.length === 0 ? (
                 <text fg={theme.fgFaint}>{"No comments"}</text>
               ) : (
-                d.comments.slice(0, MAX_COMMENTS).map((c, i) => (
-                  <box
-                    // biome-ignore lint/suspicious/noArrayIndexKey: comments have no id here; the list is rebuilt from each fetch
-                    key={i}
-                    flexDirection="column"
-                    flexShrink={0}
-                    marginBottom={1}
-                    onMouseDown={() => openExternal(c.url ?? url)}
-                  >
-                    <text flexShrink={0} wrapMode="none" truncate>
-                      <span fg={theme.fgMuted}>{`${ICON.person} `}</span>
-                      <span fg={theme.fg}>{c.author}</span>
-                      {c.kind === "inline" && c.path && (
-                        <span fg={theme.accent}>{`  ${ICON.file} ${c.path}${c.line ? ":" + c.line : ""}`}</span>
-                      )}
-                      {c.kind === "review" && c.reviewState && (
-                        <span fg={reviewerLook(c.reviewState, theme).color}>
-                          {` ${reviewerLook(c.reviewState, theme).label}`}
-                        </span>
-                      )}
-                      <span fg={theme.fgFaint}>{` · ${relativeTime(c.createdAt)}`}</span>
-                    </text>
-                    <Quote>{excerpt(c.body)}</Quote>
-                  </box>
-                ))
+                <CommentList comments={openComments} prUrl={url} />
               )}
-              {d.comments.length > MAX_COMMENTS && (
-                <text fg={theme.fgFaint}>{`…${d.comments.length - MAX_COMMENTS} more — o to open on GitHub`}</text>
+              {/* Resolved threads stay folded away until this line is clicked. */}
+              {resolvedComments.length > 0 && (
+                <text fg={theme.fgFaint} flexShrink={0} onMouseDown={() => setShowResolved((shown) => !shown)}>
+                  {`${showResolved ? ICON.unfolded : ICON.folded} ${resolvedComments.length} resolved`}
+                </text>
+              )}
+              {showResolved && resolvedComments.length > 0 && (
+                <box flexDirection="column" flexShrink={0} marginTop={1}>
+                  <CommentList comments={resolvedComments} prUrl={url} />
+                </box>
               )}
             </Section>
           </scrollbox>

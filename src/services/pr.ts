@@ -1,7 +1,8 @@
 /**
  * Pull request details for the PR panel, via `gh`: one `gh pr view --json` for
  * the PR itself, checks, reviews and conversation, plus the REST API for inline
- * code comments (not part of `gh pr view`). Everything is normalized into
+ * code comments (not part of `gh pr view`) and GraphQL for which of their
+ * threads are resolved (not part of either). Everything is normalized into
  * `PrDetails` by pure functions, exported for tests.
  */
 import type { CheckState, PrCheck, PrComment, PrDetails, PrReviewer } from "../data/model";
@@ -61,6 +62,25 @@ export interface RawInlineComment {
   line?: number | null;
   original_line?: number | null;
 }
+
+/** The PR's review threads, from `RESOLVED_QUERY`. */
+export interface RawThreads {
+  data?: {
+    repository?: {
+      pullRequest?: {
+        reviewThreads?: { nodes?: { isResolved?: boolean; comments?: { nodes?: { url?: string }[] } }[] };
+      } | null;
+    } | null;
+  };
+}
+
+/**
+ * Which review threads are resolved, and the URLs of their comments — matched
+ * to the REST comments by URL, since their numeric ids overflow GraphQL's Int.
+ */
+export const RESOLVED_QUERY =
+  "query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { " +
+  "pullRequest(number: $number) { reviewThreads(first: 100) { nodes { isResolved comments(first: 100) { nodes { url } } } } } } }";
 
 export const PR_VIEW_FIELDS = [
   "number",
@@ -173,8 +193,22 @@ export function toReviewers(pr: Pick<RawPr, "latestReviews" | "reviewRequests">)
   return reviewers;
 }
 
+/** URLs of the comments in resolved review threads. */
+export function toResolvedUrls(raw: RawThreads): Set<string> {
+  const urls = new Set<string>();
+  for (const t of raw.data?.repository?.pullRequest?.reviewThreads?.nodes ?? []) {
+    if (!t.isResolved) continue;
+    for (const c of t.comments?.nodes ?? []) if (c.url) urls.add(c.url);
+  }
+  return urls;
+}
+
 /** Conversation, review summaries and inline comments, newest first. */
-export function toComments(pr: Pick<RawPr, "comments" | "reviews">, inline: RawInlineComment[]): PrComment[] {
+export function toComments(
+  pr: Pick<RawPr, "comments" | "reviews">,
+  inline: RawInlineComment[],
+  resolved: ReadonlySet<string> = new Set(),
+): PrComment[] {
   const out: PrComment[] = [];
   for (const c of pr.comments ?? []) {
     if (!c.body?.trim()) continue;
@@ -207,6 +241,7 @@ export function toComments(pr: Pick<RawPr, "comments" | "reviews">, inline: RawI
       ...(c.html_url ? { url: c.html_url } : {}),
       ...(c.path ? { path: c.path } : {}),
       ...(line ? { line } : {}),
+      ...(c.html_url && resolved.has(c.html_url) ? { resolved: true } : {}),
     });
   }
   return out.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -236,7 +271,11 @@ function reviewDecision(d: string | null | undefined): PrDetails["reviewDecision
   }
 }
 
-export function toPrDetails(pr: RawPr, inline: RawInlineComment[] = []): PrDetails {
+export function toPrDetails(
+  pr: RawPr,
+  inline: RawInlineComment[] = [],
+  resolved: ReadonlySet<string> = new Set(),
+): PrDetails {
   return {
     number: pr.number,
     title: pr.title ?? "",
@@ -257,7 +296,7 @@ export function toPrDetails(pr: RawPr, inline: RawInlineComment[] = []): PrDetai
     checks: toChecks(pr.statusCheckRollup),
     labels: (pr.labels ?? []).map((l) => l.name),
     body: pr.body ?? "",
-    comments: toComments(pr, inline),
+    comments: toComments(pr, inline, resolved),
   };
 }
 
@@ -313,11 +352,28 @@ export function excerpt(body: string, maxLines = 4, maxChars = 280): string {
   return clipped ? text + " …" : text;
 }
 
-/** Fetch and normalize a PR. Inline comments are best-effort; the PR itself must load. */
+/**
+ * Fetch and normalize a PR. Inline comments, and which of them are resolved,
+ * are best-effort; the PR itself must load.
+ */
 export async function fetchPrDetails(nameWithOwner: string, number: number): Promise<PrDetails> {
-  const [view, inline] = await Promise.all([
+  const [owner, name] = nameWithOwner.split("/");
+  const [view, inline, threads] = await Promise.all([
     run(["gh", "pr", "view", String(number), "-R", nameWithOwner, "--json", PR_VIEW_FIELDS]),
     run(["gh", "api", `repos/${nameWithOwner}/pulls/${number}/comments?per_page=100`]).catch(() => null),
+    run([
+      "gh",
+      "api",
+      "graphql",
+      "-f",
+      `query=${RESOLVED_QUERY}`,
+      "-f",
+      `owner=${owner}`,
+      "-f",
+      `name=${name}`,
+      "-F",
+      `number=${number}`,
+    ]).catch(() => null),
   ]);
   if (view.code !== 0) {
     throw new Error(view.stderr.trim().split("\n").pop() || `gh pr view exited ${view.code}`);
@@ -331,7 +387,15 @@ export async function fetchPrDetails(nameWithOwner: string, number: number): Pro
       // not fatal — show the PR without inline comments
     }
   }
-  return toPrDetails(JSON.parse(view.stdout) as RawPr, inlineComments);
+  let resolved = new Set<string>();
+  if (threads && threads.code === 0) {
+    try {
+      resolved = toResolvedUrls(JSON.parse(threads.stdout) as RawThreads);
+    } catch {
+      // not fatal — resolved threads show like the rest
+    }
+  }
+  return toPrDetails(JSON.parse(view.stdout) as RawPr, inlineComments, resolved);
 }
 
 // --- merging ---

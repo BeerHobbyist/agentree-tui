@@ -68,6 +68,8 @@ export interface Sandbox {
   setPrView(number: number, pr: Record<string, unknown>): void;
   /** Publish a PR's inline review comments (raw REST shape). */
   setPrComments(number: number, comments: Record<string, unknown>[]): void;
+  /** Publish a PR's review threads: whether each is resolved, and its comments' URLs. */
+  setPrThreads(number: number, threads: { isResolved: boolean; urls: string[] }[]): void;
   /** Publish what `gh api repos/<repo>` returns (merge settings; default `{}`). */
   setRepoSettings(settings: Record<string, unknown>): void;
   /** URLs the app asked to open in a browser. */
@@ -273,6 +275,16 @@ export function createSandbox(): Sandbox {
     },
     setPrComments(number, comments) {
       writeFileSync(join(fixtures, `pr-comments-${number}.json`), JSON.stringify(comments));
+    },
+    setPrThreads(number, threads) {
+      const nodes = threads.map((t) => ({
+        isResolved: t.isResolved,
+        comments: { nodes: t.urls.map((url) => ({ url })) },
+      }));
+      writeFileSync(
+        join(fixtures, `pr-threads-${number}.json`),
+        JSON.stringify({ data: { repository: { pullRequest: { reviewThreads: { nodes } } } } }),
+      );
     },
     setRepoSettings(settings) {
       writeFileSync(join(fixtures, "repo-settings.json"), JSON.stringify(settings));
